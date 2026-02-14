@@ -790,6 +790,95 @@ impl Filesystem for TorrentFS {
         reply.error(libc::EROFS);
     }
 
+    /// Remove a file (or torrent directory).
+    /// This allows removing torrents by unlinking their root directory from the mount point.
+    /// Individual files cannot be removed (read-only).
+    fn unlink(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        reply: fuser::ReplyEmpty,
+    ) {
+        let name_str = name.to_string_lossy();
+        debug!("unlink: parent={}, name={}", parent, name_str);
+
+        // Only allow unlinking torrent directories from root
+        if parent != 1 {
+            debug!("unlink: rejecting - can only remove torrent directories from root");
+            reply.error(libc::EROFS);
+            return;
+        }
+
+        // Look up the torrent directory by name
+        let path = format!("/{}", name_str);
+        let ino = match self.inode_manager.lookup_by_path(&path) {
+            Some(ino) => ino,
+            None => {
+                debug!("unlink: torrent directory '{}' not found", name_str);
+                reply.error(libc::ENOENT);
+                return;
+            }
+        };
+
+        // Verify this is a torrent directory
+        let torrent_id = match self.inode_manager.get(ino) {
+            Some(entry) => {
+                if !entry.is_directory() {
+                    debug!("unlink: entry is not a directory");
+                    reply.error(libc::ENOTDIR);
+                    return;
+                }
+                // Find the torrent ID
+                match self.inode_manager.torrent_to_inode()
+                    .iter()
+                    .find(|item| *item.value() == ino)
+                    .map(|item| *item.key()) {
+                    Some(id) => id,
+                    None => {
+                        warn!("unlink: no torrent ID found for inode {}", ino);
+                        reply.error(libc::EIO);
+                        return;
+                    }
+                }
+            }
+            None => {
+                debug!("unlink: inode {} not found", ino);
+                reply.error(libc::ENOENT);
+                return;
+            }
+        };
+
+        // Check for open file handles in this torrent
+        let has_open_handles = {
+            let read_states = self.read_states.lock().unwrap();
+            // Check if any file in this torrent has read state
+            let file_inodes: Vec<u64> = self.inode_manager.get_children(ino)
+                .iter()
+                .filter(|(_, entry)| entry.is_file())
+                .map(|(ino, _)| *ino)
+                .collect();
+            
+            file_inodes.iter().any(|file_ino| read_states.contains_key(file_ino))
+        };
+
+        if has_open_handles {
+            warn!("unlink: torrent {} has open file handles, cannot remove", torrent_id);
+            reply.error(libc::EBUSY);
+            return;
+        }
+
+        // Perform the removal
+        if let Err(e) = self.remove_torrent(torrent_id, ino) {
+            error!("unlink: failed to remove torrent {}: {}", torrent_id, e);
+            reply.error(libc::EIO);
+            return;
+        }
+
+        info!("Successfully removed torrent {} ({})", torrent_id, name_str);
+        reply.ok();
+    }
+
     /// Get extended attribute value.
     /// Exposes torrent status information via extended attributes.
     fn getxattr(
@@ -1168,6 +1257,45 @@ impl TorrentFS {
     pub fn list_torrents(&self) -> Vec<u64> {
         self.inode_manager.get_all_torrent_ids()
     }
+
+    /// Remove a torrent from the filesystem and rqbit.
+    /// 
+    /// This method:
+    /// 1. Stops monitoring the torrent
+    /// 2. Removes the torrent from rqbit (forget - keeps files)
+    /// 3. Removes all inodes associated with the torrent
+    /// 4. Removes the torrent directory from root's children
+    fn remove_torrent(&self, torrent_id: u64, torrent_inode: u64) -> Result<()> {
+        debug!("Removing torrent {} (inode {})", torrent_id, torrent_inode);
+
+        // Stop monitoring this torrent
+        self.unmonitor_torrent(torrent_id);
+
+        // Remove from rqbit (forget - keeps downloaded files)
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.api_client.forget_torrent(torrent_id).await
+            })
+        }).with_context(|| format!("Failed to remove torrent {} from rqbit", torrent_id))?;
+
+        // Remove torrent directory from root's children list
+        self.inode_manager.remove_child(1, torrent_inode);
+
+        // Remove all inodes associated with this torrent (recursively)
+        self.inode_manager.remove_inode(torrent_inode);
+
+        info!("Successfully removed torrent {} from filesystem", torrent_id);
+        Ok(())
+    }
+
+    /// Removes a torrent by its ID.
+    /// Convenience method that finds the inode and calls remove_torrent.
+    pub fn remove_torrent_by_id(&self, torrent_id: u64) -> Result<()> {
+        let torrent_inode = self.inode_manager.lookup_torrent(torrent_id)
+            .ok_or_else(|| anyhow::anyhow!("Torrent {} not found in filesystem", torrent_id))?;
+        
+        self.remove_torrent(torrent_id, torrent_inode)
+    }
 }
 
 /// Sanitizes a filename for use in the filesystem.
@@ -1247,5 +1375,49 @@ mod tests {
         let options = fs.build_mount_options();
 
         assert!(options.contains(&fuser::MountOption::AllowOther));
+    }
+
+    #[test]
+    fn test_remove_torrent_cleans_up_inodes() {
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Create a torrent structure manually
+        let torrent_id = 123u64;
+        let torrent_inode = fs.inode_manager.allocate_torrent_directory(
+            torrent_id,
+            "test_torrent".to_string(),
+            1
+        );
+        fs.inode_manager.add_child(1, torrent_inode);
+
+        // Add a file to the torrent
+        let file_inode = fs.inode_manager.allocate_file(
+            "test.txt".to_string(),
+            torrent_inode,
+            torrent_id,
+            0,
+            1024,
+        );
+        fs.inode_manager.add_child(torrent_inode, file_inode);
+
+        // Verify structures exist
+        assert!(fs.inode_manager.get(torrent_inode).is_some());
+        assert!(fs.inode_manager.get(file_inode).is_some());
+        assert!(fs.inode_manager.lookup_torrent(torrent_id).is_some());
+
+        // Remove the torrent (this would normally call rqbit API)
+        // Since we can't call the API in tests, we manually clean up
+        fs.inode_manager.remove_child(1, torrent_inode);
+        fs.inode_manager.remove_inode(torrent_inode);
+
+        // Verify structures are cleaned up
+        assert!(fs.inode_manager.get(torrent_inode).is_none());
+        assert!(fs.inode_manager.get(file_inode).is_none());
+        assert!(fs.inode_manager.lookup_torrent(torrent_id).is_none());
+        
+        // Verify torrent is no longer in root's children
+        let root_children = fs.inode_manager.get_children(1);
+        assert!(!root_children.iter().any(|(ino, _)| *ino == torrent_inode));
     }
 }

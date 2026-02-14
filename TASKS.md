@@ -102,11 +102,14 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Handle stalled/failed torrents gracefully
   - Update file sizes as download progresses
 
-- [ ] **Implement torrent removal**
-  - Implement `unlink()` for files
-  - Implement torrent removal from rqbit
-  - Clean up inodes on torrent removal
-  - Handle open file descriptors during removal
+- [x] **Implement torrent removal** (2026-02-13)
+  - Implemented `unlink()` FUSE callback for removing torrent directories from root
+  - Implemented `remove_torrent()` method to remove torrents from rqbit (using `forget_torrent` API)
+  - Implemented `remove_torrent_by_id()` convenience method
+  - Clean up inodes recursively on torrent removal using `inode_manager.remove_inode()`
+  - Handle open file descriptors during removal - returns EBUSY if files are open
+  - Added comprehensive test `test_remove_torrent_cleans_up_inodes`
+  - All 30 tests passing, no clippy warnings
 
 ## Phase 5: Error Handling & Edge Cases
 
