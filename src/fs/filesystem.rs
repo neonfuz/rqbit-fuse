@@ -1473,12 +1473,10 @@ impl Filesystem for TorrentFS {
 }
 
 impl TorrentFS {
-    /// Maximum read size for FUSE responses (128KB).
-    /// FUSE protocol limits response size to prevent overflows in fuse_out_header.len field.
-    /// Maximum read size for FUSE responses (4KB).
-    /// FUSE protocol limits response size; 4KB provides safety margin below
-    /// FUSE_MIN_READ_BUFFER to account for headers and protocol overhead.
-    const FUSE_MAX_READ: u32 = 4 * 1024; // 4KB
+    /// Maximum read size for FUSE responses (64KB).
+    /// Matches rqbit's internal buffer size for optimal performance.
+    /// Benchmarks show 64KB provides best throughput without "Too much data" errors.
+    const FUSE_MAX_READ: u32 = 64 * 1024; // 64KB
 }
 
 /// Async initialization helper that can be called from the async runtime

@@ -3,12 +3,14 @@ use crate::metrics::ApiMetrics;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 use tracing::{debug, error, trace, warn};
+use futures::stream::StreamExt;
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -536,17 +538,98 @@ impl RqbitClient {
                 Err(ApiError::InvalidRange(message).into())
             }
             _ => {
+                let status = response.status();
+                let is_range_request = range.is_some();
+                let requested_size = range.map(|(start, end)| (end - start + 1) as usize);
+                
+                // Check if server returned 200 OK for a range request (rqbit bug workaround)
+                let is_full_response = status == StatusCode::OK && is_range_request;
+                
+                if is_full_response {
+                    warn!(
+                        api_op = "read_file",
+                        torrent_id = torrent_id,
+                        file_idx = file_idx,
+                        "Server returned 200 OK for range request, will limit to {} bytes",
+                        requested_size.unwrap_or(0)
+                    );
+                }
+                
                 let response = self.check_response(response).await?;
-                let bytes = response.bytes().await?;
+                
+                // Stream the response and apply byte limit if needed
+                let mut stream = response.bytes_stream();
+                let mut result = Vec::new();
+                let mut total_read = 0usize;
+                let mut bytes_to_skip = 0usize;
+                
+                // If server returned full file for a range request, we need to:
+                // 1. Skip bytes to reach the requested start offset
+                // 2. Limit bytes read to the requested size
+                let (limit, skip) = if is_full_response {
+                    let range_start = range.map(|(start, _)| start as usize).unwrap_or(0);
+                    let range_size = requested_size.unwrap_or(0);
+                    (Some(range_size), range_start)
+                } else {
+                    (None, 0)
+                };
+                bytes_to_skip = skip;
+                
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk?;
+                    
+                    // Handle skipping bytes for full response workaround
+                    if bytes_to_skip > 0 {
+                        if chunk.len() <= bytes_to_skip {
+                            // Skip entire chunk
+                            bytes_to_skip -= chunk.len();
+                            continue;
+                        } else {
+                            // Partial skip - take remaining bytes from this chunk
+                            let remaining = &chunk[bytes_to_skip..];
+                            bytes_to_skip = 0;
+                            
+                            if let Some(limit) = limit {
+                                let to_take = remaining.len().min(limit.saturating_sub(total_read));
+                                result.extend_from_slice(&remaining[..to_take]);
+                                total_read += to_take;
+                                if total_read >= limit {
+                                    break;
+                                }
+                            } else {
+                                result.extend_from_slice(remaining);
+                                total_read += remaining.len();
+                            }
+                            continue;
+                        }
+                    }
+                    
+                    // Normal reading (no skip needed)
+                    if let Some(limit) = limit {
+                        let remaining = limit.saturating_sub(total_read);
+                        if remaining == 0 {
+                            break;
+                        }
+                        let to_take = chunk.len().min(remaining);
+                        result.extend_from_slice(&chunk[..to_take]);
+                        total_read += to_take;
+                    } else {
+                        result.extend_from_slice(&chunk);
+                        total_read += chunk.len();
+                    }
+                }
 
                 trace!(
                     api_op = "read_file",
                     torrent_id = torrent_id,
                     file_idx = file_idx,
-                    bytes_read = bytes.len()
+                    bytes_read = total_read,
+                    range_requested = is_range_request,
+                    full_response = is_full_response,
+                    bytes_skipped = skip
                 );
 
-                Ok(bytes)
+                Ok(Bytes::from(result))
             }
         }
     }

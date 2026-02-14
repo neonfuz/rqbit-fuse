@@ -46,9 +46,12 @@ Default: `http://127.0.0.1:3030`
 
 ### Get Torrent Details
 
-**Endpoint:** `GET /torrents/{id}`
+**Endpoint:** `GET /torrents/{id_or_infohash}`
 
 **Description:** Get detailed information about a specific torrent.
+
+**Parameters:**
+- `id_or_infohash` - Torrent ID (integer) or info hash (40-character hex string)
 
 **Response:**
 ```json
@@ -77,7 +80,7 @@ Default: `http://127.0.0.1:3030`
 
 ### Get Piece Availability (Bitfield)
 
-**Endpoint:** `GET /torrents/{id}/haves`
+**Endpoint:** `GET /torrents/{id_or_infohash}/haves`
 
 **Headers:**
 - `Accept: application/octet-stream` - Binary bitfield (default)
@@ -106,20 +109,55 @@ Default: `http://127.0.0.1:3030`
 
 ### Stream File (Read Data)
 
-**Endpoint:** `GET /torrents/{id}/stream/{file_idx}`
+**Endpoint:** `GET /torrents/{id_or_infohash}/stream/{file_idx}`
 
-**Headers:**
-- `Range: bytes={start}-{end}` - Optional, for partial content
+**Parameters:**
+- `id_or_infohash` - Torrent ID (integer) or info hash (40-character hex string)
+- `file_idx` - Zero-based index of the file within the torrent
 
-**Description:** Read data from a file within a torrent.
+**Request Headers:**
+
+| Header | Description |
+|--------|-------------|
+| `Range` | Optional. Standard HTTP Range header for seeking. Format: `bytes=start-[end]` |
+| `transferMode.dlna.org` | Optional. Set to "Streaming" for DLNA streaming mode |
+| `getcontentFeatures.dlna.org` | Optional. Set to "1" to request content features |
+
+**Range Examples:**
+```
+# Request first 1000 bytes
+Range: bytes=0-999
+
+# Request from byte 1000 to end
+Range: bytes=1000-
+
+# Request specific range (recommended for FUSE reads)
+Range: bytes=1048576-1179647
+```
 
 **Response:**
 - Without Range header: Full file (200 OK)
 - With Range header: Partial content (206 Partial Content)
 
-**Response Headers (206):**
-- `Content-Range: bytes {start}-{end}/{total}`
-- `Content-Length: {size}`
+**Response Headers:**
+
+| Header | Description |
+|--------|-------------|
+| `Accept-Ranges` | Always set to "bytes" |
+| `Content-Type` | MIME type of the file (determined from filename extension) |
+| `Content-Length` | Size of the response body |
+| `Content-Range` | Present when Range header is used (format: `bytes start-end/total`) |
+| `transferMode.dlna.org` | Set to "Streaming" if requested |
+| `contentFeatures.dlna.org` | DLNA content features if requested |
+
+**Response Status Codes:**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | Full content being streamed |
+| `206 Partial Content` | Partial content (when Range header used) |
+| `404 Not Found` | Torrent or file not found |
+| `416 Range Not Satisfiable` | Invalid range requested |
 
 **Behavior:**
 1. Maps byte range to torrent pieces
@@ -132,11 +170,50 @@ Default: `http://127.0.0.1:3030`
 
 **No caching** - Always fresh data
 
+**Example URLs:**
+```
+http://127.0.0.1:3030/torrents/0/stream/0
+http://127.0.0.1:3030/torrents/abc123.../stream/1
+```
+
+**Implementation Details:**
+
+- **Buffer Size:** The HTTP streaming handler uses a 64KB buffer for reading from the file stream
+- **Piece Prioritization:** 
+  - Pieces from different active streams are interleaved for fair download
+  - By default, 32MB ahead of current position is prioritized
+  - Streams are woken when pieces they need become available
+- **State Management:** Works across torrent states:
+  - **Live:** Active downloading/seeding - pieces fetched on demand
+  - **Paused:** Previously downloaded content served from disk
+
+---
+
+### Playlist API
+
+Generate M3U8 playlists for media players.
+
+#### Global Playlist (All Torrents)
+
+**Endpoint:** `GET /torrents/playlist`
+
+Returns an M3U8 playlist containing all playable (video/audio) files from all torrents.
+
+#### Single Torrent Playlist
+
+**Endpoint:** `GET /torrents/{id_or_infohash}/playlist`
+
+Returns an M3U8 playlist for a specific torrent.
+
+**Response Headers:**
+- `Content-Type: application/mpegurl; charset=utf-8`
+- `Content-Disposition: attachment; filename="rqbit-playlist.m3u8"`
+
 ---
 
 ### Get Torrent Statistics
 
-**Endpoint:** `GET /torrents/{id}/stats/v1`
+**Endpoint:** `GET /torrents/{id_or_infohash}/stats/v1`
 
 **Description:** Get detailed download statistics.
 
@@ -206,8 +283,8 @@ Body: torrent file bytes
 ### Pause/Start Torrent
 
 **Endpoints:**
-- `POST /torrents/{id}/pause`
-- `POST /torrents/{id}/start`
+- `POST /torrents/{id_or_infohash}/pause`
+- `POST /torrents/{id_or_infohash}/start`
 
 **Description:** Pause or resume torrent downloading.
 
@@ -218,8 +295,8 @@ Body: torrent file bytes
 ### Delete/Forget Torrent
 
 **Endpoints:**
-- `POST /torrents/{id}/forget` - Remove from session, keep files
-- `POST /torrents/{id}/delete` - Remove from session, delete files
+- `POST /torrents/{id_or_infohash}/forget` - Remove from session, keep files
+- `POST /torrents/{id_or_infohash}/delete` - Remove from session, delete files
 
 **Usage:** Cleanup (optional for torrent-fuse).
 
@@ -327,3 +404,35 @@ async fn read_file(...) -> Result<Bytes> {
     // Make HTTP request
 }
 ```
+
+## Usage Examples
+
+### Stream to VLC
+
+```bash
+# Start streaming
+vlc "http://127.0.0.1:3030/torrents/0/stream/0/movie.mp4"
+```
+
+### Use with curl
+
+```bash
+# Stream with range (seek to 1MB)
+curl -H "Range: bytes=1048576-" http://127.0.0.1:3030/torrents/0/stream/0
+
+# Get playlist
+curl http://127.0.0.1:3030/torrents/playlist
+```
+
+### Download Playlist
+
+```bash
+curl -o playlist.m3u8 http://127.0.0.1:3030/torrents/0/playlist
+```
+
+## Related rqbit Source Files
+
+- `crates/librqbit/src/http_api/handlers/streaming.rs` - HTTP handler implementation
+- `crates/librqbit/src/http_api/handlers/playlist.rs` - Playlist generation
+- `crates/librqbit/src/torrent_state/streaming.rs` - Core streaming logic
+- `crates/librqbit/src/api.rs` - Public API methods

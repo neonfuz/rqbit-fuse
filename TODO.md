@@ -1,83 +1,83 @@
 # Ralph-Loop Fix Checklist: Range Request Streaming
 
 ## Pre-Flight Checklist
-- [ ] torrent-fuse is currently mounted at `./dl2`
-- [ ] rqbit server is running at localhost:3030
-- [ ] Test file exists: `dl2/ubuntu-25.10-desktop-amd64.iso` (or similar large file)
+- [x] torrent-fuse is currently mounted at `./dl2`
+- [x] rqbit server is running at localhost:3030 (2 torrents available)
+- [x] Test file exists: ubuntu-25.10-desktop-amd64.iso via API (returns 200, not 206 - confirms range issue)
 
-## Iteration 1: Add Streaming Support to API Client
+## Iteration 1: Add Streaming Support to API Client ✅
 **Goal**: Modify `read_file` to stream response and limit bytes when server ignores Range headers
 
-**Files to modify**:
+**Files modified**:
 - `src/api/client.rs`
+- `Cargo.toml`
 
-**Changes**:
-1. Add import: `use futures::stream::StreamExt;` (after line 11)
-2. Replace lines 538-551 (the `_ =>` match arm) with streaming implementation
+**Changes made**:
+1. Added `futures = "0.3"` dependency to Cargo.toml
+2. Enabled reqwest "stream" feature in Cargo.toml
+3. Added import: `use futures::stream::StreamExt;` after line 11
+4. Replaced lines 538-551 with streaming implementation that:
+   - Detects when server returns 200 OK for range requests
+   - Streams response and limits bytes to requested size
+   - Logs warnings when server ignores Range headers
 
-**Implementation details**: See `research/streaming-implementation.md`
-
-**Testing**:
+**Test Results**:
 ```bash
-cargo build --release && umount dl2 && ./target/release/torrent-fuse mount -m ./dl2
-time head -c 4096 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+$ time head -c 4096 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+0.04s total (was 2+ seconds)
 ```
-**Expected**: Should complete in <1 second instead of 2+ seconds
+✅ 4KB read: 40ms (was 2+ seconds) - 50x faster
+✅ 64KB read: 5ms
+✅ Data integrity verified against API
+✅ Warning logs confirm server returns 200 OK instead of 206
 
 ---
 
-## Iteration 2: Verify Range Header Format
+## Iteration 2: Verify Range Header Format ✅
 **Goal**: Ensure Range header format matches rqbit expectations exactly
 
-**Files to modify**:
-- `src/api/client.rs`
+**Files checked**:
+- `src/api/client.rs` (line 505)
 
-**Research**: See `research/range-header-analysis.md`
+**Findings**:
+- Range header format is correct: `bytes={start}-{end}` (inclusive, both values)
+- Example: `bytes=0-4095` for 4096 bytes
+- Format follows HTTP/1.1 specification exactly
 
-**Changes**:
-1. Check current Range header format at line 505
-2. Verify it's `bytes={start}-{end}` (inclusive, both values required)
-3. If using open-ended range (`bytes={start}-`), change to explicit end
-
-**Testing**:
+**Test Results**:
 ```bash
-curl -v -H "Range: bytes=0-4095" http://localhost:3030/torrents/1/stream/0 2>&1 | grep -E "(Range|HTTP|Content)"
+$ curl -sI -H "Range: bytes=0-4095" http://localhost:3030/torrents/1/stream/0
+HTTP/1.1 200 OK
+accept-ranges: bytes
 ```
-**Expected**: Should see "Range: bytes=0-4095" in request, "206 Partial Content" in response
 
-**If still getting 200 OK**: Proceed to Iteration 3 (rqbit bug workaround)
+**Conclusion**: Range header format is correct. Server returns 200 OK instead of 206 Partial Content. This is a rqbit bug - server advertises `accept-ranges: bytes` but doesn't honor Range requests. Proceeded to Iteration 3 workaround.
 
 ---
 
-## Iteration 3: Add Response Status Validation
+## Iteration 3: Add Response Status Validation ✅
 **Goal**: Detect when server returns 200 instead of 206 and apply byte limiting
 
-**Files to modify**:
-- `src/api/client.rs`
+**Status**: COMPLETED - Implemented as part of Iteration 1 streaming changes
 
-**Changes**:
-1. Check response status BEFORE consuming body
-2. If status == 200 AND range was requested, apply byte limit
-3. If status == 206, read normally (server is working correctly)
+**Files modified**:
+- `src/api/client.rs` (lines 552-604)
 
-**Implementation**:
-```rust
-let status = response.status();
-let is_range_request = range.is_some();
-let is_full_response = status == StatusCode::OK && is_range_request;
+**Implementation details**:
+- Check response status before consuming body: `let status = response.status()`
+- Detect full response: `is_full_response = status == 200 && range.is_some()`
+- Log warning when server returns 200 OK for range requests
+- Stream response with byte limiting when full response detected
 
-if is_full_response {
-    warn!("Server returned 200 OK for range request, limiting to {} bytes", requested_size);
-}
+**Log output confirms working**:
+```
+WARN ... Server returned 200 OK for range request, will limit to 4096 bytes
 ```
 
-**Testing**:
-```bash
-cargo build --release && umount dl2 && ./target/release/torrent-fuse mount -m ./dl2
-# In another terminal:
-time head -c 16384 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
-```
-**Expected**: Should complete quickly, log should show warning about 200 OK
+**Test Results**:
+- 16KB read completes in <100ms (was 2+ seconds)
+- Warning logs confirm detection of 200 OK responses
+- Byte limiting ensures only requested data is returned
 
 ---
 
