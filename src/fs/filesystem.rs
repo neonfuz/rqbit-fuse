@@ -370,24 +370,18 @@ impl TorrentFS {
                         let prefetch_end =
                             std::cmp::min(next_offset + readahead_size - 1, file_size - 1);
 
-                        trace!(
-                            "prefetch: requesting bytes {}-{} for torrent {} file {}",
-                            next_offset,
-                            prefetch_end,
-                            torrent_id,
-                            file_index
-                        );
+
 
                         match api_client
                             .read_file(torrent_id, file_index, Some((next_offset, prefetch_end)))
                             .await
                         {
-                            Ok(data) => {
-                                trace!("prefetch: successfully prefetched {} bytes", data.len());
+                            Ok(_data) => {
+    
                                 // Could store in cache here
                             }
-                            Err(e) => {
-                                trace!("prefetch: failed to prefetch: {}", e);
+                            Err(_e) => {
+    
                             }
                         }
 
@@ -654,16 +648,6 @@ impl Filesystem for TorrentFS {
 
         // Perform the read via HTTP Range request
         // rqbit will block until data is available, respecting the read_timeout
-        info!(
-            fuse_op = "read",
-            ino = ino,
-            torrent_id = torrent_id,
-            file_index = file_index,
-            range_start = offset,
-            range_end = end,
-            requested_size = size,
-            "Starting API read"
-        );
         
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
@@ -686,18 +670,16 @@ impl Filesystem for TorrentFS {
                 let bytes_read = data.len() as u64;
                 self.metrics.fuse.record_read(bytes_read, latency);
 
-                // Detailed logging to diagnose zero-byte reads
-                info!(
-                    fuse_op = "read",
-                    ino = ino,
-                    torrent_id = torrent_id,
-                    file_index = file_index,
-                    offset = offset,
-                    requested_size = size,
-                    api_response_bytes = bytes_read,
-                    latency_ms = latency.as_millis() as u64,
-                    "API read completed"
-                );
+                // Log slow reads at debug level only
+                if latency > std::time::Duration::from_secs(1) {
+                    debug!(
+                        fuse_op = "read",
+                        ino = ino,
+                        torrent_id = torrent_id,
+                        latency_ms = latency.as_millis() as u64,
+                        "Slow read detected"
+                    );
+                }
 
                 if self.config.logging.log_fuse_operations {
                     debug!(

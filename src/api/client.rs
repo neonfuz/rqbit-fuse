@@ -3,12 +3,12 @@ use crate::metrics::ApiMetrics;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
-use std::collections::HashMap;
+
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tokio::time::{sleep, timeout};
+use tokio::time::sleep;
 use tracing::{debug, error, trace, warn};
 use futures::stream::StreamExt;
 
@@ -561,19 +561,16 @@ impl RqbitClient {
                 let mut stream = response.bytes_stream();
                 let mut result = Vec::new();
                 let mut total_read = 0usize;
-                let mut bytes_to_skip = 0usize;
-                
                 // If server returned full file for a range request, we need to:
                 // 1. Skip bytes to reach the requested start offset
                 // 2. Limit bytes read to the requested size
-                let (limit, skip) = if is_full_response {
+                let (limit, mut bytes_to_skip) = if is_full_response {
                     let range_start = range.map(|(start, _)| start as usize).unwrap_or(0);
                     let range_size = requested_size.unwrap_or(0);
                     (Some(range_size), range_start)
                 } else {
                     (None, 0)
                 };
-                bytes_to_skip = skip;
                 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk?;
@@ -619,15 +616,7 @@ impl RqbitClient {
                     }
                 }
 
-                trace!(
-                    api_op = "read_file",
-                    torrent_id = torrent_id,
-                    file_idx = file_idx,
-                    bytes_read = total_read,
-                    range_requested = is_range_request,
-                    full_response = is_full_response,
-                    bytes_skipped = skip
-                );
+                // Note: Removed noisy trace logging here - use metrics if needed
 
                 Ok(Bytes::from(result))
             }
