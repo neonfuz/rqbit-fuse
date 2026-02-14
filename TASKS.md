@@ -16,16 +16,16 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Define `FileAttr` struct for FUSE attributes
   - Implement serialization/deserialization with serde
 
-- [ ] **Implement rqbit HTTP API client**
+- [x] **Implement rqbit HTTP API client**
   - Create `api::RqbitClient` with base URL configuration
   - Implement `POST /torrents` - add torrent from magnet/link
   - Implement `GET /torrents` - list all torrents
   - Implement `GET /torrents/{id}` - get torrent details
   - Implement `GET /torrents/{id}/files` - list files in torrent
-  - Implement `GET /torrents/{id}/pieces` - get piece availability bitfield
-  - Implement `GET /torrents/{id}/read` with HTTP Range support
+  - Implement `GET /torrents/{id}/haves` - get piece availability bitfield
+  - Implement `GET /torrents/{id}/stream/{file_idx}` with HTTP Range support
   - Add retry logic with exponential backoff
-  - Map API errors to appropriate types
+  - Map API errors to appropriate types with FUSE error code conversion
 
 - [ ] **Create configuration system**
   - Define `Config` struct with all options
@@ -226,6 +226,17 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Defined `InodeEntry` enum (Directory, File)
   - Defined helper functions for FUSE FileAttr
   - All types implement serde serialization
+
+- [x] **Implement rqbit HTTP API client** (2026-02-13)
+  - Created `api::RqbitClient` with configurable base URL and retry logic
+  - Implemented torrent management: list, get, add (magnet/URL), delete, forget
+  - Implemented file operations: read with HTTP Range support via `/stream/{file_idx}`
+  - Implemented piece bitfield retrieval via `/haves` endpoint
+  - Implemented torrent control: pause, start, get stats
+  - Added exponential backoff retry logic for transient failures
+  - Created comprehensive `ApiError` enum with FUSE error code mapping
+  - Added health check endpoint for connection validation
+  - All 4 API client tests passing
 
 ## Discovered Issues
 
