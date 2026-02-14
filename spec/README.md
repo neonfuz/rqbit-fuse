@@ -79,6 +79,19 @@ User-facing documentation for installing and using torrent-fuse.
 
 **Share this** with users who want to use torrent-fuse.
 
+---
+
+### ✅ Ralph (`ralph.md`)
+Guidelines for writing effective todo tasks and structuring project work.
+
+**Contents:**
+- Task writing best practices
+- How to structure complex tasks
+- Breaking down work into manageable steps
+- Quality standards for task documentation
+
+**Reference this** when writing todo tasks to ensure consistency and completeness.
+
 ## Reading Order
 
 1. **For understanding the project:**

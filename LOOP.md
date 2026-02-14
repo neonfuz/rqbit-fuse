@@ -49,6 +49,13 @@ Next Tasks (Phase 7: Testing & Quality):
   - Documented all features in the initial release
   - Added security section with key protections
   - Linked to GitHub compare URLs for version tracking
-- [ ] Add security audit workflow with cargo-audit
+- [x] Add security audit workflow with cargo-audit
+  - Created `.github/workflows/security-audit.yml` with cargo-audit and cargo-deny
+  - Runs daily via cron and on all PRs/pushes to main
+  - Created `deny.toml` configuration for license/advisory checking
+  - Added MPL-2.0 to allowed licenses for option-ext dependency
+  - Documented security findings in `research/security-audit.md`
+  - Ignored RUSTSEC-2025-0134 (unmaintained rustls-pemfile via reqwest)
+  - 2 security advisories identified: rustls-pemfile (unmaintained), fuser (unsound)
 - [ ] Add dependabot configuration for dependency updates
 - [ ] Add Windows build support to release workflow
