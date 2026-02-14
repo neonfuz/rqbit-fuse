@@ -599,7 +599,8 @@ impl Filesystem for TorrentFS {
         }
 
         // Calculate actual read range (don't read past EOF)
-        let end = std::cmp::min(offset + size as u64, file_size) - 1;
+        // Use saturating_sub to prevent underflow when offset == file_size
+        let end = std::cmp::min(offset + size as u64, file_size).saturating_sub(1);
 
         if self.config.logging.log_fuse_operations {
             debug!(
@@ -687,7 +688,10 @@ impl Filesystem for TorrentFS {
                 // Track read pattern and trigger prefetch if sequential
                 self.track_and_prefetch(ino, offset, size, file_size, torrent_id, file_index);
 
-                reply.data(&data);
+                // Truncate data to requested size to prevent "Too much data" FUSE panic
+                // The API might return more data than requested (e.g., entire piece)
+                let data = &data[..std::cmp::min(data.len(), size as usize)];
+                reply.data(data);
             }
             Ok(Err(e)) => {
                 self.metrics.fuse.record_error();
@@ -848,6 +852,161 @@ impl Filesystem for TorrentFS {
             None => {
                 if self.config.logging.log_fuse_operations {
                     debug!(fuse_op = "lookup", parent = parent, name = %name_str, result = "not_found");
+                }
+
+                reply.error(libc::ENOENT);
+            }
+        }
+    }
+
+    /// Get file attributes.
+    /// Called when the kernel needs to get attributes for a file or directory.
+    /// This is a fundamental operation used by ls, stat, and most file operations.
+    #[instrument(skip(self, reply), fields(ino))]
+    fn getattr(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        reply: fuser::ReplyAttr,
+    ) {
+        self.metrics.fuse.record_getattr();
+
+        if self.config.logging.log_fuse_operations {
+            debug!(fuse_op = "getattr", ino = ino);
+        }
+
+        // Get the inode entry
+        match self.inode_manager.get(ino) {
+            Some(entry) => {
+                let attr = self.build_file_attr(&entry);
+                let ttl = std::time::Duration::from_secs(1);
+
+                if self.config.logging.log_fuse_operations {
+                    debug!(
+                        fuse_op = "getattr",
+                        ino = ino,
+                        result = "success",
+                        kind = ?attr.kind,
+                        size = attr.size
+                    );
+                }
+
+                reply.attr(&ttl, &attr);
+            }
+            None => {
+                self.metrics.fuse.record_error();
+
+                if self.config.logging.log_fuse_operations {
+                    debug!(
+                        fuse_op = "getattr",
+                        ino = ino,
+                        result = "error",
+                        error = "ENOENT"
+                    );
+                }
+
+                reply.error(libc::ENOENT);
+            }
+        }
+    }
+
+    /// Open a file.
+    /// Called when the kernel needs to open a file for reading.
+    /// Returns a file handle that will be used in subsequent read operations.
+    #[instrument(skip(self, reply), fields(ino))]
+    fn open(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        flags: i32,
+        reply: fuser::ReplyOpen,
+    ) {
+        self.metrics.fuse.record_open();
+
+        if self.config.logging.log_fuse_operations {
+            debug!(fuse_op = "open", ino = ino, flags = flags);
+        }
+
+        // Check if the inode exists
+        match self.inode_manager.get(ino) {
+            Some(entry) => {
+                // Check if it's a file (not a directory)
+                if entry.is_directory() {
+                    self.metrics.fuse.record_error();
+
+                    if self.config.logging.log_fuse_operations {
+                        debug!(
+                            fuse_op = "open",
+                            ino = ino,
+                            result = "error",
+                            error = "EISDIR"
+                        );
+                    }
+
+                    reply.error(libc::EISDIR);
+                    return;
+                }
+
+                // Check if it's a symlink (symlinks should be resolved before open)
+                if entry.is_symlink() {
+                    self.metrics.fuse.record_error();
+
+                    if self.config.logging.log_fuse_operations {
+                        debug!(
+                            fuse_op = "open",
+                            ino = ino,
+                            result = "error",
+                            error = "ELOOP"
+                        );
+                    }
+
+                    reply.error(libc::ELOOP);
+                    return;
+                }
+
+                // Check write access - this is a read-only filesystem
+                let access_mode = flags & libc::O_ACCMODE;
+                if access_mode != libc::O_RDONLY {
+                    self.metrics.fuse.record_error();
+
+                    if self.config.logging.log_fuse_operations {
+                        debug!(
+                            fuse_op = "open",
+                            ino = ino,
+                            result = "error",
+                            error = "EACCES",
+                            reason = "write_access_requested"
+                        );
+                    }
+
+                    reply.error(libc::EACCES);
+                    return;
+                }
+
+                // Use the inode as the file handle (simple approach)
+                let fh = ino;
+
+                if self.config.logging.log_fuse_operations {
+                    debug!(
+                        fuse_op = "open",
+                        ino = ino,
+                        result = "success",
+                        fh = fh
+                    );
+                }
+
+                reply.opened(fh, 0);
+            }
+            None => {
+                self.metrics.fuse.record_error();
+
+                if self.config.logging.log_fuse_operations {
+                    debug!(
+                        fuse_op = "open",
+                        ino = ino,
+                        result = "error",
+                        error = "ENOENT"
+                    );
                 }
 
                 reply.error(libc::ENOENT);
@@ -1281,7 +1440,10 @@ impl Filesystem for TorrentFS {
 impl TorrentFS {
     /// Maximum read size for FUSE responses (128KB).
     /// FUSE protocol limits response size to prevent overflows in fuse_out_header.len field.
-    const FUSE_MAX_READ: u32 = 128 * 1024; // 128KB
+    /// Maximum read size for FUSE responses (4KB).
+    /// FUSE protocol limits response size; 4KB provides safety margin below
+    /// FUSE_MIN_READ_BUFFER to account for headers and protocol overhead.
+    const FUSE_MAX_READ: u32 = 4 * 1024; // 4KB
 }
 
 /// Async initialization helper that can be called from the async runtime
