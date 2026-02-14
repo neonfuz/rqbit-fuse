@@ -2,9 +2,107 @@ use crate::api::types::*;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
+
+/// Circuit breaker states
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CircuitState {
+    /// Normal operation, requests allowed
+    Closed,
+    /// Failure threshold reached, requests blocked
+    Open,
+    /// Testing if service recovered
+    HalfOpen,
+}
+
+/// Circuit breaker for handling cascading failures
+pub struct CircuitBreaker {
+    /// Current state of the circuit
+    state: Arc<RwLock<CircuitState>>,
+    /// Number of consecutive failures
+    failure_count: AtomicU32,
+    /// Threshold before opening circuit
+    failure_threshold: u32,
+    /// Duration to wait before attempting recovery
+    timeout: Duration,
+    /// Time when circuit was opened
+    opened_at: Arc<RwLock<Option<Instant>>>,
+}
+
+impl CircuitBreaker {
+    /// Create a new circuit breaker with default settings
+    pub fn new(failure_threshold: u32, timeout: Duration) -> Self {
+        Self {
+            state: Arc::new(RwLock::new(CircuitState::Closed)),
+            failure_count: AtomicU32::new(0),
+            failure_threshold,
+            timeout,
+            opened_at: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Check if request is allowed
+    pub async fn can_execute(&self) -> bool {
+        let state = *self.state.read().await;
+        match state {
+            CircuitState::Closed => true,
+            CircuitState::Open => {
+                // Check if timeout has elapsed
+                let opened_at = *self.opened_at.read().await;
+                if let Some(time) = opened_at {
+                    if time.elapsed() >= self.timeout {
+                        // Transition to half-open
+                        *self.state.write().await = CircuitState::HalfOpen;
+                        debug!("Circuit breaker transitioning to half-open");
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            CircuitState::HalfOpen => true,
+        }
+    }
+
+    /// Record a successful request
+    pub async fn record_success(&self) {
+        self.failure_count.store(0, Ordering::SeqCst);
+        let mut state = self.state.write().await;
+        if *state != CircuitState::Closed {
+            debug!("Circuit breaker closing");
+            *state = CircuitState::Closed;
+            *self.opened_at.write().await = None;
+        }
+    }
+
+    /// Record a failed request
+    pub async fn record_failure(&self) {
+        let count = self.failure_count.fetch_add(1, Ordering::SeqCst) + 1;
+        if count >= self.failure_threshold {
+            let mut state = self.state.write().await;
+            if *state == CircuitState::Closed || *state == CircuitState::HalfOpen {
+                warn!(
+                    "Circuit breaker opened after {} consecutive failures",
+                    count
+                );
+                *state = CircuitState::Open;
+                *self.opened_at.write().await = Some(Instant::now());
+            }
+        }
+    }
+
+    /// Get current state
+    pub async fn state(&self) -> CircuitState {
+        *self.state.read().await
+    }
+}
 
 /// HTTP client for interacting with rqbit server
 pub struct RqbitClient {
@@ -12,6 +110,8 @@ pub struct RqbitClient {
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
+    /// Circuit breaker for resilience
+    circuit_breaker: CircuitBreaker,
 }
 
 impl RqbitClient {
@@ -33,16 +133,51 @@ impl RqbitClient {
             base_url,
             max_retries,
             retry_delay,
+            circuit_breaker: CircuitBreaker::new(5, Duration::from_secs(30)),
         }
     }
 
-    /// Helper method to execute a request with retry logic
+    /// Create a new RqbitClient with custom retry and circuit breaker configuration
+    pub fn with_circuit_breaker(
+        base_url: String,
+        max_retries: u32,
+        retry_delay: Duration,
+        failure_threshold: u32,
+        circuit_timeout: Duration,
+    ) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(60))
+            .pool_max_idle_per_host(10)
+            .build()
+            .expect("Failed to build HTTP client");
+
+        Self {
+            client,
+            base_url,
+            max_retries,
+            retry_delay,
+            circuit_breaker: CircuitBreaker::new(failure_threshold, circuit_timeout),
+        }
+    }
+
+    /// Get the current circuit breaker state
+    pub async fn circuit_state(&self) -> CircuitState {
+        self.circuit_breaker.state().await
+    }
+
+    /// Helper method to execute a request with retry logic and circuit breaker
     async fn execute_with_retry<F, Fut>(&self, operation: F) -> Result<reqwest::Response>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = reqwest::Result<reqwest::Response>>,
     {
+        // Check circuit breaker first
+        if !self.circuit_breaker.can_execute().await {
+            return Err(ApiError::CircuitBreakerOpen.into());
+        }
+
         let mut last_error = None;
+        let mut final_result = None;
 
         for attempt in 0..=self.max_retries {
             match operation().await {
@@ -59,27 +194,51 @@ impl RqbitClient {
                         sleep(self.retry_delay * (attempt + 1)).await;
                         continue;
                     }
-                    return Ok(response);
+                    final_result = Some(Ok(response));
+                    break;
                 }
                 Err(e) => {
-                    last_error = Some(e);
-                    if attempt < self.max_retries {
+                    let api_error: ApiError = e.into();
+                    last_error = Some(api_error.clone());
+                    
+                    // Check if error is transient and we should retry
+                    if api_error.is_transient() && attempt < self.max_retries {
                         warn!(
-                            "Request failed on attempt {}/{}, retrying: {}",
+                            "Transient error on attempt {}/{}, retrying: {}",
                             attempt + 1,
                             self.max_retries + 1,
-                            last_error.as_ref().unwrap()
+                            api_error
                         );
                         sleep(self.retry_delay * (attempt + 1)).await;
+                    } else {
+                        // Non-transient error or retries exhausted
+                        final_result = Some(Err(api_error));
+                        break;
                     }
                 }
             }
         }
 
-        Err(last_error
-            .map(ApiError::HttpError)
-            .unwrap_or(ApiError::RetryLimitExceeded)
-            .into())
+        // Record result in circuit breaker
+        match final_result {
+            Some(Ok(response)) => {
+                self.circuit_breaker.record_success().await;
+                Ok(response)
+            }
+            Some(Err(api_error)) => {
+                if api_error.is_transient() {
+                    self.circuit_breaker.record_failure().await;
+                }
+                Err(api_error.into())
+            }
+            None => {
+                // All retries exhausted with transient errors
+                self.circuit_breaker.record_failure().await;
+                Err(last_error
+                    .unwrap_or(ApiError::RetryLimitExceeded)
+                    .into())
+            }
+        }
     }
 
     /// Helper to check response status and convert errors
@@ -410,13 +569,68 @@ impl RqbitClient {
     }
 
     /// Check if the rqbit server is healthy
+    /// Uses a short timeout for quick health checks
     pub async fn health_check(&self) -> Result<bool> {
         let url = format!("{}/torrents", self.base_url);
 
-        match self.client.get(&url).send().await {
-            Ok(response) => Ok(response.status().is_success()),
-            Err(_) => Ok(false),
+        // Use a shorter timeout for health checks (5 seconds)
+        let health_client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .pool_max_idle_per_host(1)
+            .build()
+            .expect("Failed to build health check client");
+
+        match health_client.get(&url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    self.circuit_breaker.record_success().await;
+                    Ok(true)
+                } else {
+                    warn!("Health check returned status: {}", response.status());
+                    self.circuit_breaker.record_failure().await;
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                let api_error: ApiError = e.into();
+                if api_error.is_transient() {
+                    self.circuit_breaker.record_failure().await;
+                }
+                warn!("Health check failed: {}", api_error);
+                Ok(false)
+            }
         }
+    }
+
+    /// Wait for the server to become available with exponential backoff
+    pub async fn wait_for_server(&self, max_wait: Duration) -> Result<()> {
+        let start = Instant::now();
+        let mut attempt = 0;
+
+        while start.elapsed() < max_wait {
+            match self.health_check().await {
+                Ok(true) => {
+                    debug!("Server is available after {:?}", start.elapsed());
+                    return Ok(());
+                }
+                Ok(false) => {
+                    attempt += 1;
+                    let delay = Duration::from_millis(500 * 2_u64.pow(attempt.min(5)));
+                    debug!(
+                        "Server not ready, waiting {:?} before retry {}...",
+                        delay, attempt
+                    );
+                    sleep(delay).await;
+                }
+                Err(e) => {
+                    error!("Error during server wait: {}", e);
+                    attempt += 1;
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+
+        Err(ApiError::ServerDisconnected.into())
     }
 }
 
@@ -480,5 +694,103 @@ mod tests {
             ApiError::InvalidRange("test".to_string()).to_fuse_error(),
             libc::EINVAL
         );
+
+        // Test new error mappings
+        assert_eq!(ApiError::ConnectionTimeout.to_fuse_error(), libc::EAGAIN);
+        assert_eq!(ApiError::ReadTimeout.to_fuse_error(), libc::EAGAIN);
+        assert_eq!(ApiError::ServerDisconnected.to_fuse_error(), libc::ENOTCONN);
+        assert_eq!(
+            ApiError::NetworkError("test".to_string()).to_fuse_error(),
+            libc::ENETUNREACH
+        );
+        assert_eq!(
+            ApiError::CircuitBreakerOpen.to_fuse_error(),
+            libc::EAGAIN
+        );
+        assert_eq!(
+            ApiError::RetryLimitExceeded.to_fuse_error(),
+            libc::EAGAIN
+        );
+
+        // Test HTTP status code mappings
+        assert_eq!(
+            ApiError::ApiError {
+                status: 404,
+                message: "not found".to_string()
+            }
+            .to_fuse_error(),
+            libc::ENOENT
+        );
+        assert_eq!(
+            ApiError::ApiError {
+                status: 403,
+                message: "forbidden".to_string()
+            }
+            .to_fuse_error(),
+            libc::EACCES
+        );
+        assert_eq!(
+            ApiError::ApiError {
+                status: 503,
+                message: "unavailable".to_string()
+            }
+            .to_fuse_error(),
+            libc::EAGAIN
+        );
+    }
+
+    #[test]
+    fn test_api_error_is_transient() {
+        assert!(ApiError::ConnectionTimeout.is_transient());
+        assert!(ApiError::ReadTimeout.is_transient());
+        assert!(ApiError::ServerDisconnected.is_transient());
+        assert!(ApiError::NetworkError("test".to_string()).is_transient());
+        assert!(ApiError::CircuitBreakerOpen.is_transient());
+        assert!(ApiError::RetryLimitExceeded.is_transient());
+        assert!(
+            ApiError::ApiError {
+                status: 503,
+                message: "unavailable".to_string()
+            }
+            .is_transient()
+        );
+
+        assert!(!ApiError::TorrentNotFound(1).is_transient());
+        assert!(!ApiError::InvalidRange("test".to_string()).is_transient());
+        assert!(
+            !ApiError::ApiError {
+                status: 404,
+                message: "not found".to_string()
+            }
+            .is_transient()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_circuit_breaker() {
+        let cb = CircuitBreaker::new(3, Duration::from_millis(100));
+
+        // Initially closed
+        assert!(cb.can_execute().await);
+        assert_eq!(cb.state().await, CircuitState::Closed);
+
+        // Record failures
+        cb.record_failure().await;
+        cb.record_failure().await;
+        assert!(cb.can_execute().await); // Still closed
+
+        cb.record_failure().await; // Third failure opens circuit
+        assert!(!cb.can_execute().await); // Circuit is open
+        assert_eq!(cb.state().await, CircuitState::Open);
+
+        // Wait for timeout
+        sleep(Duration::from_millis(150)).await;
+        assert!(cb.can_execute().await); // Now half-open
+        assert_eq!(cb.state().await, CircuitState::HalfOpen);
+
+        // Record success closes circuit
+        cb.record_success().await;
+        assert!(cb.can_execute().await);
+        assert_eq!(cb.state().await, CircuitState::Closed);
     }
 }

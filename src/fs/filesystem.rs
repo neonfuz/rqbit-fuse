@@ -594,22 +594,26 @@ impl Filesystem for TorrentFS {
         match result {
             Ok(data) => {
                 debug!("read: successfully read {} bytes", data.len());
-                
+
                 // Track read pattern and trigger prefetch if sequential
                 self.track_and_prefetch(ino, offset, size, file_size, torrent_id, file_index);
-                
+
                 reply.data(&data);
             }
             Err(e) => {
                 error!("read: failed to read file: {}", e);
-                // Map error to appropriate FUSE error code
-                let error_code = if e.to_string().contains("not found") {
+
+                // Try to extract ApiError from anyhow error and use proper mapping
+                let error_code = if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>() {
+                    api_err.to_fuse_error()
+                } else if e.to_string().contains("not found") {
                     libc::ENOENT
                 } else if e.to_string().contains("range") {
                     libc::EINVAL
                 } else {
                     libc::EIO
                 };
+
                 reply.error(error_code);
             }
         }
@@ -871,7 +875,15 @@ impl Filesystem for TorrentFS {
         // Perform the removal
         if let Err(e) = self.remove_torrent(torrent_id, ino) {
             error!("unlink: failed to remove torrent {}: {}", torrent_id, e);
-            reply.error(libc::EIO);
+
+            // Map error appropriately
+            let error_code = if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>() {
+                api_err.to_fuse_error()
+            } else {
+                libc::EIO
+            };
+
+            reply.error(error_code);
             return;
         }
 

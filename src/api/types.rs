@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Errors that can occur when interacting with the rqbit API
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ApiError {
     #[error("HTTP request failed: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(String),
 
     #[error("API returned error: {status} - {message}")]
     ApiError { status: u16, message: String },
@@ -23,24 +23,128 @@ pub enum ApiError {
     RetryLimitExceeded,
 
     #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    SerializationError(String),
+
+    #[error("Connection timeout - rqbit server not responding")]
+    ConnectionTimeout,
+
+    #[error("Read timeout - request took too long")]
+    ReadTimeout,
+
+    #[error("rqbit server disconnected")]
+    ServerDisconnected,
+
+    #[error("Circuit breaker open - too many failures")]
+    CircuitBreakerOpen,
+
+    #[error("Network error: {0}")]
+    NetworkError(String),
+
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+}
+
+impl From<reqwest::Error> for ApiError {
+    fn from(err: reqwest::Error) -> Self {
+        if err.is_timeout() {
+            if err.to_string().contains("connect") {
+                ApiError::ConnectionTimeout
+            } else {
+                ApiError::ReadTimeout
+            }
+        } else if err.is_connect() {
+            ApiError::ServerDisconnected
+        } else if err.is_request() {
+            ApiError::NetworkError(err.to_string())
+        } else {
+            ApiError::HttpError(err.to_string())
+        }
+    }
+}
+
+impl From<serde_json::Error> for ApiError {
+    fn from(err: serde_json::Error) -> Self {
+        ApiError::SerializationError(err.to_string())
+    }
 }
 
 impl ApiError {
     /// Map API errors to FUSE error codes
     pub fn to_fuse_error(&self) -> libc::c_int {
         match self {
+            // Not found errors
             ApiError::TorrentNotFound(_) | ApiError::FileNotFound { .. } => libc::ENOENT,
+
+            // API HTTP status errors
             ApiError::ApiError { status, .. } => match status {
-                404 => libc::ENOENT,
-                400 => libc::EINVAL,
-                403 => libc::EACCES,
-                416 => libc::EINVAL,
+                400 => libc::EINVAL, // Bad request
+                401 => libc::EACCES, // Unauthorized
+                403 => libc::EACCES, // Forbidden
+                404 => libc::ENOENT, // Not found
+                408 => libc::EAGAIN, // Request timeout
+                409 => libc::EEXIST, // Conflict
+                413 => libc::EFBIG,  // Payload too large
+                416 => libc::EINVAL, // Range not satisfiable
+                423 => libc::EAGAIN, // Locked
+                429 => libc::EAGAIN, // Too many requests
+                500 => libc::EIO,    // Internal server error
+                502 => libc::EIO,    // Bad gateway
+                503 => libc::EAGAIN, // Service unavailable
+                504 => libc::EAGAIN, // Gateway timeout
                 _ => libc::EIO,
             },
+
+            // Invalid input errors
             ApiError::InvalidRange(_) => libc::EINVAL,
-            _ => libc::EIO,
+            ApiError::SerializationError(_) => libc::EIO,
+
+            // Timeout errors - return EAGAIN to suggest retry
+            ApiError::ConnectionTimeout | ApiError::ReadTimeout => libc::EAGAIN,
+
+            // Server/Network errors
+            ApiError::ServerDisconnected => libc::ENOTCONN,
+            ApiError::NetworkError(_) => libc::ENETUNREACH,
+            ApiError::ServiceUnavailable(_) => libc::EAGAIN,
+
+            // Circuit breaker - service temporarily unavailable
+            ApiError::CircuitBreakerOpen => libc::EAGAIN,
+
+            // Retry limit exceeded
+            ApiError::RetryLimitExceeded => libc::EAGAIN,
+
+            // Generic HTTP errors
+            ApiError::HttpError(_) => libc::EIO,
         }
+    }
+
+    /// Check if this error is transient and retryable
+    pub fn is_transient(&self) -> bool {
+        matches!(
+            self,
+            ApiError::ConnectionTimeout
+                | ApiError::ReadTimeout
+                | ApiError::ServerDisconnected
+                | ApiError::NetworkError(_)
+                | ApiError::ServiceUnavailable(_)
+                | ApiError::CircuitBreakerOpen
+                | ApiError::RetryLimitExceeded
+                | ApiError::ApiError {
+                    status: 408 | 429 | 502 | 503 | 504,
+                    ..
+                }
+        )
+    }
+
+    /// Check if this error indicates the server is unavailable
+    pub fn is_server_unavailable(&self) -> bool {
+        matches!(
+            self,
+            ApiError::ConnectionTimeout
+                | ApiError::ServerDisconnected
+                | ApiError::NetworkError(_)
+                | ApiError::ServiceUnavailable(_)
+                | ApiError::CircuitBreakerOpen
+        )
     }
 }
 

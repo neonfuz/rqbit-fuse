@@ -113,11 +113,20 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## Phase 5: Error Handling & Edge Cases
 
-- [ ] **Implement comprehensive error mapping**
-  - Map API errors to FUSE error codes (ENOENT, EACCES, EIO, etc.)
-  - Handle network timeouts gracefully
-  - Handle rqbit server disconnection
-  - Implement retry with circuit breaker pattern
+- [x] **Implement comprehensive error mapping** (2026-02-13)
+  - Added expanded `ApiError` types: `ConnectionTimeout`, `ReadTimeout`, `ServerDisconnected`, `CircuitBreakerOpen`, `NetworkError`, `ServiceUnavailable`
+  - Implemented comprehensive FUSE error code mapping in `ApiError::to_fuse_error()` for 13+ error types
+  - Added `ApiError::is_transient()` method to identify retryable errors
+  - Added `ApiError::is_server_unavailable()` method for availability detection
+  - Implemented `From<reqwest::Error>` for proper HTTP error classification
+  - Created `CircuitBreaker` struct with Closed/Open/HalfOpen states
+  - Added circuit breaker integration in `RqbitClient` with 5-failure threshold and 30s timeout
+  - Enhanced `execute_with_retry()` to use circuit breaker and transient error detection
+  - Improved `health_check()` with circuit breaker state tracking
+  - Added `wait_for_server()` with exponential backoff for startup
+  - Updated filesystem callbacks to use `ApiError::to_fuse_error()` via downcasting
+  - Added comprehensive tests for error mapping, transient detection, and circuit breaker
+  - All 32 tests passing, no clippy warnings
 
 - [ ] **Handle edge cases**
   - Zero-byte files
