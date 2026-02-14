@@ -1,12 +1,13 @@
 use crate::api::client::RqbitClient;
 use crate::config::Config;
 use crate::fs::inode::InodeManager;
+use crate::types::inode::InodeEntry;
 use anyhow::{Context, Result};
 use fuser::Filesystem;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// Tracks read state for a file handle to detect sequential access patterns
 #[derive(Debug, Clone)]
@@ -751,6 +752,227 @@ pub async fn initialize_filesystem(fs: &mut TorrentFS) -> Result<()> {
     // Check connection to rqbit
     fs.connect_to_rqbit().await?;
     Ok(())
+}
+
+/// Torrent addition flow implementation
+impl TorrentFS {
+    /// Adds a torrent from a magnet link and creates the filesystem structure.
+    /// Returns the torrent ID if successful.
+    pub async fn add_torrent_magnet(&self, magnet_link: &str) -> Result<u64> {
+        // First, add the torrent to rqbit
+        let response = self
+            .api_client
+            .add_torrent_magnet(magnet_link)
+            .await
+            .context("Failed to add torrent from magnet link")?;
+
+        info!(
+            "Added torrent {} with hash {}",
+            response.id, response.info_hash
+        );
+
+        // Check for duplicate torrent
+        if self.inode_manager.lookup_torrent(response.id).is_some() {
+            warn!("Torrent {} already exists in filesystem, skipping structure creation", response.id);
+            return Ok(response.id);
+        }
+
+        // Get torrent details to build the file structure
+        let torrent_info = self
+            .api_client
+            .get_torrent(response.id)
+            .await
+            .context("Failed to get torrent details after adding")?;
+
+        // Create the filesystem structure
+        self.create_torrent_structure(&torrent_info)
+            .context("Failed to create filesystem structure for torrent")?;
+
+        Ok(response.id)
+    }
+
+    /// Adds a torrent from a torrent file URL and creates the filesystem structure.
+    /// Returns the torrent ID if successful.
+    pub async fn add_torrent_url(&self, torrent_url: &str) -> Result<u64> {
+        // First, add the torrent to rqbit
+        let response = self
+            .api_client
+            .add_torrent_url(torrent_url)
+            .await
+            .context("Failed to add torrent from URL")?;
+
+        info!(
+            "Added torrent {} with hash {}",
+            response.id, response.info_hash
+        );
+
+        // Check for duplicate torrent
+        if self.inode_manager.lookup_torrent(response.id).is_some() {
+            warn!("Torrent {} already exists in filesystem, skipping structure creation", response.id);
+            return Ok(response.id);
+        }
+
+        // Get torrent details to build the file structure
+        let torrent_info = self
+            .api_client
+            .get_torrent(response.id)
+            .await
+            .context("Failed to get torrent details after adding")?;
+
+        // Create the filesystem structure
+        self.create_torrent_structure(&torrent_info)
+            .context("Failed to create filesystem structure for torrent")?;
+
+        Ok(response.id)
+    }
+
+    /// Creates the filesystem directory structure for a torrent.
+    fn create_torrent_structure(
+        &self,
+        torrent_info: &crate::api::types::TorrentInfo,
+    ) -> Result<()> {
+        use std::collections::HashMap;
+
+        // Sanitize torrent name for use as directory name
+        let torrent_name = sanitize_filename(&torrent_info.name);
+        let torrent_id = torrent_info.id;
+
+        debug!(
+            "Creating filesystem structure for torrent {}: {}",
+            torrent_id, torrent_name
+        );
+
+        // Create the root directory for this torrent
+        let torrent_dir_inode = self
+            .inode_manager
+            .allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
+
+        // Add torrent directory to root's children
+        self.inode_manager.add_child(1, torrent_dir_inode);
+
+        // Track created directories to avoid duplicates
+        let mut created_dirs: HashMap<String, u64> = HashMap::new();
+        created_dirs.insert("".to_string(), torrent_dir_inode);
+
+        // Process each file in the torrent
+        for (file_idx, file_info) in torrent_info.files.iter().enumerate() {
+            self.create_file_entry(
+                file_info,
+                file_idx,
+                torrent_id,
+                torrent_dir_inode,
+                &mut created_dirs,
+            )?;
+        }
+
+        info!(
+            "Created filesystem structure for torrent {} with {} files",
+            torrent_id,
+            torrent_info.files.len()
+        );
+
+        Ok(())
+    }
+
+    /// Creates a file entry (and any necessary parent directories) for a torrent file.
+    fn create_file_entry(
+        &self,
+        file_info: &crate::api::types::FileInfo,
+        file_idx: usize,
+        torrent_id: u64,
+        torrent_dir_inode: u64,
+        created_dirs: &mut std::collections::HashMap<String, u64>,
+    ) -> Result<()> {
+        let components = &file_info.components;
+
+        if components.is_empty() {
+            return Ok(());
+        }
+
+        // Build parent directories
+        let mut current_dir_inode = torrent_dir_inode;
+        let mut current_path = String::new();
+
+        // Process all components except the last one (which is the filename)
+        for dir_component in components.iter().take(components.len().saturating_sub(1)) {
+            if !current_path.is_empty() {
+                current_path.push('/');
+            }
+            current_path.push_str(dir_component);
+
+            // Check if this directory already exists
+            if let Some(&inode) = created_dirs.get(&current_path) {
+                current_dir_inode = inode;
+            } else {
+                // Create new directory
+                let dir_name = sanitize_filename(dir_component);
+                let new_dir_inode = self.inode_manager.allocate(InodeEntry::Directory {
+                    ino: 0, // Will be assigned
+                    name: dir_name.clone(),
+                    parent: current_dir_inode,
+                    children: Vec::new(),
+                });
+
+                // Add to parent
+                self.inode_manager.add_child(current_dir_inode, new_dir_inode);
+
+                created_dirs.insert(current_path.clone(), new_dir_inode);
+                current_dir_inode = new_dir_inode;
+
+                debug!("Created directory {} at inode {}", current_path, new_dir_inode);
+            }
+        }
+
+        // Create the file entry
+        let file_name = components.last().unwrap();
+        let sanitized_name = sanitize_filename(file_name);
+
+        let file_inode = self.inode_manager.allocate_file(
+            sanitized_name,
+            current_dir_inode,
+            torrent_id,
+            file_idx,
+            file_info.length,
+        );
+
+        // Add to parent directory
+        self.inode_manager.add_child(current_dir_inode, file_inode);
+
+        debug!(
+            "Created file {} at inode {} (size: {})",
+            file_name, file_inode, file_info.length
+        );
+
+        Ok(())
+    }
+
+    /// Checks if a torrent is already in the filesystem.
+    pub fn has_torrent(&self, torrent_id: u64) -> bool {
+        self.inode_manager.lookup_torrent(torrent_id).is_some()
+    }
+
+    /// Gets the list of torrent IDs currently in the filesystem.
+    pub fn list_torrents(&self) -> Vec<u64> {
+        self.inode_manager.get_all_torrent_ids()
+    }
+}
+
+/// Sanitizes a filename for use in the filesystem.
+/// Removes or replaces characters that are problematic in filenames.
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            // Null character
+            '\0' => '_',
+            // Path separators
+            '/' | '\\' => '_',
+            // Control characters
+            c if c.is_control() => '_',
+            // Other problematic characters
+            ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => c,
+        })
+        .collect()
 }
 
 #[cfg(test)]

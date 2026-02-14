@@ -164,6 +164,24 @@ impl InodeManager {
         self.torrent_to_inode.get(&torrent_id).map(|i| *i)
     }
 
+    /// Gets all entries in the inode manager.
+    pub fn entries(&self) -> &DashMap<u64, InodeEntry> {
+        &self.entries
+    }
+
+    /// Gets the torrent-to-inode mapping.
+    pub fn torrent_to_inode(&self) -> &DashMap<u64, u64> {
+        &self.torrent_to_inode
+    }
+
+    /// Gets all torrent IDs currently tracked.
+    pub fn get_all_torrent_ids(&self) -> Vec<u64> {
+        self.torrent_to_inode
+            .iter()
+            .map(|item| *item.key())
+            .collect()
+    }
+
     /// Gets all children of a directory inode.
     pub fn get_children(&self, parent_inode: u64) -> Vec<(u64, InodeEntry)> {
         // First check if it's a directory and use its children list

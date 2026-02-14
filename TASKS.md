@@ -89,7 +89,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## Phase 4: Torrent Lifecycle & Management
 
-- [ ] **Implement torrent addition flow**
+- [x] **Implement torrent addition flow** (2026-02-13)
   - Parse magnet links and .torrent files
   - Add torrents to rqbit via API
   - Map rqbit torrent IDs to filesystem paths
@@ -208,11 +208,22 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## In Progress
 
-- Phase 4: Torrent Lifecycle & Management - Starting with torrent addition flow
+- Phase 4: Torrent Lifecycle & Management - Starting with torrent status monitoring
 
 ## Completed
 
 *Tasks as they are finished*
+
+- [x] **Implement torrent addition flow** (2026-02-13)
+  - Added `add_torrent_magnet()` method to TorrentFS for adding torrents from magnet links
+  - Added `add_torrent_url()` method for adding torrents from torrent file URLs
+  - Implemented `create_torrent_structure()` to build filesystem hierarchy from torrent info
+  - Added `create_file_entry()` helper to handle nested directory structures within torrents
+  - Implemented duplicate torrent detection using `lookup_torrent()` before creating structure
+  - Added `has_torrent()` and `list_torrents()` methods for torrent management
+  - Added `sanitize_filename()` helper to handle problematic characters in torrent/filenames
+  - Extended InodeManager with accessor methods: `entries()`, `torrent_to_inode()`, `get_all_torrent_ids()`
+  - All 29 tests passing, no clippy warnings
 
 - [x] **Implement read-ahead optimization** (2026-02-13)
   - Created `ReadState` struct to track sequential read patterns per file
