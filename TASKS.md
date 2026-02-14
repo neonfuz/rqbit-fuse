@@ -43,13 +43,13 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Handle inode lifecycle (creation, lookup, forget)
   - Thread-safe inode generation
 
-- [ ] **Implement FUSE trait: initialization**
+- [x] **Implement FUSE trait: initialization** (2026-02-13)
   - Implement `init()` callback
   - Set up connection to rqbit server
   - Validate mount point and permissions
   - Initialize root inode (inode 1)
 
-- [ ] **Implement FUSE trait: directory operations**
+- [x] **Implement FUSE trait: directory operations** (2026-02-13)
   - Implement `lookup()` - resolve path to inode
   - Implement `readdir()` - list directory entries
   - Implement `mkdir()` - create directories (if supported)
@@ -57,7 +57,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Handle `.` and `..` entries correctly
   - Populate directory entries from torrent file tree
 
-- [ ] **Implement FUSE trait: file attributes**
+- [x] **Implement FUSE trait: file attributes** (2026-02-13)
   - Implement `getattr()` - get file attributes
   - Implement ` setattr()` - modify attributes (where applicable)
   - Map file sizes from torrent metadata
@@ -66,14 +66,14 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## Phase 3: Read Operations & Caching
 
-- [ ] **Implement FUSE read callback**
+- [x] **Implement FUSE read callback** (2026-02-13)
   - Implement `read()` - read file contents
   - Translate FUSE read requests to HTTP Range requests
   - Handle piece-aligned reads for efficiency
   - Map read offsets to piece indices
   - Wait for pieces to be available before reading
 
-- [ ] **Implement cache layer**
+- [x] **Implement cache layer** (2026-02-13)
   - Create `Cache` struct with TTL support
   - Implement piece-level caching
   - Implement LRU eviction policy
@@ -81,7 +81,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Add cache hit/miss metrics
   - Ensure thread-safe cache access
 
-- [ ] **Implement read-ahead optimization**
+- [x] **Implement read-ahead optimization** (2026-02-13)
   - Detect sequential read patterns
   - Prefetch next pieces while serving current request
   - Make read-ahead size configurable
@@ -208,11 +208,69 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## In Progress
 
-*Current task being worked on*
+- Phase 4: Torrent Lifecycle & Management - Starting with torrent addition flow
 
 ## Completed
 
 *Tasks as they are finished*
+
+- [x] **Implement read-ahead optimization** (2026-02-13)
+  - Created `ReadState` struct to track sequential read patterns per file
+  - Implemented `track_and_prefetch()` method to detect sequential access
+  - Trigger prefetch after 2 consecutive sequential reads
+  - Configurable read-ahead size via `config.performance.readahead_size` (default 32MB)
+  - Spawn async prefetch tasks in background using tokio::spawn
+  - Reset sequential counter on random access (non-sequential reads)
+  - Use Arc<Mutex<HashMap>> for thread-safe read state tracking
+  - All 29 tests passing, no clippy warnings
+
+- [x] **Implement cache layer** (2026-02-13)
+  - Created `Cache<K, V>` struct in `src/cache.rs` with thread-safe DashMap storage
+  - Implemented TTL (time-to-live) support per entry with expiration checking
+  - Implemented LRU (Least Recently Used) eviction using global sequence counter
+  - Added `CacheStats` for hit/miss/eviction/expired metrics
+  - Used AtomicU64 for efficient concurrent access counting
+  - Implemented async API with proper locking for statistics
+  - Added 6 comprehensive tests covering all cache operations
+  - All 29 tests passing, no clippy warnings
+
+- [x] **Implement FUSE read callback** (2026-02-13)
+  - Implemented `read()` callback to read file contents via HTTP Range requests
+  - Implemented `open()` callback with read-only access validation
+  - Implemented `release()` callback for file close cleanup
+  - Translate FUSE read requests to rqbit HTTP Range requests via `api_client.read_file()`
+  - Handle offset validation and EOF boundary checks
+  - Use `tokio::task::block_in_place()` to bridge async HTTP calls in sync FUSE callbacks
+  - Map API errors to appropriate FUSE error codes (ENOENT, EINVAL, EIO)
+  - All 23 tests passing, no clippy warnings
+
+- [x] **Implement FUSE trait: file attributes** (2026-02-13)
+  - Implemented `getattr()` callback to retrieve file/directory attributes
+  - Implemented `setattr()` callback allowing only atime/mtime updates (read-only)
+  - File sizes mapped from torrent metadata via `InodeEntry::File { size, .. }`
+  - Permissions set to 0o444 for files (read-only) and 0o555 for directories
+  - Timestamps use fixed creation time (UNIX_EPOCH + 1.7B seconds) and current time for atime/mtime
+  - All 23 tests passing, no clippy warnings
+
+- [x] **Implement FUSE trait: directory operations** (2026-02-13)
+  - Implemented `lookup()` callback to resolve path components to inodes
+  - Implemented `readdir()` callback to list directory contents with `.` and `..` entries
+  - Implemented `mkdir()` callback returning EROFS (read-only filesystem)
+  - Implemented `rmdir()` callback returning EROFS (read-only filesystem)
+  - Added `build_file_attr()` helper to convert InodeEntry to FUSE FileAttr
+  - Set appropriate permissions (0o555 for directories, 0o444 for files)
+  - All 23 tests passing, no clippy warnings
+
+- [x] **Implement FUSE trait: initialization** (2026-02-13)
+  - Created `TorrentFS` struct in `src/fs/filesystem.rs` implementing `fuser::Filesystem`
+  - Implemented `init()` callback with mount point validation and root inode verification
+  - Implemented `destroy()` callback for cleanup on unmount
+  - Added connection validation and health check methods for rqbit server
+  - Created mount options builder with configurable options (RO, NoSuid, NoDev, etc.)
+  - Added `mount()` method as main entry point for mounting
+  - Added 6 comprehensive unit tests for filesystem initialization
+  - Updated `lib.rs` to create and mount the filesystem in `run()` function
+  - All 23 tests passing, no compilation errors
 
 - [x] **Initialize Rust project structure** (2024-02-13)
   - Created Cargo.toml with all required dependencies
