@@ -16,6 +16,12 @@ pub enum InodeEntry {
         file_index: usize,
         size: u64,
     },
+    Symlink {
+        ino: u64,
+        name: String,
+        parent: u64,
+        target: String,
+    },
 }
 
 impl InodeEntry {
@@ -23,6 +29,7 @@ impl InodeEntry {
         match self {
             InodeEntry::Directory { ino, .. } => *ino,
             InodeEntry::File { ino, .. } => *ino,
+            InodeEntry::Symlink { ino, .. } => *ino,
         }
     }
 
@@ -30,6 +37,7 @@ impl InodeEntry {
         match self {
             InodeEntry::Directory { name, .. } => name,
             InodeEntry::File { name, .. } => name,
+            InodeEntry::Symlink { name, .. } => name,
         }
     }
 
@@ -37,6 +45,7 @@ impl InodeEntry {
         match self {
             InodeEntry::Directory { parent, .. } => *parent,
             InodeEntry::File { parent, .. } => *parent,
+            InodeEntry::Symlink { parent, .. } => *parent,
         }
     }
 
@@ -46,5 +55,9 @@ impl InodeEntry {
 
     pub fn is_file(&self) -> bool {
         matches!(self, InodeEntry::File { .. })
+    }
+
+    pub fn is_symlink(&self) -> bool {
+        matches!(self, InodeEntry::Symlink { .. })
     }
 }

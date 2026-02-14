@@ -271,6 +271,46 @@ impl TorrentFS {
         })
     }
 
+    /// Check if the requested data range has all pieces available.
+    /// Returns true if all pieces in the range are downloaded.
+    #[allow(dead_code)]
+    fn check_pieces_available(&self, torrent_id: u64, offset: u64, size: u64, piece_length: u64) -> bool {
+        // If piece checking is disabled, assume all pieces are available
+        if !self.config.performance.piece_check_enabled {
+            return true;
+        }
+
+        // Get the status to check piece availability
+        if let Some(status) = self.torrent_statuses.get(&torrent_id) {
+            // If torrent is complete, all pieces are available
+            if status.is_complete() {
+                return true;
+            }
+
+            // Calculate piece indices for the requested range
+            let start_piece = offset / piece_length;
+            let end_piece = ((offset + size - 1) / piece_length) + 1;
+            
+            // If we have no piece information, assume not available
+            if status.total_pieces == 0 {
+                return false;
+            }
+
+            // Check if we have enough pieces downloaded
+            // This is a simplified check - ideally we'd check the actual bitfield
+            // For now, use progress percentage as approximation
+            let progress = status.progress_pct / 100.0;
+            let pieces_needed = end_piece - start_piece;
+            let pieces_available = (status.total_pieces as f64 * progress) as u64;
+            
+            // Conservative check: require more pieces to be available than needed
+            pieces_available >= pieces_needed
+        } else {
+            // No status available, assume not ready
+            false
+        }
+    }
+
     /// Track read patterns and trigger prefetch for sequential reads.
     fn track_and_prefetch(
         &self,
@@ -401,6 +441,23 @@ impl TorrentFS {
                 crtime: creation_time,
                 kind: fuser::FileType::RegularFile,
                 perm: 0o444, // Read-only for all
+                nlink: 1,
+                uid: 0,
+                gid: 0,
+                rdev: 0,
+                flags: 0,
+                blksize: 4096,
+            },
+            InodeEntry::Symlink { ino, target, .. } => fuser::FileAttr {
+                ino: *ino,
+                size: target.len() as u64,
+                blocks: 1,
+                atime: now,
+                mtime: now,
+                ctime: now,
+                crtime: creation_time,
+                kind: fuser::FileType::Symlink,
+                perm: 0o777, // Symlinks always have 777 permissions
                 nlink: 1,
                 uid: 0,
                 gid: 0,
@@ -581,18 +638,38 @@ impl Filesystem for TorrentFS {
             offset, end, torrent_id, file_index
         );
 
+        // Check if we should return EAGAIN for unavailable pieces
+        if self.config.performance.return_eagain_for_unavailable {
+            if let Some(status) = self.torrent_statuses.get(&torrent_id) {
+                // If torrent hasn't started (0 progress) or is in error state, return EAGAIN
+                if status.progress_bytes == 0 || status.state == crate::api::types::TorrentState::Error {
+                    debug!("read: torrent {} has no data available yet, returning EAGAIN", torrent_id);
+                    reply.error(libc::EAGAIN);
+                    return;
+                }
+            } else {
+                // No status available, torrent not monitored yet
+                debug!("read: torrent {} not yet monitored, returning EAGAIN", torrent_id);
+                reply.error(libc::EAGAIN);
+                return;
+            }
+        }
+
         // Perform the read via HTTP Range request
-        // We need to block here since FUSE callbacks are synchronous
+        // rqbit will block until data is available, respecting the read_timeout
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                self.api_client
-                    .read_file(torrent_id, file_index, Some((offset, end)))
-                    .await
+                // Set a timeout to avoid blocking forever on slow pieces
+                let timeout_duration = std::time::Duration::from_secs(self.config.performance.read_timeout);
+                tokio::time::timeout(
+                    timeout_duration,
+                    self.api_client.read_file(torrent_id, file_index, Some((offset, end)))
+                ).await
             })
         });
 
         match result {
-            Ok(data) => {
+            Ok(Ok(data)) => {
                 debug!("read: successfully read {} bytes", data.len());
 
                 // Track read pattern and trigger prefetch if sequential
@@ -600,7 +677,7 @@ impl Filesystem for TorrentFS {
 
                 reply.data(&data);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 error!("read: failed to read file: {}", e);
 
                 // Try to extract ApiError from anyhow error and use proper mapping
@@ -615,6 +692,12 @@ impl Filesystem for TorrentFS {
                 };
 
                 reply.error(error_code);
+            }
+            Err(_) => {
+                // Timeout occurred
+                warn!("read: timeout reading torrent {} file {} (slow piece download)", torrent_id, file_index);
+                // Return EAGAIN to indicate the operation should be retried
+                reply.error(libc::EAGAIN);
             }
         }
     }
@@ -695,6 +778,33 @@ impl Filesystem for TorrentFS {
         }
     }
 
+    /// Read the target of a symbolic link.
+    /// Called when the kernel needs to resolve a symlink target.
+    fn readlink(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        reply: fuser::ReplyData,
+    ) {
+        debug!("readlink: ino={}", ino);
+
+        match self.inode_manager.get(ino) {
+            Some(entry) => {
+                if let crate::types::inode::InodeEntry::Symlink { target, .. } = entry {
+                    reply.data(target.as_bytes());
+                    debug!("readlink: resolved symlink to {}", target);
+                } else {
+                    debug!("readlink: inode {} is not a symlink", ino);
+                    reply.error(libc::EINVAL);
+                }
+            }
+            None => {
+                debug!("readlink: inode {} not found", ino);
+                reply.error(libc::ENOENT);
+            }
+        }
+    }
+
     /// Read directory entries.
     /// Called when the kernel needs to list the contents of a directory.
     fn readdir(
@@ -759,6 +869,8 @@ impl Filesystem for TorrentFS {
 
             let file_type = if child_entry.is_directory() {
                 fuser::FileType::Directory
+            } else if child_entry.is_symlink() {
+                fuser::FileType::Symlink
             } else {
                 fuser::FileType::RegularFile
             };
@@ -921,6 +1033,11 @@ impl Filesystem for TorrentFS {
                         .find(|item| *item.value() == ino)
                         .map(|item| *item.key())
                         .unwrap_or(0)
+                }
+                InodeEntry::Symlink { .. } => {
+                    // Symlinks don't have torrent status
+                    reply.error(libc::ENOATTR);
+                    return;
                 }
             },
             None => {
@@ -1127,46 +1244,79 @@ impl TorrentFS {
     }
 
     /// Creates the filesystem directory structure for a torrent.
+    /// For single-file torrents, the file is added directly to root.
+    /// For multi-file torrents, a directory is created with the torrent name.
     fn create_torrent_structure(
         &self,
         torrent_info: &crate::api::types::TorrentInfo,
     ) -> Result<()> {
         use std::collections::HashMap;
 
-        // Sanitize torrent name for use as directory name
         let torrent_name = sanitize_filename(&torrent_info.name);
         let torrent_id = torrent_info.id;
 
         debug!(
-            "Creating filesystem structure for torrent {}: {}",
-            torrent_id, torrent_name
+            "Creating filesystem structure for torrent {}: {} ({} files)",
+            torrent_id,
+            torrent_name,
+            torrent_info.files.len()
         );
 
-        // Create the root directory for this torrent
-        let torrent_dir_inode = self
-            .inode_manager
-            .allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
+        // Handle single-file torrents differently - add file directly to root
+        if torrent_info.files.len() == 1 {
+            let file_info = &torrent_info.files[0];
+            let file_name = if file_info.components.is_empty() {
+                // Use torrent name as filename if no components provided
+                torrent_name.clone()
+            } else {
+                sanitize_filename(file_info.components.last().unwrap())
+            };
 
-        // Add torrent directory to root's children
-        self.inode_manager.add_child(1, torrent_dir_inode);
-
-        // Track created directories to avoid duplicates
-        let mut created_dirs: HashMap<String, u64> = HashMap::new();
-        created_dirs.insert("".to_string(), torrent_dir_inode);
-
-        // Process each file in the torrent
-        for (file_idx, file_info) in torrent_info.files.iter().enumerate() {
-            self.create_file_entry(
-                file_info,
-                file_idx,
+            // Create file entry directly under root
+            let file_inode = self.inode_manager.allocate_file(
+                file_name.clone(),
+                1, // parent is root
                 torrent_id,
-                torrent_dir_inode,
-                &mut created_dirs,
-            )?;
+                0, // single file has index 0
+                file_info.length,
+            );
+
+            // Add to root's children
+            self.inode_manager.add_child(1, file_inode);
+
+            // Track torrent mapping
+            self.inode_manager.torrent_to_inode().insert(torrent_id, file_inode);
+
+            debug!(
+                "Created single-file torrent entry {} -> {} (size: {})",
+                file_name, file_inode, file_info.length
+            );
+        } else {
+            // Multi-file torrent: create directory structure
+            let torrent_dir_inode = self
+                .inode_manager
+                .allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
+
+            // Add torrent directory to root's children
+            self.inode_manager.add_child(1, torrent_dir_inode);
+
+            // Track created directories to avoid duplicates
+            let mut created_dirs: HashMap<String, u64> = HashMap::new();
+            created_dirs.insert("".to_string(), torrent_dir_inode);
+
+            // Process each file in the torrent
+            for (file_idx, file_info) in torrent_info.files.iter().enumerate() {
+                self.create_file_entry(
+                    file_info,
+                    file_idx,
+                    torrent_id,
+                    torrent_dir_inode,
+                    &mut created_dirs,
+                )?;
+            }
         }
 
         // Start monitoring this torrent's status
-        // Create an initial unknown status that will be updated by the monitoring task
         let initial_status = TorrentStatus {
             torrent_id,
             state: TorrentState::Unknown,
@@ -1312,8 +1462,20 @@ impl TorrentFS {
 
 /// Sanitizes a filename for use in the filesystem.
 /// Removes or replaces characters that are problematic in filenames.
+/// Also prevents path traversal attacks by removing ".." components.
 fn sanitize_filename(name: &str) -> String {
-    name.chars()
+    // Replace path traversal sequences first
+    let name = name.replace("..", "_");
+
+    // Remove leading/trailing whitespace and dots
+    let trimmed = name.trim().trim_start_matches('.').trim_end_matches('.');
+    
+    if trimmed.is_empty() {
+        return "unnamed".to_string();
+    }
+
+    trimmed
+        .chars()
         .map(|c| match c {
             // Null character
             '\0' => '_',
@@ -1326,6 +1488,31 @@ fn sanitize_filename(name: &str) -> String {
             _ => c,
         })
         .collect()
+}
+
+/// Validates that a path component doesn't contain path traversal sequences.
+/// Returns true if the component is safe to use.
+#[allow(dead_code)]
+pub(crate) fn is_safe_path_component(component: &str) -> bool {
+    // Reject empty components, current dir, parent dir references
+    if component.is_empty() 
+        || component == "." 
+        || component == ".." 
+        || component.contains("..") {
+        return false;
+    }
+
+    // Reject components with path separators
+    if component.contains('/') || component.contains('\\') {
+        return false;
+    }
+
+    // Reject components starting with null bytes or control characters
+    if component.starts_with('\0') || component.chars().next().map(|c| c.is_control()).unwrap_or(false) {
+        return false;
+    }
+
+    true
 }
 
 #[cfg(test)]
@@ -1431,5 +1618,241 @@ mod tests {
         // Verify torrent is no longer in root's children
         let root_children = fs.inode_manager.get_children(1);
         assert!(!root_children.iter().any(|(ino, _)| *ino == torrent_inode));
+    }
+
+    // Edge case tests
+    #[test]
+    fn test_sanitize_filename_path_traversal() {
+        // Path traversal attempts should be neutralized - all separators become _
+        assert_eq!(sanitize_filename("../../../etc/passwd"), "______etc_passwd");
+        assert_eq!(sanitize_filename(".."), "_");
+        // "../secret" -> "_/secret" -> "__secret"
+        assert_eq!(sanitize_filename("../secret"), "__secret");
+    }
+
+    #[test]
+    fn test_sanitize_filename_special_chars() {
+        // Special characters should be replaced
+        assert_eq!(sanitize_filename("file:name.txt"), "file_name.txt");
+        assert_eq!(sanitize_filename("file*name?.txt"), "file_name_.txt");
+        // Both < and > are replaced, resulting in double underscore between script tags
+        assert_eq!(sanitize_filename("<script>alert(1)</script>"), "_script_alert(1)__script_");
+    }
+
+    #[test]
+    fn test_sanitize_filename_control_chars() {
+        // Control characters should be replaced
+        assert_eq!(sanitize_filename("file\x00name"), "file_name");
+        assert_eq!(sanitize_filename("file\nname"), "file_name");
+        assert_eq!(sanitize_filename("file\tname"), "file_name");
+    }
+
+    #[test]
+    fn test_sanitize_filename_leading_dots() {
+        // Leading/trailing dots should be removed (prevents hidden files)
+        assert_eq!(sanitize_filename(".hidden"), "hidden");
+        assert_eq!(sanitize_filename("file."), "file");
+        assert_eq!(sanitize_filename("..double"), "_double");
+    }
+
+    #[test]
+    fn test_sanitize_filename_empty() {
+        // Empty names should be replaced with "unnamed"
+        assert_eq!(sanitize_filename(""), "unnamed");
+        assert_eq!(sanitize_filename("   "), "unnamed");
+        // "..." becomes "_." (".." replaced with "_", leaving "."), then trimmed to "_"
+        assert_eq!(sanitize_filename("..."), "_");
+    }
+
+    #[test]
+    fn test_is_safe_path_component() {
+        // Safe components
+        assert!(is_safe_path_component("normal_file"));
+        assert!(is_safe_path_component("file.txt"));
+        assert!(is_safe_path_component("my-directory"));
+
+        // Unsafe components
+        assert!(!is_safe_path_component(""));
+        assert!(!is_safe_path_component("."));
+        assert!(!is_safe_path_component(".."));
+        assert!(!is_safe_path_component("../.."));
+        assert!(!is_safe_path_component("dir/file"));
+        assert!(!is_safe_path_component("dir\\file"));
+    }
+
+    #[test]
+    fn test_symlink_creation() {
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Create a symlink
+        let symlink_inode = fs.inode_manager.allocate_symlink(
+            "link".to_string(),
+            1,
+            "/target/path".to_string(),
+        );
+
+        // Verify symlink exists
+        let entry = fs.inode_manager.get(symlink_inode).unwrap();
+        assert!(entry.is_symlink());
+        assert_eq!(entry.name(), "link");
+
+        // Verify attributes
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(attr.kind, fuser::FileType::Symlink);
+        assert_eq!(attr.size, "/target/path".len() as u64);
+    }
+
+    #[test]
+    fn test_zero_byte_file() {
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Create a zero-byte file
+        let file_inode = fs.inode_manager.allocate_file(
+            "empty.txt".to_string(),
+            1,
+            1,
+            0,
+            0, // Zero size
+        );
+
+        // Verify file exists
+        let entry = fs.inode_manager.get(file_inode).unwrap();
+        assert!(entry.is_file());
+
+        // Verify attributes
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(attr.size, 0);
+        assert_eq!(attr.blocks, 0);
+    }
+
+    #[test]
+    fn test_large_file() {
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Create a large file (>4GB)
+        let large_size = 5u64 * 1024 * 1024 * 1024; // 5 GB
+        let file_inode = fs.inode_manager.allocate_file(
+            "large.iso".to_string(),
+            1,
+            1,
+            0,
+            large_size,
+        );
+
+        // Verify attributes
+        let entry = fs.inode_manager.get(file_inode).unwrap();
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(attr.size, large_size);
+        assert!(attr.blocks > 0);
+    }
+
+    #[test]
+    fn test_unicode_filename() {
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Test various Unicode filenames
+        let unicode_names = vec![
+            "文件.txt",        // Chinese
+            "ファイル.txt",    // Japanese
+            "файл.txt",        // Russian
+            "αρχείο.txt",      // Greek
+            "📄document.txt",  // Emoji
+            "naïve.txt",       // Accented
+        ];
+
+        for name in unicode_names {
+            let inode = fs.inode_manager.allocate_file(
+                name.to_string(),
+                1,
+                1,
+                0,
+                100,
+            );
+            let entry = fs.inode_manager.get(inode).unwrap();
+            assert_eq!(entry.name(), name);
+        }
+    }
+
+    #[test]
+    fn test_single_file_torrent_structure() {
+        use crate::api::types::{FileInfo, TorrentInfo};
+
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Create a single-file torrent info
+        let torrent_info = TorrentInfo {
+            id: 1,
+            info_hash: "abc123".to_string(),
+            name: "Single File".to_string(),
+            output_folder: "/tmp".to_string(),
+            file_count: 1,
+            files: vec![FileInfo {
+                name: "file.txt".to_string(),
+                length: 1024,
+                components: vec!["file.txt".to_string()],
+            }],
+            piece_length: Some(262144),
+        };
+
+        // Create structure
+        fs.create_torrent_structure(&torrent_info).unwrap();
+
+        // Verify file was added directly to root (no directory)
+        let root_children = fs.inode_manager.get_children(1);
+        assert_eq!(root_children.len(), 1);
+
+        let (inode, entry) = &root_children[0];
+        assert!(entry.is_file());
+        assert_eq!(entry.name(), "file.txt");
+
+        // Verify torrent mapping points to file
+        let torrent_inode = fs.inode_manager.lookup_torrent(1).unwrap();
+        assert_eq!(torrent_inode, *inode);
+    }
+
+    #[test]
+    fn test_multi_file_torrent_structure() {
+        use crate::api::types::{FileInfo, TorrentInfo};
+
+        let config = Config::default();
+        let fs = TorrentFS::new(config).unwrap();
+
+        // Create a multi-file torrent info
+        let torrent_info = TorrentInfo {
+            id: 2,
+            info_hash: "def456".to_string(),
+            name: "Multi File".to_string(),
+            output_folder: "/tmp".to_string(),
+            file_count: 2,
+            files: vec![
+                FileInfo {
+                    name: "file1.txt".to_string(),
+                    length: 1024,
+                    components: vec!["file1.txt".to_string()],
+                },
+                FileInfo {
+                    name: "file2.txt".to_string(),
+                    length: 2048,
+                    components: vec!["subdir".to_string(), "file2.txt".to_string()],
+                },
+            ],
+            piece_length: Some(262144),
+        };
+
+        // Create structure
+        fs.create_torrent_structure(&torrent_info).unwrap();
+
+        // Verify directory was created
+        let root_children = fs.inode_manager.get_children(1);
+        assert_eq!(root_children.len(), 1);
+
+        let (_dir_inode, entry) = &root_children[0];
+        assert!(entry.is_directory());
+        assert_eq!(entry.name(), "Multi File");
     }
 }

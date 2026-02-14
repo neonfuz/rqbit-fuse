@@ -74,6 +74,17 @@ impl InodeManager {
                 file_index,
                 size,
             },
+            InodeEntry::Symlink {
+                name,
+                parent,
+                target,
+                ..
+            } => InodeEntry::Symlink {
+                ino: inode,
+                name,
+                parent,
+                target,
+            },
         };
 
         // Build the path for reverse lookup
@@ -139,6 +150,25 @@ impl InodeManager {
             torrent_id,
             file_index,
             size,
+        };
+
+        let path = self.build_path(inode, &entry);
+
+        self.path_to_inode.insert(path, inode);
+        self.entries.insert(inode, entry);
+
+        inode
+    }
+
+    /// Allocates a symbolic link inode.
+    pub fn allocate_symlink(&self, name: String, parent: u64, target: String) -> u64 {
+        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+
+        let entry = InodeEntry::Symlink {
+            ino: inode,
+            name: name.clone(),
+            parent,
+            target,
         };
 
         let path = self.build_path(inode, &entry);
@@ -536,5 +566,120 @@ mod tests {
         for (i, &inode) in inodes.iter().enumerate() {
             assert_eq!(inode, (i + 2) as u64);
         }
+    }
+
+    #[test]
+    fn test_allocate_symlink() {
+        let manager = InodeManager::new();
+
+        let inode = manager.allocate_symlink("link".to_string(), 1, "/target/path".to_string());
+
+        assert_eq!(inode, 2);
+
+        let entry = manager.get(inode).expect("Should retrieve symlink");
+        assert!(entry.is_symlink());
+        assert_eq!(entry.name(), "link");
+
+        if let InodeEntry::Symlink { target, .. } = entry {
+            assert_eq!(target, "/target/path");
+        } else {
+            panic!("Expected symlink entry");
+        }
+    }
+
+    #[test]
+    fn test_lookup_by_path_with_symlink() {
+        let manager = InodeManager::new();
+
+        let dir_inode = manager.allocate_torrent_directory(1, "dir".to_string(), 1);
+        manager.add_child(1, dir_inode);
+
+        let symlink_inode =
+            manager.allocate_symlink("link".to_string(), dir_inode, "target".to_string());
+        manager.add_child(dir_inode, symlink_inode);
+
+        // Look up symlink by path
+        assert_eq!(manager.lookup_by_path("/dir/link"), Some(symlink_inode));
+    }
+
+    #[test]
+    fn test_mixed_entry_types() {
+        let manager = InodeManager::new();
+
+        // Create directory
+        let dir = manager.allocate_torrent_directory(1, "dir".to_string(), 1);
+        manager.add_child(1, dir);
+        assert!(manager.get(dir).unwrap().is_directory());
+
+        // Create file
+        let file = manager.allocate_file("file.txt".to_string(), dir, 1, 0, 100);
+        manager.add_child(dir, file);
+        assert!(manager.get(file).unwrap().is_file());
+
+        // Create symlink
+        let symlink = manager.allocate_symlink("link".to_string(), dir, "target".to_string());
+        manager.add_child(dir, symlink);
+        assert!(manager.get(symlink).unwrap().is_symlink());
+
+        // Verify counts
+        assert_eq!(manager.inode_count(), 3);
+
+        // Verify children
+        let children = manager.get_children(dir);
+        assert_eq!(children.len(), 2);
+    }
+
+    #[test]
+    fn test_remove_inode_with_symlink() {
+        let manager = InodeManager::new();
+
+        let dir = manager.allocate_torrent_directory(1, "dir".to_string(), 1);
+        let file = manager.allocate_file("file.txt".to_string(), dir, 1, 0, 100);
+        let symlink = manager.allocate_symlink("link".to_string(), dir, "target".to_string());
+
+        assert!(manager.get(dir).is_some());
+        assert!(manager.get(file).is_some());
+        assert!(manager.get(symlink).is_some());
+
+        // Remove directory (should remove file and symlink)
+        manager.remove_inode(dir);
+
+        assert!(manager.get(dir).is_none());
+        assert!(manager.get(file).is_none());
+        assert!(manager.get(symlink).is_none());
+    }
+
+    #[test]
+    fn test_empty_directory_children() {
+        let manager = InodeManager::new();
+
+        let dir = manager.allocate_torrent_directory(1, "empty_dir".to_string(), 1);
+        let children = manager.get_children(dir);
+
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn test_deep_nesting() {
+        let manager = InodeManager::new();
+
+        // Create deeply nested structure
+        let mut current = 1u64; // Start at root
+        for i in 0..10 {
+            let new_dir = manager.allocate(InodeEntry::Directory {
+                ino: 0,
+                name: format!("level{}", i),
+                parent: current,
+                children: Vec::new(),
+            });
+            manager.add_child(current, new_dir);
+            current = new_dir;
+        }
+
+        // Verify path lookup works
+        let path = "/level0/level1/level2/level3/level4/level5/level6/level7/level8/level9";
+        let inode = manager.lookup_by_path(path);
+        assert!(inode.is_some());
+        assert_eq!(inode.unwrap(), current);
     }
 }

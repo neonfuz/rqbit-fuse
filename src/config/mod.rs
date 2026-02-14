@@ -52,6 +52,10 @@ pub struct PerformanceConfig {
     pub max_concurrent_reads: usize,
     #[serde(default = "default_readahead_size")]
     pub readahead_size: u64,
+    #[serde(default = "default_piece_check_enabled")]
+    pub piece_check_enabled: bool,
+    #[serde(default = "default_return_eagain_for_unavailable")]
+    pub return_eagain_for_unavailable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +110,14 @@ fn default_readahead_size() -> u64 {
     33554432
 }
 
+fn default_piece_check_enabled() -> bool {
+    true
+}
+
+fn default_return_eagain_for_unavailable() -> bool {
+    false
+}
+
 fn default_status_poll_interval() -> u64 {
     5
 }
@@ -149,6 +161,8 @@ impl Default for PerformanceConfig {
             read_timeout: default_read_timeout(),
             max_concurrent_reads: default_max_concurrent_reads(),
             readahead_size: default_readahead_size(),
+            piece_check_enabled: default_piece_check_enabled(),
+            return_eagain_for_unavailable: default_return_eagain_for_unavailable(),
         }
     }
 }
@@ -280,6 +294,20 @@ impl Config {
         if let Ok(timeout) = std::env::var("TORRENT_FUSE_STALLED_TIMEOUT") {
             self.monitoring.stalled_timeout = timeout.parse().map_err(|_| {
                 ConfigError::InvalidValue("TORRENT_FUSE_STALLED_TIMEOUT must be a number".into())
+            })?;
+        }
+
+        if let Ok(val) = std::env::var("TORRENT_FUSE_PIECE_CHECK_ENABLED") {
+            self.performance.piece_check_enabled = val.parse::<bool>().map_err(|_| {
+                ConfigError::InvalidValue(
+                    "TORRENT_FUSE_PIECE_CHECK_ENABLED must be true or false".into(),
+                )
+            })?;
+        }
+
+        if let Ok(val) = std::env::var("TORRENT_FUSE_RETURN_EAGAIN") {
+            self.performance.return_eagain_for_unavailable = val.parse::<bool>().map_err(|_| {
+                ConfigError::InvalidValue("TORRENT_FUSE_RETURN_EAGAIN must be true or false".into())
             })?;
         }
 
