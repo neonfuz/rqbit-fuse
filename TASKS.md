@@ -157,12 +157,13 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## Phase 6: CLI & User Experience
 
-- [ ] **Build CLI interface**
-  - Implement argument parsing with clap
-  - Support `mount` command with options
-  - Support `umount` command
-  - Support `status` command to show mounted filesystems
-  - Add verbose/quiet logging options
+- [x] **Build CLI interface** (2026-02-13)
+  - Implemented argument parsing with clap using subcommands
+  - Support `mount` command with options (--mount-point, --api-url, --allow-other, --auto-unmount, -v/-vv, -q)
+  - Support `umount` command with --force option
+  - Support `status` command with --format (text/json) output
+  - Added verbose/quiet logging options (-v, -vv for DEBUG/TRACE, -q for ERROR only)
+  - All 50 tests passing, no clippy warnings
 
 - [ ] **Implement logging and observability**
   - Add structured logging with tracing
@@ -233,7 +234,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## In Progress
 
-- Phase 6: CLI & User Experience - Build CLI interface with mount/umount/status commands
+- Phase 6: CLI & User Experience - Implement logging and observability
 
 ## Completed
 
