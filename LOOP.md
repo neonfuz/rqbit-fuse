@@ -57,5 +57,23 @@ Next Tasks (Phase 7: Testing & Quality):
   - Documented security findings in `research/security-audit.md`
   - Ignored RUSTSEC-2025-0134 (unmaintained rustls-pemfile via reqwest)
   - 2 security advisories identified: rustls-pemfile (unmaintained), fuser (unsound)
-- [ ] Add dependabot configuration for dependency updates
-- [ ] Add Windows build support to release workflow
+- [x] Add dependabot configuration for dependency updates
+  - Created `.github/dependabot.yml` with comprehensive configuration
+  - Enabled Cargo (Rust) dependency updates with weekly schedule
+  - Configured smart grouping: patch updates, fuse deps, async deps, serde deps, http deps
+  - Enabled GitHub Actions workflow updates
+  - Set up automatic labeling and reviewer assignment
+  - Reference: `.github/dependabot.yml`
+- [x] Add Windows build support to release workflow (RESEARCHED - see research/windows-build-support.md)
+  - [x] Research WinFsp (Windows FUSE implementation) installation in CI - WinFsp available via chocolatey
+  - [x] Research cross-compilation or native Windows builds - native builds recommended
+  - [x] Evaluated `fuser` crate Windows compatibility - NOT SUPPORTED
+  - [x] Determined Windows support requires major refactoring or alternative approach
+  - **Decision**: Windows not supported; document WSL2 as alternative
+  - Research findings: `research/windows-build-support.md`
+- [ ] Document Windows limitations in README
+  - Add "Platform Support" section explaining Linux/macOS only
+  - Document WSL2 as Windows alternative
+  - Explain technical reasons (fuser crate doesn't support Windows)
+
+(End of file - total 79 lines)

@@ -230,6 +230,36 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
     - Publishes to crates.io with CARGO_REGISTRY_TOKEN secret
   - Next: Need to set up required secrets in GitHub repo settings
 
+- [x] **Create CHANGELOG.md** (2026-02-13)
+  - Created comprehensive CHANGELOG.md following Keep a Changelog format
+  - Documented all features in the initial release
+  - Added security section with key protections
+  - Linked to GitHub compare URLs for version tracking
+
+- [x] **Add security audit workflow** (2026-02-13)
+  - Created `.github/workflows/security-audit.yml` with cargo-audit and cargo-deny
+  - Runs daily via cron and on all PRs/pushes to main
+  - Created `deny.toml` configuration for license/advisory checking
+  - Added MPL-2.0 to allowed licenses for option-ext dependency
+  - Documented security findings in `research/security-audit.md`
+  - Ignored RUSTSEC-2025-0134 (unmaintained rustls-pemfile via reqwest)
+  - 2 security advisories identified: rustls-pemfile (unmaintained), fuser (unsound)
+
+- [x] **Add dependabot configuration** (2026-02-13)
+  - Created `.github/dependabot.yml` with comprehensive configuration
+  - Enabled Cargo (Rust) dependency updates with weekly schedule
+  - Configured smart grouping: patch updates, fuse deps, async deps, serde deps, http deps
+  - Enabled GitHub Actions workflow updates
+  - Set up automatic labeling and reviewer assignment
+
+- [x] **Research Windows build support** (2026-02-13)
+  - Research WinFsp (Windows FUSE implementation) - available via chocolatey
+  - Evaluated cross-compilation vs native Windows builds
+  - Determined `fuser` crate doesn't support Windows
+  - Concluded Windows support requires major refactoring or WinFsp/Dokan bindings
+  - Decision: Document Windows as unsupported, recommend WSL2
+  - Research findings documented in `research/windows-build-support.md`
+
 ## Phase 8: Polish & Release
 
 - [ ] **Security review**

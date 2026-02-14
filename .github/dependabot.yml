@@ -1,0 +1,77 @@
+# Dependabot configuration for automatic dependency updates
+# For more information: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Enable version updates for Cargo (Rust)
+  - package-ecosystem: "cargo"
+    # Look for Cargo.toml and Cargo.lock in the root directory
+    directory: "/"
+    # Check for updates weekly
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    # Open pull requests with a limit
+    open-pull-requests-limit: 10
+    # Use semantic versioning labels
+    labels:
+      - "dependencies"
+      - "rust"
+    # Assign reviewers
+    reviewers:
+      - "neonfuz"
+    # Commit message preferences
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Group related updates together
+    groups:
+      # Group all patch updates together
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+      # Group fuser and related dependencies
+      fuse-deps:
+        patterns:
+          - "fuser"
+          - "fuse*"
+      # Group tokio and related async dependencies
+      async-deps:
+        patterns:
+          - "tokio*"
+          - "tokio-util"
+      # Group serde and serialization dependencies
+      serde-deps:
+        patterns:
+          - "serde*"
+      # Group HTTP client dependencies
+      http-deps:
+        patterns:
+          - "reqwest"
+          - "hyper"
+          - "http"
+    # Ignore specific dependencies if needed
+    # ignore:
+    #   - dependency-name: "example"
+    #     versions: ["2.x"]
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    # Look for workflow files in .github/workflows
+    directory: "/"
+    # Check for updates weekly
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "neonfuz"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
