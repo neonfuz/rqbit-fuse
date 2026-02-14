@@ -76,5 +76,15 @@ Next Tasks (Phase 7: Testing & Quality):
   - Documented WSL2 as Windows alternative with setup instructions
   - Explained technical reasons (fuser crate doesn't support Windows)
   - Located in README.md after Prerequisites section
+- [x] Fix test compilation errors from file_count Option change
+  - Fixed compilation errors after making file_count: Option<usize>
+  - Updated test assertions to wrap file_count in Some()
+  - Fixed test_list_torrents_success to mock /torrents/1 endpoint
+  - All 98 tests passing (76 unit + 12 integration + 10 performance)
+- [ ] Investigate P0: Multi-file torrent directories appear empty at runtime
+  - Unit tests pass (test_multi_file_torrent_structure) - logic is correct
+  - Issue appears to be runtime visibility with DashMap concurrent hash map
+  - Need to test actual filesystem behavior with real torrents
+  - See FIXES.md for full details and next steps
 
-(End of file - total 79 lines)
+(End of file - total 89 lines)

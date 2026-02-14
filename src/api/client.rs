@@ -887,12 +887,32 @@ mod tests {
             .mount(&mock_server)
             .await;
 
+        // Mock the individual torrent endpoint since list_torrents() now fetches full details
+        let single_torrent_body = serde_json::json!({
+            "id": 1,
+            "info_hash": "abc123",
+            "name": "Test Torrent",
+            "output_folder": "/downloads",
+            "file_count": 2,
+            "files": [
+                {"name": "file1.txt", "length": 1024, "components": ["file1.txt"]},
+                {"name": "file2.txt", "length": 2048, "components": ["file2.txt"]}
+            ],
+            "piece_length": 1048576
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(single_torrent_body))
+            .mount(&mock_server)
+            .await;
+
         let torrents = client.list_torrents().await.unwrap();
         assert_eq!(torrents.len(), 1);
         assert_eq!(torrents[0].id, 1);
         assert_eq!(torrents[0].name, "Test Torrent");
         assert_eq!(torrents[0].info_hash, "abc123");
-        assert_eq!(torrents[0].file_count, 2);
+        assert_eq!(torrents[0].file_count, Some(2));
     }
 
     #[tokio::test]

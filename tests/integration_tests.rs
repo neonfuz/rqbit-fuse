@@ -97,7 +97,7 @@ async fn test_torrent_addition_from_magnet() {
         info_hash: "abc123".to_string(),
         name: "Test Torrent".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 1,
+        file_count: Some(1),
         files: vec![torrent_fuse::api::types::FileInfo {
             name: "test.txt".to_string(),
             length: 1024,
@@ -143,7 +143,7 @@ async fn test_multi_file_torrent_structure() {
         info_hash: "def456".to_string(),
         name: "MultiFile Torrent".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 3,
+        file_count: Some(3),
         files: vec![
             FileInfo {
                 name: "readme.txt".to_string(),
@@ -202,7 +202,7 @@ async fn test_duplicate_torrent_detection() {
         info_hash: "duplicate".to_string(),
         name: "Duplicate Test".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 1,
+        file_count: Some(1),
         files: vec![torrent_fuse::api::types::FileInfo {
             name: "file.txt".to_string(),
             length: 100,
@@ -264,7 +264,7 @@ async fn test_file_attribute_generation() {
         info_hash: "attr_test".to_string(),
         name: "Attribute Test".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 2,
+        file_count: Some(2),
         files: vec![
             FileInfo {
                 name: "small.txt".to_string(),
@@ -344,7 +344,7 @@ async fn test_torrent_removal_with_cleanup() {
         info_hash: "removal_test".to_string(),
         name: "Removal Test".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 2,
+        file_count: Some(2),
         files: vec![
             FileInfo {
                 name: "file1.txt".to_string(),
@@ -393,7 +393,7 @@ async fn test_deeply_nested_directory_structure() {
         info_hash: "nested".to_string(),
         name: "Nested Structure".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 3,
+        file_count: Some(3),
         files: vec![
             FileInfo {
                 name: "root.txt".to_string(),
@@ -466,7 +466,7 @@ async fn test_unicode_and_special_characters() {
         info_hash: "unicode".to_string(),
         name: "Unicode Test 🎉".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 4,
+        file_count: Some(4),
         files: vec![
             FileInfo {
                 name: "中文文件.txt".to_string(),
@@ -523,7 +523,7 @@ async fn test_empty_torrent_handling() {
         info_hash: "empty".to_string(),
         name: "Empty File Test".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: 1,
+        file_count: Some(1),
         files: vec![FileInfo {
             name: "empty.txt".to_string(),
             length: 0,
@@ -568,7 +568,7 @@ async fn test_concurrent_torrent_additions() {
                 info_hash: format!("concurrent{}", i),
                 name: format!("Torrent {}", i),
                 output_folder: "/downloads".to_string(),
-                file_count: 1,
+                file_count: Some(1),
                 files: vec![FileInfo {
                     name: format!("file{}.txt", i),
                     length: 100,
@@ -596,7 +596,7 @@ async fn test_concurrent_torrent_additions() {
             info_hash: format!("concurrent{}", i),
             name: format!("Torrent {}", i),
             output_folder: "/downloads".to_string(),
-            file_count: 1,
+            file_count: Some(1),
             files: vec![FileInfo {
                 name: format!("file{}.txt", i),
                 length: 100,

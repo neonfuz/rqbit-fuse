@@ -2009,7 +2009,7 @@ mod tests {
             info_hash: "abc123".to_string(),
             name: "Single File".to_string(),
             output_folder: "/tmp".to_string(),
-            file_count: 1,
+            file_count: Some(1),
             files: vec![FileInfo {
                 name: "file.txt".to_string(),
                 length: 1024,
@@ -2048,7 +2048,7 @@ mod tests {
             info_hash: "def456".to_string(),
             name: "Multi File".to_string(),
             output_folder: "/tmp".to_string(),
-            file_count: 2,
+            file_count: Some(2),
             files: vec![
                 FileInfo {
                     name: "file1.txt".to_string(),

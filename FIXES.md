@@ -38,10 +38,11 @@ Runtime visibility issue with DashMap concurrent hash map. The code logic is cor
 But the children may not be visible when `readdir()` is called due to DashMap's lock-free nature.
 
 **Next Steps:**
-- [ ] Add debug logging to verify inode numbers during creation
-- [ ] Run integration test `test_multi_file_torrent_structure` to confirm test passes
+- [x] Add debug logging to verify inode numbers during creation
+- [x] Run integration test `test_multi_file_torrent_structure` to confirm test passes - **TEST PASSES**
 - [ ] Check if `get_children()` fallback (filter by parent) finds files when children vector doesn't
 - [ ] Consider using blocking synchronization during torrent structure creation
+- [ ] Test actual runtime behavior with real torrent (not just unit tests)
 
 **Files to Modify:**
 - `src/fs/filesystem.rs` - Add debug logging
@@ -102,18 +103,19 @@ pub struct TorrentStats {
 **Problem:**
 - `TorrentInfo.file_count` was required but API doesn't always return it
 - Caused deserialization errors when listing torrents
+- Also caused test compilation failures after struct change
 
 **Fix:**
 Made `file_count: Option<usize>` in `TorrentInfo` struct.
+Updated all test files to wrap file_count values in `Some()`.
+Fixed `test_list_torrents_success` to mock individual torrent endpoint.
 
 **Files Modified:**
 - `src/api/types.rs` - Added `TorrentSummary`, made `file_count` optional
 - `src/api/client.rs` - Updated `list_torrents()` to fetch full details per torrent
-
-**Note:** Test files need updating for `Some(...)` wrappers:
-- `src/api/client.rs:886`
-- `src/fs/filesystem.rs:2075, 2114`
-- `tests/integration_tests.rs` (multiple locations)
+- `src/api/client.rs` - Fixed test to mock `/torrents/1` endpoint
+- `src/fs/filesystem.rs` - Updated test file_count values to `Some(...)`
+- `tests/integration_tests.rs` - Updated all file_count values to `Some(...)`
 
 ---
 
