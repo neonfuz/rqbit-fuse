@@ -42,7 +42,8 @@ impl<T> CacheEntry<T> {
     /// Record an access to this entry
     fn record_access(&self) {
         self.access_count.fetch_add(1, Ordering::Relaxed);
-        self.lru_seq.store(LRU_COUNTER.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+        self.lru_seq
+            .store(LRU_COUNTER.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
     }
 
     /// Get the LRU sequence number
@@ -62,7 +63,7 @@ pub struct CacheStats {
 }
 
 /// A thread-safe cache with TTL support and LRU eviction.
-/// 
+///
 /// The cache stores key-value pairs with an optional TTL (time-to-live).
 /// When the cache reaches its maximum size, entries are evicted using
 /// an LRU (Least Recently Used) policy.
@@ -140,7 +141,7 @@ where
 
         let entry = Arc::new(CacheEntry::new(value, ttl));
         self.entries.insert(key, entry);
-        
+
         let mut stats = self.stats.write().await;
         stats.size = self.entries.len();
     }
@@ -340,7 +341,9 @@ mod tests {
         let cache: Cache<String, i32> = Cache::new(10, Duration::from_secs(60));
 
         // Insert with custom short TTL
-        cache.insert_with_ttl("key1".to_string(), 42, Duration::from_millis(50)).await;
+        cache
+            .insert_with_ttl("key1".to_string(), 42, Duration::from_millis(50))
+            .await;
         assert_eq!(cache.get(&"key1".to_string()).await, Some(42));
 
         // Wait for custom TTL expiration

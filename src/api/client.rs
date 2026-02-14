@@ -124,7 +124,12 @@ impl RqbitClient {
     }
 
     /// Create a new RqbitClient with custom retry configuration
-    pub fn with_config(base_url: String, max_retries: u32, retry_delay: Duration, metrics: Arc<ApiMetrics>) -> Self {
+    pub fn with_config(
+        base_url: String,
+        max_retries: u32,
+        retry_delay: Duration,
+        metrics: Arc<ApiMetrics>,
+    ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
@@ -172,7 +177,11 @@ impl RqbitClient {
     }
 
     /// Helper method to execute a request with retry logic and circuit breaker
-    async fn execute_with_retry<F, Fut>(&self, endpoint: &str, operation: F) -> Result<reqwest::Response>
+    async fn execute_with_retry<F, Fut>(
+        &self,
+        endpoint: &str,
+        operation: F,
+    ) -> Result<reqwest::Response>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = reqwest::Result<reqwest::Response>>,
@@ -182,7 +191,8 @@ impl RqbitClient {
 
         // Check circuit breaker first
         if !self.circuit_breaker.can_execute().await {
-            self.metrics.record_failure(endpoint, "circuit_breaker_open");
+            self.metrics
+                .record_failure(endpoint, "circuit_breaker_open");
             return Err(ApiError::CircuitBreakerOpen.into());
         }
 
@@ -212,7 +222,7 @@ impl RqbitClient {
                 Err(e) => {
                     let api_error: ApiError = e.into();
                     last_error = Some(api_error.clone());
-                    
+
                     // Check if error is transient and we should retry
                     if api_error.is_transient() && attempt < self.max_retries {
                         self.metrics.record_retry(endpoint, attempt + 1);
@@ -244,7 +254,8 @@ impl RqbitClient {
                 if api_error.is_transient() {
                     self.circuit_breaker.record_failure().await;
                 }
-                self.metrics.record_failure(endpoint, &api_error.to_string());
+                self.metrics
+                    .record_failure(endpoint, &api_error.to_string());
                 Err(api_error.into())
             }
             None => {
@@ -281,6 +292,8 @@ impl RqbitClient {
     // =========================================================================
 
     /// List all torrents in the session
+    /// Note: This fetches full details for each torrent since the /torrents endpoint
+    /// returns a simplified structure without the files field.
     pub async fn list_torrents(&self) -> Result<Vec<TorrentInfo>> {
         let url = format!("{}/torrents", self.base_url);
 
@@ -293,8 +306,32 @@ impl RqbitClient {
         let response = self.check_response(response).await?;
         let data: TorrentListResponse = response.json().await?;
 
-        debug!(api_op = "list_torrents", count = data.torrents.len(), "Listed torrents");
-        Ok(data.torrents)
+        // Fetch full details for each torrent since /torrents doesn't include files
+        let mut full_torrents = Vec::with_capacity(data.torrents.len());
+        for basic_info in data.torrents {
+            match self.get_torrent(basic_info.id).await {
+                Ok(full_info) => {
+                    full_torrents.push(full_info);
+                }
+                Err(e) => {
+                    warn!(
+                        api_op = "list_torrents",
+                        id = basic_info.id,
+                        name = %basic_info.name,
+                        error = %e,
+                        "Failed to get full details for torrent"
+                    );
+                    // Continue without this torrent rather than failing entirely
+                }
+            }
+        }
+
+        debug!(
+            api_op = "list_torrents",
+            count = full_torrents.len(),
+            "Listed torrents with full details"
+        );
+        Ok(full_torrents)
     }
 
     /// Get detailed information about a specific torrent
@@ -375,7 +412,11 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let stats: TorrentStats = response.json().await?;
-                trace!(api_op = "get_torrent_stats", id = id, progress_pct = stats.progress_pct);
+                trace!(
+                    api_op = "get_torrent_stats",
+                    id = id,
+                    progress_pct = stats.progress_pct
+                );
                 Ok(stats)
             }
         }
@@ -729,14 +770,8 @@ mod tests {
             ApiError::NetworkError("test".to_string()).to_fuse_error(),
             libc::ENETUNREACH
         );
-        assert_eq!(
-            ApiError::CircuitBreakerOpen.to_fuse_error(),
-            libc::EAGAIN
-        );
-        assert_eq!(
-            ApiError::RetryLimitExceeded.to_fuse_error(),
-            libc::EAGAIN
-        );
+        assert_eq!(ApiError::CircuitBreakerOpen.to_fuse_error(), libc::EAGAIN);
+        assert_eq!(ApiError::RetryLimitExceeded.to_fuse_error(), libc::EAGAIN);
 
         // Test HTTP status code mappings
         assert_eq!(
@@ -773,23 +808,19 @@ mod tests {
         assert!(ApiError::NetworkError("test".to_string()).is_transient());
         assert!(ApiError::CircuitBreakerOpen.is_transient());
         assert!(ApiError::RetryLimitExceeded.is_transient());
-        assert!(
-            ApiError::ApiError {
-                status: 503,
-                message: "unavailable".to_string()
-            }
-            .is_transient()
-        );
+        assert!(ApiError::ApiError {
+            status: 503,
+            message: "unavailable".to_string()
+        }
+        .is_transient());
 
         assert!(!ApiError::TorrentNotFound(1).is_transient());
         assert!(!ApiError::InvalidRange("test".to_string()).is_transient());
-        assert!(
-            !ApiError::ApiError {
-                status: 404,
-                message: "not found".to_string()
-            }
-            .is_transient()
-        );
+        assert!(!ApiError::ApiError {
+            status: 404,
+            message: "not found".to_string()
+        }
+        .is_transient());
     }
 
     #[tokio::test]
@@ -824,8 +855,8 @@ mod tests {
     // Mocked HTTP Response Tests
     // =========================================================================
 
-    use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{method, path, header, body_json};
+    use wiremock::matchers::{body_json, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
     async fn test_list_torrents_success() {
@@ -954,7 +985,10 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = client.add_torrent_magnet("magnet:?xt=urn:btih:abc123").await.unwrap();
+        let result = client
+            .add_torrent_magnet("magnet:?xt=urn:btih:abc123")
+            .await
+            .unwrap();
         assert_eq!(result.id, 42);
         assert_eq!(result.info_hash, "abc123");
     }
@@ -982,7 +1016,10 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = client.add_torrent_url("http://example.com/test.torrent").await.unwrap();
+        let result = client
+            .add_torrent_url("http://example.com/test.torrent")
+            .await
+            .unwrap();
         assert_eq!(result.id, 43);
         assert_eq!(result.info_hash, "def456");
     }
@@ -1034,7 +1071,7 @@ mod tests {
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_bytes(bitfield_data.clone())
-                    .append_header("x-bitfield-len", "4")
+                    .append_header("x-bitfield-len", "4"),
             )
             .mount(&mock_server)
             .await;
@@ -1079,7 +1116,7 @@ mod tests {
             .respond_with(
                 ResponseTemplate::new(206)
                     .set_body_bytes(file_data.as_slice())
-                    .append_header("content-range", "bytes 7-11/13")
+                    .append_header("content-range", "bytes 7-11/13"),
             )
             .mount(&mock_server)
             .await;
@@ -1103,7 +1140,13 @@ mod tests {
         let result = client.read_file(1, 99, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::FileNotFound { torrent_id: 1, file_idx: 99 }));
+        assert!(matches!(
+            err,
+            ApiError::FileNotFound {
+                torrent_id: 1,
+                file_idx: 99
+            }
+        ));
     }
 
     #[tokio::test]
@@ -1265,7 +1308,9 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/torrents"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})),
+            )
             .mount(&mock_server)
             .await;
 
@@ -1294,12 +1339,8 @@ mod tests {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
         // Use client with 1 retry for faster test
-        let client = RqbitClient::with_config(
-            mock_server.uri(),
-            1,
-            Duration::from_millis(10),
-            metrics
-        );
+        let client =
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), metrics);
 
         // First request fails with 503, second succeeds
         Mock::given(method("GET"))
@@ -1311,7 +1352,9 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/torrents"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})),
+            )
             .mount(&mock_server)
             .await;
 

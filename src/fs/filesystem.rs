@@ -83,7 +83,10 @@ impl TorrentFS {
     /// Creates a new TorrentFS instance with the given configuration.
     /// Note: This does not initialize the filesystem - call mount() to do so.
     pub fn new(config: Config, metrics: Arc<Metrics>) -> Result<Self> {
-        let api_client = Arc::new(RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api)));
+        let api_client = Arc::new(RqbitClient::new(
+            config.api.url.clone(),
+            Arc::clone(&metrics.api),
+        ));
         let inode_manager = Arc::new(InodeManager::new());
 
         Ok(Self {
@@ -107,29 +110,32 @@ impl TorrentFS {
 
         let handle = tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(poll_interval));
-            
+
             loop {
                 ticker.tick().await;
-                
+
                 // Get list of torrents to monitor
                 let torrent_ids: Vec<u64> = statuses.iter().map(|e| *e.key()).collect();
-                
+
                 for torrent_id in torrent_ids {
                     match api_client.get_torrent_stats(torrent_id).await {
                         Ok(stats) => {
                             // Try to get piece bitfield
-                            let bitfield_result = api_client.get_piece_bitfield(torrent_id).await.ok();
-                            
-                            let mut new_status = TorrentStatus::new(torrent_id, &stats, bitfield_result.as_ref());
-                            
+                            let bitfield_result =
+                                api_client.get_piece_bitfield(torrent_id).await.ok();
+
+                            let mut new_status =
+                                TorrentStatus::new(torrent_id, &stats, bitfield_result.as_ref());
+
                             // Check if torrent appears stalled
                             if let Some(existing) = statuses.get(&torrent_id) {
                                 let time_since_update = existing.last_updated.elapsed();
-                                if time_since_update > stalled_timeout && !new_status.is_complete() {
+                                if time_since_update > stalled_timeout && !new_status.is_complete()
+                                {
                                     new_status.state = TorrentState::Stalled;
                                 }
                             }
-                            
+
                             statuses.insert(torrent_id, new_status);
                             trace!("Updated status for torrent {}", torrent_id);
                         }
@@ -149,7 +155,10 @@ impl TorrentFS {
             *h = Some(handle);
         }
 
-        info!("Started status monitoring with {} second poll interval", poll_interval);
+        info!(
+            "Started status monitoring with {} second poll interval",
+            poll_interval
+        );
     }
 
     /// Stop the status monitoring task
@@ -242,19 +251,15 @@ impl TorrentFS {
                 info!("Successfully connected to rqbit server");
                 Ok(())
             }
-            Ok(false) => {
-                Err(anyhow::anyhow!(
-                    "rqbit server at {} is not responding or returned an error",
-                    self.config.api.url
-                ))
-            }
-            Err(e) => {
-                Err(anyhow::anyhow!(
-                    "Failed to connect to rqbit server at {}: {}",
-                    self.config.api.url,
-                    e
-                ))
-            }
+            Ok(false) => Err(anyhow::anyhow!(
+                "rqbit server at {} is not responding or returned an error",
+                self.config.api.url
+            )),
+            Err(e) => Err(anyhow::anyhow!(
+                "Failed to connect to rqbit server at {}: {}",
+                self.config.api.url,
+                e
+            )),
         }
     }
 
@@ -270,15 +275,20 @@ impl TorrentFS {
         info!("Mounting torrent-fuse at: {}", mount_point.display());
 
         // Mount the filesystem
-        fuser::mount2(self, &mount_point, &options).with_context(|| {
-            format!("Failed to mount filesystem at: {}", mount_point.display())
-        })
+        fuser::mount2(self, &mount_point, &options)
+            .with_context(|| format!("Failed to mount filesystem at: {}", mount_point.display()))
     }
 
     /// Check if the requested data range has all pieces available.
     /// Returns true if all pieces in the range are downloaded.
     #[allow(dead_code)]
-    fn check_pieces_available(&self, torrent_id: u64, offset: u64, size: u64, piece_length: u64) -> bool {
+    fn check_pieces_available(
+        &self,
+        torrent_id: u64,
+        offset: u64,
+        size: u64,
+        piece_length: u64,
+    ) -> bool {
         // If piece checking is disabled, assume all pieces are available
         if !self.config.performance.piece_check_enabled {
             return true;
@@ -294,7 +304,7 @@ impl TorrentFS {
             // Calculate piece indices for the requested range
             let start_piece = offset / piece_length;
             let end_piece = ((offset + size - 1) / piece_length) + 1;
-            
+
             // If we have no piece information, assume not available
             if status.total_pieces == 0 {
                 return false;
@@ -306,7 +316,7 @@ impl TorrentFS {
             let progress = status.progress_pct / 100.0;
             let pieces_needed = end_piece - start_piece;
             let pieces_available = (status.total_pieces as f64 * progress) as u64;
-            
+
             // Conservative check: require more pieces to be available than needed
             pieces_available >= pieces_needed
         } else {
@@ -326,42 +336,48 @@ impl TorrentFS {
         file_index: usize,
     ) {
         let mut read_states = self.read_states.lock().unwrap();
-        
+
         // Get or create read state for this file
-        let state = read_states.entry(ino).or_insert_with(|| ReadState::new(offset, size));
-        
+        let state = read_states
+            .entry(ino)
+            .or_insert_with(|| ReadState::new(offset, size));
+
         // Check if this is a sequential read
         let is_sequential = state.is_sequential(offset);
         state.update(offset, size);
-        
+
         // Trigger prefetch after 2 consecutive sequential reads and not already prefetching
         if is_sequential && state.sequential_count >= 2 && !state.is_prefetching {
             let next_offset = offset + size as u64;
-            
+
             // Only prefetch if we're not at EOF
             if next_offset < file_size {
                 let prefetch_size = std::cmp::min(
                     self.config.performance.readahead_size,
-                    file_size - next_offset
+                    file_size - next_offset,
                 ) as usize;
-                
+
                 if prefetch_size > 0 {
                     state.is_prefetching = true;
                     drop(read_states); // Release lock before async operation
-                    
+
                     let api_client = Arc::clone(&self.api_client);
                     let read_states = Arc::clone(&self.read_states);
                     let readahead_size = self.config.performance.readahead_size;
-                    
+
                     // Spawn prefetch in background
                     tokio::spawn(async move {
-                        let prefetch_end = std::cmp::min(next_offset + readahead_size - 1, file_size - 1);
-                        
+                        let prefetch_end =
+                            std::cmp::min(next_offset + readahead_size - 1, file_size - 1);
+
                         trace!(
                             "prefetch: requesting bytes {}-{} for torrent {} file {}",
-                            next_offset, prefetch_end, torrent_id, file_index
+                            next_offset,
+                            prefetch_end,
+                            torrent_id,
+                            file_index
                         );
-                        
+
                         match api_client
                             .read_file(torrent_id, file_index, Some((next_offset, prefetch_end)))
                             .await
@@ -374,7 +390,7 @@ impl TorrentFS {
                                 trace!("prefetch: failed to prefetch: {}", e);
                             }
                         }
-                        
+
                         // Mark prefetch as complete
                         if let Ok(mut states) = read_states.lock() {
                             if let Some(s) = states.get_mut(&ino) {
@@ -390,11 +406,11 @@ impl TorrentFS {
     /// Builds FUSE mount options based on configuration.
     fn build_mount_options(&self) -> Vec<fuser::MountOption> {
         let mut options = vec![
-            fuser::MountOption::RO,           // Read-only (torrents are read-only)
-            fuser::MountOption::NoSuid,       // No setuid/setgid
-            fuser::MountOption::NoDev,        // No special device files
-            fuser::MountOption::NoAtime,      // Don't update access times
-            fuser::MountOption::Sync,         // Synchronous writes (safer for FUSE)
+            fuser::MountOption::RO,      // Read-only (torrents are read-only)
+            fuser::MountOption::NoSuid,  // No setuid/setgid
+            fuser::MountOption::NoDev,   // No special device files
+            fuser::MountOption::NoAtime, // Don't update access times
+            fuser::MountOption::Sync,    // Synchronous writes (safer for FUSE)
         ];
 
         if self.config.mount.auto_unmount {
@@ -480,172 +496,6 @@ impl TorrentFS {
 }
 
 impl Filesystem for TorrentFS {
-    /// Get file attributes.
-    /// Called when the kernel needs to get attributes for a file or directory.
-    #[instrument(skip(self, reply), fields(ino))]
-    fn getattr(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        reply: fuser::ReplyAttr,
-    ) {
-        self.metrics.fuse.record_getattr();
-        
-        if self.config.logging.log_fuse_operations {
-            debug!(fuse_op = "getattr", ino = ino);
-        }
-
-        match self.inode_manager.get(ino) {
-            Some(entry) => {
-                let attr = self.build_file_attr(&entry);
-                reply.attr(&std::time::Duration::from_secs(1), &attr);
-                
-                if self.config.logging.log_fuse_operations {
-                    debug!(
-                        fuse_op = "getattr",
-                        ino = ino,
-                        result = "success",
-                        size = attr.size,
-                        kind = ?attr.kind
-                    );
-                }
-            }
-            None => {
-                self.metrics.fuse.record_error();
-                
-                if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "getattr", ino = ino, result = "error", error = "ENOENT");
-                }
-                
-                reply.error(libc::ENOENT);
-            }
-        }
-    }
-
-    /// Set file attributes.
-    /// This filesystem is read-only, so it only allows setting access/modification times.
-    /// All other attribute changes return EROFS.
-    #[instrument(skip(self, reply), fields(ino))]
-    fn setattr(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        mode: Option<u32>,
-        uid: Option<u32>,
-        gid: Option<u32>,
-        size: Option<u64>,
-        _atime: Option<fuser::TimeOrNow>,
-        _mtime: Option<fuser::TimeOrNow>,
-        _ctime: Option<std::time::SystemTime>,
-        _fh: Option<u64>,
-        _crtime: Option<std::time::SystemTime>,
-        _chgtime: Option<std::time::SystemTime>,
-        _bkuptime: Option<std::time::SystemTime>,
-        _flags: Option<u32>,
-        reply: fuser::ReplyAttr,
-    ) {
-        self.metrics.fuse.record_setattr();
-        
-        if self.config.logging.log_fuse_operations {
-            debug!(
-                fuse_op = "setattr",
-                ino = ino,
-                mode = ?mode,
-                uid = ?uid,
-                gid = ?gid,
-                size = ?size
-            );
-        }
-
-        // Check if any unsupported attributes are being modified
-        if mode.is_some() || uid.is_some() || gid.is_some() || size.is_some() {
-            if self.config.logging.log_fuse_operations {
-                debug!(fuse_op = "setattr", ino = ino, result = "error", error = "EROFS");
-            }
-            reply.error(libc::EROFS);
-            return;
-        }
-
-        // Only atime/mtime updates are "supported" (no-op since we use fixed times)
-        // Return current attributes
-        match self.inode_manager.get(ino) {
-            Some(entry) => {
-                let attr = self.build_file_attr(&entry);
-                reply.attr(&std::time::Duration::from_secs(1), &attr);
-                
-                if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "setattr", ino = ino, result = "success");
-                }
-            }
-            None => {
-                self.metrics.fuse.record_error();
-                
-                if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "setattr", ino = ino, result = "error", error = "ENOENT");
-                }
-                
-                reply.error(libc::ENOENT);
-            }
-        }
-    }
-
-    /// Open a file.
-    /// Called when a file is opened. We don't need to do anything special here
-    /// since we read files on-demand via HTTP Range requests.
-    #[instrument(skip(self, reply), fields(ino))]
-    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
-        self.metrics.fuse.record_open();
-        
-        if self.config.logging.log_fuse_operations {
-            debug!(fuse_op = "open", ino = ino, flags = flags);
-        }
-
-        // Check if the inode exists and is a file
-        match self.inode_manager.get(ino) {
-            Some(entry) => {
-                if !entry.is_file() {
-                    self.metrics.fuse.record_error();
-                    
-                    if self.config.logging.log_fuse_operations {
-                        debug!(fuse_op = "open", ino = ino, result = "error", error = "EISDIR");
-                    }
-                    
-                    reply.error(libc::EISDIR);
-                    return;
-                }
-
-                // Check write flags - we are read-only
-                let access_mode = flags & libc::O_ACCMODE;
-                if access_mode != libc::O_RDONLY {
-                    self.metrics.fuse.record_error();
-                    
-                    if self.config.logging.log_fuse_operations {
-                        debug!(fuse_op = "open", ino = ino, result = "error", error = "EROFS");
-                    }
-                    
-                    reply.error(libc::EROFS);
-                    return;
-                }
-
-                // Return a file handle (we use inode as handle for simplicity)
-                reply.opened(ino, 0);
-                
-                if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "open", ino = ino, result = "success", fh = ino);
-                }
-            }
-            None => {
-                self.metrics.fuse.record_error();
-                
-                if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "open", ino = ino, result = "error", error = "ENOENT");
-                }
-                
-                reply.error(libc::ENOENT);
-            }
-        }
-    }
-
     /// Read file contents.
     /// Called when the kernel needs to read data from a file.
     /// Translates FUSE read requests to HTTP Range requests to rqbit.
@@ -663,6 +513,9 @@ impl Filesystem for TorrentFS {
     ) {
         let start_time = Instant::now();
 
+        // Clamp read size to FUSE maximum to prevent "Too much data" panic
+        let size = std::cmp::min(size, Self::FUSE_MAX_READ);
+
         if self.config.logging.log_fuse_operations {
             debug!(fuse_op = "read", ino = ino, offset = offset, size = size);
         }
@@ -670,11 +523,17 @@ impl Filesystem for TorrentFS {
         // Validate offset is non-negative
         if offset < 0 {
             self.metrics.fuse.record_error();
-            
+
             if self.config.logging.log_fuse_operations {
-                debug!(fuse_op = "read", ino = ino, result = "error", error = "EINVAL", reason = "negative_offset");
+                debug!(
+                    fuse_op = "read",
+                    ino = ino,
+                    result = "error",
+                    error = "EINVAL",
+                    reason = "negative_offset"
+                );
             }
-            
+
             reply.error(libc::EINVAL);
             return;
         }
@@ -692,22 +551,32 @@ impl Filesystem for TorrentFS {
                 } => (torrent_id, file_index, size),
                 _ => {
                     self.metrics.fuse.record_error();
-                    
+
                     if self.config.logging.log_fuse_operations {
-                        debug!(fuse_op = "read", ino = ino, result = "error", error = "EISDIR");
+                        debug!(
+                            fuse_op = "read",
+                            ino = ino,
+                            result = "error",
+                            error = "EISDIR"
+                        );
                     }
-                    
+
                     reply.error(libc::EISDIR);
                     return;
                 }
             },
             None => {
                 self.metrics.fuse.record_error();
-                
+
                 if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "read", ino = ino, result = "error", error = "ENOENT");
+                    debug!(
+                        fuse_op = "read",
+                        ino = ino,
+                        result = "error",
+                        error = "ENOENT"
+                    );
                 }
-                
+
                 reply.error(libc::ENOENT);
                 return;
             }
@@ -716,9 +585,15 @@ impl Filesystem for TorrentFS {
         // Handle zero-byte reads
         if size == 0 || offset >= file_size {
             if self.config.logging.log_fuse_operations {
-                debug!(fuse_op = "read", ino = ino, result = "success", bytes_read = 0, reason = "empty_read");
+                debug!(
+                    fuse_op = "read",
+                    ino = ino,
+                    result = "success",
+                    bytes_read = 0,
+                    reason = "empty_read"
+                );
             }
-            
+
             reply.data(&[]);
             return;
         }
@@ -741,7 +616,9 @@ impl Filesystem for TorrentFS {
         if self.config.performance.return_eagain_for_unavailable {
             if let Some(status) = self.torrent_statuses.get(&torrent_id) {
                 // If torrent hasn't started (0 progress) or is in error state, return EAGAIN
-                if status.progress_bytes == 0 || status.state == crate::api::types::TorrentState::Error {
+                if status.progress_bytes == 0
+                    || status.state == crate::api::types::TorrentState::Error
+                {
                     if self.config.logging.log_fuse_operations {
                         debug!(
                             fuse_op = "read",
@@ -752,7 +629,7 @@ impl Filesystem for TorrentFS {
                             reason = "torrent_not_ready"
                         );
                     }
-                    
+
                     reply.error(libc::EAGAIN);
                     return;
                 }
@@ -768,7 +645,7 @@ impl Filesystem for TorrentFS {
                         reason = "torrent_not_monitored"
                     );
                 }
-                
+
                 reply.error(libc::EAGAIN);
                 return;
             }
@@ -779,11 +656,14 @@ impl Filesystem for TorrentFS {
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 // Set a timeout to avoid blocking forever on slow pieces
-                let timeout_duration = std::time::Duration::from_secs(self.config.performance.read_timeout);
+                let timeout_duration =
+                    std::time::Duration::from_secs(self.config.performance.read_timeout);
                 tokio::time::timeout(
                     timeout_duration,
-                    self.api_client.read_file(torrent_id, file_index, Some((offset, end)))
-                ).await
+                    self.api_client
+                        .read_file(torrent_id, file_index, Some((offset, end))),
+                )
+                .await
             })
         });
 
@@ -811,7 +691,7 @@ impl Filesystem for TorrentFS {
             }
             Ok(Err(e)) => {
                 self.metrics.fuse.record_error();
-                
+
                 error!(
                     fuse_op = "read",
                     ino = ino,
@@ -822,22 +702,23 @@ impl Filesystem for TorrentFS {
                 );
 
                 // Try to extract ApiError from anyhow error and use proper mapping
-                let error_code = if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>() {
-                    api_err.to_fuse_error()
-                } else if e.to_string().contains("not found") {
-                    libc::ENOENT
-                } else if e.to_string().contains("range") {
-                    libc::EINVAL
-                } else {
-                    libc::EIO
-                };
+                let error_code =
+                    if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>() {
+                        api_err.to_fuse_error()
+                    } else if e.to_string().contains("not found") {
+                        libc::ENOENT
+                    } else if e.to_string().contains("range") {
+                        libc::EINVAL
+                    } else {
+                        libc::EIO
+                    };
 
                 reply.error(error_code);
             }
             Err(_) => {
                 // Timeout occurred
                 self.metrics.fuse.record_error();
-                
+
                 warn!(
                     fuse_op = "read",
                     ino = ino,
@@ -845,7 +726,7 @@ impl Filesystem for TorrentFS {
                     file_index = file_index,
                     "Timeout reading file (slow piece download)"
                 );
-                
+
                 // Return EAGAIN to indicate the operation should be retried
                 reply.error(libc::EAGAIN);
             }
@@ -866,11 +747,11 @@ impl Filesystem for TorrentFS {
         reply: fuser::ReplyEmpty,
     ) {
         self.metrics.fuse.record_release();
-        
+
         if self.config.logging.log_fuse_operations {
             debug!(fuse_op = "release", ino = _ino);
         }
-        
+
         reply.ok();
     }
 
@@ -885,9 +766,9 @@ impl Filesystem for TorrentFS {
         reply: fuser::ReplyEntry,
     ) {
         self.metrics.fuse.record_lookup();
-        
+
         let name_str = name.to_string_lossy();
-        
+
         if self.config.logging.log_fuse_operations {
             debug!(fuse_op = "lookup", parent = parent, name = %name_str);
         }
@@ -897,11 +778,16 @@ impl Filesystem for TorrentFS {
             Some(entry) => entry,
             None => {
                 self.metrics.fuse.record_error();
-                
+
                 if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "lookup", parent = parent, result = "error", error = "ENOENT");
+                    debug!(
+                        fuse_op = "lookup",
+                        parent = parent,
+                        result = "error",
+                        error = "ENOENT"
+                    );
                 }
-                
+
                 reply.error(libc::ENOENT);
                 return;
             }
@@ -910,11 +796,16 @@ impl Filesystem for TorrentFS {
         // Check if parent is a directory
         if !parent_entry.is_directory() {
             self.metrics.fuse.record_error();
-            
+
             if self.config.logging.log_fuse_operations {
-                debug!(fuse_op = "lookup", parent = parent, result = "error", error = "ENOTDIR");
+                debug!(
+                    fuse_op = "lookup",
+                    parent = parent,
+                    result = "error",
+                    error = "ENOTDIR"
+                );
             }
-            
+
             reply.error(libc::ENOTDIR);
             return;
         }
@@ -934,7 +825,7 @@ impl Filesystem for TorrentFS {
                     Some(entry) => {
                         let attr = self.build_file_attr(&entry);
                         reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
-                        
+
                         if self.config.logging.log_fuse_operations {
                             debug!(fuse_op = "lookup", parent = parent, name = %name_str, ino = ino, result = "success");
                         }
@@ -942,14 +833,14 @@ impl Filesystem for TorrentFS {
                     None => {
                         // This shouldn't happen - path maps to non-existent inode
                         self.metrics.fuse.record_error();
-                        
+
                         error!(
                             fuse_op = "lookup",
                             path = %path,
                             ino = ino,
                             "Path maps to missing inode"
                         );
-                        
+
                         reply.error(libc::EIO);
                     }
                 }
@@ -958,7 +849,7 @@ impl Filesystem for TorrentFS {
                 if self.config.logging.log_fuse_operations {
                     debug!(fuse_op = "lookup", parent = parent, name = %name_str, result = "not_found");
                 }
-                
+
                 reply.error(libc::ENOENT);
             }
         }
@@ -966,12 +857,7 @@ impl Filesystem for TorrentFS {
 
     /// Read the target of a symbolic link.
     /// Called when the kernel needs to resolve a symlink target.
-    fn readlink(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        reply: fuser::ReplyData,
-    ) {
+    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
         debug!("readlink: ino={}", ino);
 
         match self.inode_manager.get(ino) {
@@ -1003,7 +889,7 @@ impl Filesystem for TorrentFS {
         mut reply: fuser::ReplyDirectory,
     ) {
         self.metrics.fuse.record_readdir();
-        
+
         if self.config.logging.log_fuse_operations {
             debug!(fuse_op = "readdir", ino = ino, offset = offset);
         }
@@ -1013,11 +899,16 @@ impl Filesystem for TorrentFS {
             Some(e) => e,
             None => {
                 self.metrics.fuse.record_error();
-                
+
                 if self.config.logging.log_fuse_operations {
-                    debug!(fuse_op = "readdir", ino = ino, result = "error", error = "ENOENT");
+                    debug!(
+                        fuse_op = "readdir",
+                        ino = ino,
+                        result = "error",
+                        error = "ENOENT"
+                    );
                 }
-                
+
                 reply.error(libc::ENOENT);
                 return;
             }
@@ -1026,11 +917,16 @@ impl Filesystem for TorrentFS {
         // Check if it's a directory
         if !entry.is_directory() {
             self.metrics.fuse.record_error();
-            
+
             if self.config.logging.log_fuse_operations {
-                debug!(fuse_op = "readdir", ino = ino, result = "error", error = "ENOTDIR");
+                debug!(
+                    fuse_op = "readdir",
+                    ino = ino,
+                    result = "error",
+                    error = "ENOTDIR"
+                );
             }
-            
+
             reply.error(libc::ENOTDIR);
             return;
         }
@@ -1062,7 +958,7 @@ impl Filesystem for TorrentFS {
 
         for (idx, (child_ino, child_entry)) in children.iter().enumerate() {
             let entry_offset = child_offset_start + idx as i64;
-            
+
             // Skip entries before the requested offset
             if entry_offset < current_offset {
                 continue;
@@ -1102,7 +998,13 @@ impl Filesystem for TorrentFS {
 
     /// Remove a directory.
     /// This filesystem is read-only, so it always returns EROFS (read-only filesystem).
-    fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
+    fn rmdir(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        _parent: u64,
+        _name: &std::ffi::OsStr,
+        reply: fuser::ReplyEmpty,
+    ) {
         debug!("rmdir: rejected - read-only filesystem");
         reply.error(libc::EROFS);
     }
@@ -1147,10 +1049,13 @@ impl Filesystem for TorrentFS {
                     return;
                 }
                 // Find the torrent ID
-                match self.inode_manager.torrent_to_inode()
+                match self
+                    .inode_manager
+                    .torrent_to_inode()
                     .iter()
                     .find(|item| *item.value() == ino)
-                    .map(|item| *item.key()) {
+                    .map(|item| *item.key())
+                {
                     Some(id) => id,
                     None => {
                         warn!("unlink: no torrent ID found for inode {}", ino);
@@ -1170,17 +1075,24 @@ impl Filesystem for TorrentFS {
         let has_open_handles = {
             let read_states = self.read_states.lock().unwrap();
             // Check if any file in this torrent has read state
-            let file_inodes: Vec<u64> = self.inode_manager.get_children(ino)
+            let file_inodes: Vec<u64> = self
+                .inode_manager
+                .get_children(ino)
                 .iter()
                 .filter(|(_, entry)| entry.is_file())
                 .map(|(ino, _)| *ino)
                 .collect();
-            
-            file_inodes.iter().any(|file_ino| read_states.contains_key(file_ino))
+
+            file_inodes
+                .iter()
+                .any(|file_ino| read_states.contains_key(file_ino))
         };
 
         if has_open_handles {
-            warn!("unlink: torrent {} has open file handles, cannot remove", torrent_id);
+            warn!(
+                "unlink: torrent {} has open file handles, cannot remove",
+                torrent_id
+            );
             reply.error(libc::EBUSY);
             return;
         }
@@ -1190,7 +1102,8 @@ impl Filesystem for TorrentFS {
             error!("unlink: failed to remove torrent {}: {}", torrent_id, e);
 
             // Map error appropriately
-            let error_code = if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>() {
+            let error_code = if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>()
+            {
                 api_err.to_fuse_error()
             } else {
                 libc::EIO
@@ -1229,7 +1142,8 @@ impl Filesystem for TorrentFS {
                 InodeEntry::File { torrent_id, .. } => torrent_id,
                 InodeEntry::Directory { .. } => {
                     // For directories, try to find torrent_id by looking up which torrent maps to this inode
-                    self.inode_manager.torrent_to_inode()
+                    self.inode_manager
+                        .torrent_to_inode()
                         .iter()
                         .find(|item| *item.value() == ino)
                         .map(|item| *item.key())
@@ -1364,11 +1278,84 @@ impl Filesystem for TorrentFS {
     }
 }
 
+impl TorrentFS {
+    /// Maximum read size for FUSE responses (128KB).
+    /// FUSE protocol limits response size to prevent overflows in fuse_out_header.len field.
+    const FUSE_MAX_READ: u32 = 128 * 1024; // 128KB
+}
+
 /// Async initialization helper that can be called from the async runtime
 /// to perform the full initialization including the rqbit connection check.
 pub async fn initialize_filesystem(fs: &mut TorrentFS) -> Result<()> {
     // Check connection to rqbit
     fs.connect_to_rqbit().await?;
+    Ok(())
+}
+
+/// Discover and populate existing torrents from rqbit.
+/// This should be called before mounting to ensure all existing torrents
+/// appear in the filesystem.
+pub async fn discover_existing_torrents(fs: &TorrentFS) -> Result<()> {
+    info!("Discovering existing torrents from rqbit...");
+
+    // Get list of all torrents from rqbit
+    let torrents = fs
+        .api_client
+        .list_torrents()
+        .await
+        .context("Failed to list torrents from rqbit")?;
+
+    if torrents.is_empty() {
+        info!("No existing torrents found in rqbit");
+        return Ok(());
+    }
+
+    info!(
+        "Found {} existing torrents, populating filesystem...",
+        torrents.len()
+    );
+
+    let mut success_count = 0;
+    let mut error_count = 0;
+
+    for torrent_info in torrents {
+        // Check if we already have this torrent (avoid duplicates)
+        if fs.inode_manager.lookup_torrent(torrent_info.id).is_some() {
+            debug!(
+                "Torrent {} already exists in filesystem, skipping",
+                torrent_info.id
+            );
+            continue;
+        }
+
+        // Create filesystem structure for this torrent
+        match fs.create_torrent_structure(&torrent_info) {
+            Ok(()) => {
+                success_count += 1;
+                debug!(
+                    "Populated filesystem for torrent {}: {} ({} files)",
+                    torrent_info.id,
+                    torrent_info.name,
+                    torrent_info.files.len()
+                );
+            }
+            Err(e) => {
+                error_count += 1;
+                warn!(
+                    "Failed to create filesystem structure for torrent {} ({}): {}",
+                    torrent_info.id, torrent_info.name, e
+                );
+            }
+        }
+    }
+
+    info!(
+        "Finished discovering torrents: {} successful, {} failed, {} total",
+        success_count,
+        error_count,
+        success_count + error_count
+    );
+
     Ok(())
 }
 
@@ -1391,7 +1378,10 @@ impl TorrentFS {
 
         // Check for duplicate torrent
         if self.inode_manager.lookup_torrent(response.id).is_some() {
-            warn!("Torrent {} already exists in filesystem, skipping structure creation", response.id);
+            warn!(
+                "Torrent {} already exists in filesystem, skipping structure creation",
+                response.id
+            );
             return Ok(response.id);
         }
 
@@ -1426,7 +1416,10 @@ impl TorrentFS {
 
         // Check for duplicate torrent
         if self.inode_manager.lookup_torrent(response.id).is_some() {
-            warn!("Torrent {} already exists in filesystem, skipping structure creation", response.id);
+            warn!(
+                "Torrent {} already exists in filesystem, skipping structure creation",
+                response.id
+            );
             return Ok(response.id);
         }
 
@@ -1447,13 +1440,13 @@ impl TorrentFS {
     /// Creates the filesystem directory structure for a torrent.
     /// For single-file torrents, the file is added directly to root.
     /// For multi-file torrents, a directory is created with the torrent name.
-    /// 
+    ///
     /// # Arguments
     /// * `torrent_info` - The torrent metadata from rqbit API
-    /// 
+    ///
     /// # Returns
     /// * `Result<()>` - Ok if structure was created successfully
-    /// 
+    ///
     /// # Errors
     /// Returns an error if inode allocation fails
     pub fn create_torrent_structure(
@@ -1495,7 +1488,9 @@ impl TorrentFS {
             self.inode_manager.add_child(1, file_inode);
 
             // Track torrent mapping
-            self.inode_manager.torrent_to_inode().insert(torrent_id, file_inode);
+            self.inode_manager
+                .torrent_to_inode()
+                .insert(torrent_id, file_inode);
 
             debug!(
                 "Created single-file torrent entry {} -> {} (size: {})",
@@ -1503,9 +1498,9 @@ impl TorrentFS {
             );
         } else {
             // Multi-file torrent: create directory structure
-            let torrent_dir_inode = self
-                .inode_manager
-                .allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
+            let torrent_dir_inode =
+                self.inode_manager
+                    .allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
 
             // Add torrent directory to root's children
             self.inode_manager.add_child(1, torrent_dir_inode);
@@ -1588,12 +1583,16 @@ impl TorrentFS {
                 });
 
                 // Add to parent
-                self.inode_manager.add_child(current_dir_inode, new_dir_inode);
+                self.inode_manager
+                    .add_child(current_dir_inode, new_dir_inode);
 
                 created_dirs.insert(current_path.clone(), new_dir_inode);
                 current_dir_inode = new_dir_inode;
 
-                debug!("Created directory {} at inode {}", current_path, new_dir_inode);
+                debug!(
+                    "Created directory {} at inode {}",
+                    current_path, new_dir_inode
+                );
             }
         }
 
@@ -1631,7 +1630,7 @@ impl TorrentFS {
     }
 
     /// Remove a torrent from the filesystem and rqbit.
-    /// 
+    ///
     /// This method:
     /// 1. Stops monitoring the torrent
     /// 2. Removes the torrent from rqbit (forget - keeps files)
@@ -1645,10 +1644,10 @@ impl TorrentFS {
 
         // Remove from rqbit (forget - keeps downloaded files)
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                self.api_client.forget_torrent(torrent_id).await
-            })
-        }).with_context(|| format!("Failed to remove torrent {} from rqbit", torrent_id))?;
+            tokio::runtime::Handle::current()
+                .block_on(async { self.api_client.forget_torrent(torrent_id).await })
+        })
+        .with_context(|| format!("Failed to remove torrent {} from rqbit", torrent_id))?;
 
         // Remove torrent directory from root's children list
         self.inode_manager.remove_child(1, torrent_inode);
@@ -1656,16 +1655,21 @@ impl TorrentFS {
         // Remove all inodes associated with this torrent (recursively)
         self.inode_manager.remove_inode(torrent_inode);
 
-        info!("Successfully removed torrent {} from filesystem", torrent_id);
+        info!(
+            "Successfully removed torrent {} from filesystem",
+            torrent_id
+        );
         Ok(())
     }
 
     /// Removes a torrent by its ID.
     /// Convenience method that finds the inode and calls remove_torrent.
     pub fn remove_torrent_by_id(&self, torrent_id: u64) -> Result<()> {
-        let torrent_inode = self.inode_manager.lookup_torrent(torrent_id)
+        let torrent_inode = self
+            .inode_manager
+            .lookup_torrent(torrent_id)
             .ok_or_else(|| anyhow::anyhow!("Torrent {} not found in filesystem", torrent_id))?;
-        
+
         self.remove_torrent(torrent_id, torrent_inode)
     }
 }
@@ -1679,7 +1683,7 @@ fn sanitize_filename(name: &str) -> String {
 
     // Remove leading/trailing whitespace and dots
     let trimmed = name.trim().trim_start_matches('.').trim_end_matches('.');
-    
+
     if trimmed.is_empty() {
         return "unnamed".to_string();
     }
@@ -1705,10 +1709,7 @@ fn sanitize_filename(name: &str) -> String {
 #[allow(dead_code)]
 pub(crate) fn is_safe_path_component(component: &str) -> bool {
     // Reject empty components, current dir, parent dir references
-    if component.is_empty() 
-        || component == "." 
-        || component == ".." 
-        || component.contains("..") {
+    if component.is_empty() || component == "." || component == ".." || component.contains("..") {
         return false;
     }
 
@@ -1718,7 +1719,13 @@ pub(crate) fn is_safe_path_component(component: &str) -> bool {
     }
 
     // Reject components starting with null bytes or control characters
-    if component.starts_with('\0') || component.chars().next().map(|c| c.is_control()).unwrap_or(false) {
+    if component.starts_with('\0')
+        || component
+            .chars()
+            .next()
+            .map(|c| c.is_control())
+            .unwrap_or(false)
+    {
         return false;
     }
 
@@ -1799,11 +1806,9 @@ mod tests {
 
         // Create a torrent structure manually
         let torrent_id = 123u64;
-        let torrent_inode = fs.inode_manager.allocate_torrent_directory(
-            torrent_id,
-            "test_torrent".to_string(),
-            1
-        );
+        let torrent_inode =
+            fs.inode_manager
+                .allocate_torrent_directory(torrent_id, "test_torrent".to_string(), 1);
         fs.inode_manager.add_child(1, torrent_inode);
 
         // Add a file to the torrent
@@ -1830,7 +1835,7 @@ mod tests {
         assert!(fs.inode_manager.get(torrent_inode).is_none());
         assert!(fs.inode_manager.get(file_inode).is_none());
         assert!(fs.inode_manager.lookup_torrent(torrent_id).is_none());
-        
+
         // Verify torrent is no longer in root's children
         let root_children = fs.inode_manager.get_children(1);
         assert!(!root_children.iter().any(|(ino, _)| *ino == torrent_inode));
@@ -1852,7 +1857,10 @@ mod tests {
         assert_eq!(sanitize_filename("file:name.txt"), "file_name.txt");
         assert_eq!(sanitize_filename("file*name?.txt"), "file_name_.txt");
         // Both < and > are replaced, resulting in double underscore between script tags
-        assert_eq!(sanitize_filename("<script>alert(1)</script>"), "_script_alert(1)__script_");
+        assert_eq!(
+            sanitize_filename("<script>alert(1)</script>"),
+            "_script_alert(1)__script_"
+        );
     }
 
     #[test]
@@ -1903,11 +1911,9 @@ mod tests {
         let fs = TorrentFS::new(config, metrics).unwrap();
 
         // Create a symlink
-        let symlink_inode = fs.inode_manager.allocate_symlink(
-            "link".to_string(),
-            1,
-            "/target/path".to_string(),
-        );
+        let symlink_inode =
+            fs.inode_manager
+                .allocate_symlink("link".to_string(), 1, "/target/path".to_string());
 
         // Verify symlink exists
         let entry = fs.inode_manager.get(symlink_inode).unwrap();
@@ -1953,13 +1959,9 @@ mod tests {
 
         // Create a large file (>4GB)
         let large_size = 5u64 * 1024 * 1024 * 1024; // 5 GB
-        let file_inode = fs.inode_manager.allocate_file(
-            "large.iso".to_string(),
-            1,
-            1,
-            0,
-            large_size,
-        );
+        let file_inode =
+            fs.inode_manager
+                .allocate_file("large.iso".to_string(), 1, 1, 0, large_size);
 
         // Verify attributes
         let entry = fs.inode_manager.get(file_inode).unwrap();
@@ -1976,22 +1978,18 @@ mod tests {
 
         // Test various Unicode filenames
         let unicode_names = vec![
-            "文件.txt",        // Chinese
-            "ファイル.txt",    // Japanese
-            "файл.txt",        // Russian
-            "αρχείο.txt",      // Greek
-            "📄document.txt",  // Emoji
-            "naïve.txt",       // Accented
+            "文件.txt",       // Chinese
+            "ファイル.txt",   // Japanese
+            "файл.txt",       // Russian
+            "αρχείο.txt",     // Greek
+            "📄document.txt", // Emoji
+            "naïve.txt",      // Accented
         ];
 
         for name in unicode_names {
-            let inode = fs.inode_manager.allocate_file(
-                name.to_string(),
-                1,
-                1,
-                0,
-                100,
-            );
+            let inode = fs
+                .inode_manager
+                .allocate_file(name.to_string(), 1, 1, 0, 100);
             let entry = fs.inode_manager.get(inode).unwrap();
             assert_eq!(entry.name(), name);
         }

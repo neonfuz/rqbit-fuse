@@ -24,6 +24,11 @@ pub async fn run(config: Config) -> Result<()> {
     let fs = TorrentFS::new(config, Arc::clone(&metrics))
         .context("Failed to create torrent filesystem")?;
 
+    // Discover existing torrents before mounting
+    crate::fs::filesystem::discover_existing_torrents(&fs)
+        .await
+        .context("Failed to discover existing torrents")?;
+
     // Mount the filesystem (this blocks until unmounted)
     fs.mount().context("Failed to mount filesystem")?;
 

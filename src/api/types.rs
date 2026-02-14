@@ -148,10 +148,22 @@ impl ApiError {
     }
 }
 
+/// Summary of a torrent from the list endpoint
+/// This is a simplified view without file details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentSummary {
+    pub id: u64,
+    #[serde(rename = "info_hash")]
+    pub info_hash: String,
+    pub name: String,
+    #[serde(rename = "output_folder")]
+    pub output_folder: String,
+}
+
 /// Response from listing all torrents
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentListResponse {
-    pub torrents: Vec<TorrentInfo>,
+    pub torrents: Vec<TorrentSummary>,
 }
 
 /// Torrent information from API
@@ -164,7 +176,7 @@ pub struct TorrentInfo {
     #[serde(rename = "output_folder")]
     pub output_folder: String,
     #[serde(rename = "file_count")]
-    pub file_count: usize,
+    pub file_count: Option<usize>,
     pub files: Vec<FileInfo>,
     #[serde(rename = "piece_length")]
     pub piece_length: Option<u64>,

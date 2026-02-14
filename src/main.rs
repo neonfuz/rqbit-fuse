@@ -121,10 +121,7 @@ fn setup_logging(verbose: u8, quiet: bool) -> Result<()> {
             _ => tracing::Level::TRACE,
         };
 
-        let subscriber = fmt()
-            .with_max_level(level)
-            .with_target(true)
-            .finish();
+        let subscriber = fmt().with_max_level(level).with_target(true).finish();
 
         tracing::subscriber::set_global_default(subscriber)?;
     }
@@ -163,9 +160,16 @@ async fn run_mount(
 
     // Validate mount point exists
     if !config.mount.mount_point.exists() {
-        tracing::info!("Creating mount point: {}", config.mount.mount_point.display());
-        std::fs::create_dir_all(&config.mount.mount_point)
-            .with_context(|| format!("Failed to create mount point: {}", config.mount.mount_point.display()))?;
+        tracing::info!(
+            "Creating mount point: {}",
+            config.mount.mount_point.display()
+        );
+        std::fs::create_dir_all(&config.mount.mount_point).with_context(|| {
+            format!(
+                "Failed to create mount point: {}",
+                config.mount.mount_point.display()
+            )
+        })?;
     }
 
     tracing::info!("torrent-fuse starting");
@@ -235,9 +239,14 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
             println!("===================");
             println!();
             println!("Configuration:");
-            println!("  Config file:    {}", cli_args.config_file.as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "(default)".to_string()));
+            println!(
+                "  Config file:    {}",
+                cli_args
+                    .config_file
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(default)".to_string())
+            );
             println!("  API URL:        {}", config.api.url);
             println!("  Mount point:    {}", mount_point.display());
             println!();
@@ -359,12 +368,13 @@ fn unmount_filesystem(path: &PathBuf, force: bool) -> Result<()> {
     }
     cmd.arg(path);
 
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .with_context(|| "Failed to run fusermount3 command")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         // Try fusermount as fallback (older systems)
         if stderr.contains("command not found") || stderr.contains("No such file") {
             let mut cmd = Command::new("fusermount");
@@ -375,7 +385,8 @@ fn unmount_filesystem(path: &PathBuf, force: bool) -> Result<()> {
             }
             cmd.arg(path);
 
-            let output = cmd.output()
+            let output = cmd
+                .output()
                 .with_context(|| "Failed to run fusermount command")?;
 
             if !output.status.success() {

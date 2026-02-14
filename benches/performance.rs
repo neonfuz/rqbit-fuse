@@ -8,7 +8,7 @@
 //! - Concurrent read operations
 //! - Memory usage patterns
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -25,91 +25,80 @@ fn create_runtime() -> Runtime {
 /// Benchmark cache operations with varying entry counts
 fn bench_cache_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_throughput");
-    
+
     for size in [100, 1000, 10000].iter() {
         group.throughput(Throughput::Elements(*size as u64));
-        
+
         // Benchmark cache insertions
-        group.bench_with_input(
-            BenchmarkId::new("insert", size),
-            size,
-            |b, &size| {
-                let rt = create_runtime();
-                b.iter(|| {
-                    rt.block_on(async {
-                        let cache: Cache<String, Vec<u8>> = Cache::new(size * 2, Duration::from_secs(60));
-                        for i in 0..size {
-                            let key = format!("key_{}", i);
-                            let value = vec![0u8; 1024]; // 1KB values
-                            cache.insert(key, value).await;
-                        }
-                        black_box(cache);
-                    });
+        group.bench_with_input(BenchmarkId::new("insert", size), size, |b, &size| {
+            let rt = create_runtime();
+            b.iter(|| {
+                rt.block_on(async {
+                    let cache: Cache<String, Vec<u8>> =
+                        Cache::new(size * 2, Duration::from_secs(60));
+                    for i in 0..size {
+                        let key = format!("key_{}", i);
+                        let value = vec![0u8; 1024]; // 1KB values
+                        cache.insert(key, value).await;
+                    }
+                    black_box(cache);
                 });
-            },
-        );
-        
+            });
+        });
+
         // Benchmark cache reads (all hits)
-        group.bench_with_input(
-            BenchmarkId::new("read_hit", size),
-            size,
-            |b, &size| {
-                let rt = create_runtime();
-                let cache: Cache<String, Vec<u8>> = Cache::new(size * 2, Duration::from_secs(60));
+        group.bench_with_input(BenchmarkId::new("read_hit", size), size, |b, &size| {
+            let rt = create_runtime();
+            let cache: Cache<String, Vec<u8>> = Cache::new(size * 2, Duration::from_secs(60));
+            rt.block_on(async {
+                for i in 0..size {
+                    let key = format!("key_{}", i);
+                    let value = vec![0u8; 1024];
+                    cache.insert(key, value).await;
+                }
+            });
+
+            b.iter(|| {
                 rt.block_on(async {
                     for i in 0..size {
                         let key = format!("key_{}", i);
-                        let value = vec![0u8; 1024];
-                        cache.insert(key, value).await;
+                        let _ = cache.get(&key).await;
                     }
                 });
-                
-                b.iter(|| {
-                    rt.block_on(async {
-                        for i in 0..size {
-                            let key = format!("key_{}", i);
-                            let _ = cache.get(&key).await;
-                        }
-                    });
-                });
-            },
-        );
-        
+            });
+        });
+
         // Benchmark cache reads (50% hit rate)
-        group.bench_with_input(
-            BenchmarkId::new("read_mixed", size),
-            size,
-            |b, &size| {
-                let rt = create_runtime();
-                let cache: Cache<String, Vec<u8>> = Cache::new(size * 2, Duration::from_secs(60));
+        group.bench_with_input(BenchmarkId::new("read_mixed", size), size, |b, &size| {
+            let rt = create_runtime();
+            let cache: Cache<String, Vec<u8>> = Cache::new(size * 2, Duration::from_secs(60));
+            rt.block_on(async {
+                // Insert half the keys
+                for i in 0..size / 2 {
+                    let key = format!("key_{}", i);
+                    let value = vec![0u8; 1024];
+                    cache.insert(key, value).await;
+                }
+            });
+
+            b.iter(|| {
                 rt.block_on(async {
-                    // Insert half the keys
-                    for i in 0..size/2 {
+                    for i in 0..size {
                         let key = format!("key_{}", i);
-                        let value = vec![0u8; 1024];
-                        cache.insert(key, value).await;
+                        let _ = cache.get(&key).await;
                     }
                 });
-                
-                b.iter(|| {
-                    rt.block_on(async {
-                        for i in 0..size {
-                            let key = format!("key_{}", i);
-                            let _ = cache.get(&key).await;
-                        }
-                    });
-                });
-            },
-        );
+            });
+        });
     }
-    
+
     group.finish();
 }
 
 /// Benchmark inode management operations
 fn bench_inode_management(c: &mut Criterion) {
     let mut group = c.benchmark_group("inode_management");
-    
+
     // Benchmark inode allocation
     group.bench_function("allocate_inodes", |b| {
         b.iter(|| {
@@ -128,12 +117,12 @@ fn bench_inode_management(c: &mut Criterion) {
             black_box(manager);
         });
     });
-    
+
     // Benchmark inode lookup
     group.bench_function("lookup_inodes", |b| {
         let manager = InodeManager::new();
         let mut inodes = Vec::new();
-        
+
         // Setup: allocate 1000 inodes
         for i in 0..1000 {
             let entry = InodeEntry::File {
@@ -147,18 +136,18 @@ fn bench_inode_management(c: &mut Criterion) {
             let inode = manager.allocate(entry);
             inodes.push(inode);
         }
-        
+
         b.iter(|| {
             for inode in &inodes {
                 let _ = manager.get(*inode);
             }
         });
     });
-    
+
     // Benchmark parent-child relationship operations
     group.bench_function("parent_child_ops", |b| {
         let manager = InodeManager::new();
-        
+
         // Setup: create directory structure
         let root = 1u64;
         let dir1 = manager.allocate(InodeEntry::Directory {
@@ -173,10 +162,10 @@ fn bench_inode_management(c: &mut Criterion) {
             parent: root,
             children: Vec::new(),
         });
-        
+
         manager.add_child(root, dir1);
         manager.add_child(root, dir2);
-        
+
         b.iter(|| {
             // Get children
             let children = manager.get_children(root);
@@ -187,28 +176,26 @@ fn bench_inode_management(c: &mut Criterion) {
             }
         });
     });
-    
+
     group.finish();
 }
 
 /// Benchmark concurrent operations
 fn bench_concurrent_reads(c: &mut Criterion) {
     let mut group = c.benchmark_group("concurrent_operations");
-    
+
     for num_threads in [2, 4, 8, 16].iter() {
         let thread_count = *num_threads;
-        
+
         // Benchmark concurrent cache access
         group.bench_with_input(
             BenchmarkId::new("concurrent_cache_reads", thread_count),
             &thread_count,
             |b, &threads| {
                 let rt = create_runtime();
-                let cache: Arc<Cache<String, Vec<u8>>> = Arc::new(Cache::new(
-                    10000,
-                    Duration::from_secs(60)
-                ));
-                
+                let cache: Arc<Cache<String, Vec<u8>>> =
+                    Arc::new(Cache::new(10000, Duration::from_secs(60)));
+
                 // Pre-populate cache
                 rt.block_on(async {
                     for i in 0..1000 {
@@ -217,11 +204,11 @@ fn bench_concurrent_reads(c: &mut Criterion) {
                         cache.insert(key, value).await;
                     }
                 });
-                
+
                 b.iter(|| {
                     rt.block_on(async {
                         let mut handles = Vec::new();
-                        
+
                         for t in 0..threads {
                             let cache_clone = Arc::clone(&cache);
                             let handle = tokio::spawn(async move {
@@ -234,7 +221,7 @@ fn bench_concurrent_reads(c: &mut Criterion) {
                             });
                             handles.push(handle);
                         }
-                        
+
                         for handle in handles {
                             let _ = handle.await;
                         }
@@ -242,7 +229,7 @@ fn bench_concurrent_reads(c: &mut Criterion) {
                 });
             },
         );
-        
+
         // Benchmark concurrent inode operations
         group.bench_with_input(
             BenchmarkId::new("concurrent_inode_ops", thread_count),
@@ -251,7 +238,7 @@ fn bench_concurrent_reads(c: &mut Criterion) {
                 b.iter(|| {
                     let manager = Arc::new(InodeManager::new());
                     let mut handles = Vec::new();
-                    
+
                     for t in 0..threads {
                         let manager_clone = Arc::clone(&manager);
                         let handle: std::thread::JoinHandle<()> = std::thread::spawn(move || {
@@ -272,33 +259,30 @@ fn bench_concurrent_reads(c: &mut Criterion) {
                         });
                         handles.push(handle);
                     }
-                    
+
                     for handle in handles {
                         let _: () = handle.join().unwrap();
                     }
-                    
+
                     black_box(manager);
                 });
             },
         );
     }
-    
+
     group.finish();
 }
 
 /// Benchmark memory usage patterns
 fn bench_memory_usage(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_usage");
-    
+
     // Benchmark cache memory overhead
     group.bench_function("cache_memory_overhead", |b| {
         b.iter(|| {
             let rt = create_runtime();
-            let cache: Cache<String, Vec<u8>> = Cache::new(
-                10000,
-                Duration::from_secs(60)
-            );
-            
+            let cache: Cache<String, Vec<u8>> = Cache::new(10000, Duration::from_secs(60));
+
             rt.block_on(async {
                 // Insert entries of various sizes
                 for i in 0..1000 {
@@ -311,27 +295,27 @@ fn bench_memory_usage(c: &mut Criterion) {
                     let value = vec![0u8; value_size];
                     cache.insert(key, value).await;
                 }
-                
+
                 // Access some entries to update LRU
                 for i in 0..100 {
                     let key = format!("key_{}", i);
                     let _ = cache.get(&key).await;
                 }
             });
-            
+
             black_box(cache);
         });
     });
-    
+
     // Benchmark inode manager memory usage
     group.bench_function("inode_manager_memory", |b| {
         b.iter(|| {
             let manager = InodeManager::new();
-            
+
             // Create a deep directory structure
             let root = 1u64;
             let mut current_dir = root;
-            
+
             for depth in 0..100 {
                 // Create subdirectory
                 let subdir = manager.allocate(InodeEntry::Directory {
@@ -341,7 +325,7 @@ fn bench_memory_usage(c: &mut Criterion) {
                     children: Vec::new(),
                 });
                 manager.add_child(current_dir, subdir);
-                
+
                 // Add some files to each directory
                 for file_idx in 0..10 {
                     let file = manager.allocate(InodeEntry::File {
@@ -354,14 +338,14 @@ fn bench_memory_usage(c: &mut Criterion) {
                     });
                     manager.add_child(current_dir, file);
                 }
-                
+
                 current_dir = subdir;
             }
-            
+
             black_box(manager);
         });
     });
-    
+
     group.finish();
 }
 
