@@ -12,6 +12,8 @@ pub struct Config {
     pub mount: MountConfig,
     #[serde(default)]
     pub performance: PerformanceConfig,
+    #[serde(default)]
+    pub monitoring: MonitoringConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,14 @@ pub struct PerformanceConfig {
     pub max_concurrent_reads: usize,
     #[serde(default = "default_readahead_size")]
     pub readahead_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitoringConfig {
+    #[serde(default = "default_status_poll_interval")]
+    pub status_poll_interval: u64,
+    #[serde(default = "default_stalled_timeout")]
+    pub stalled_timeout: u64,
 }
 
 fn default_api_url() -> String {
@@ -96,6 +106,14 @@ fn default_readahead_size() -> u64 {
     33554432
 }
 
+fn default_status_poll_interval() -> u64 {
+    5
+}
+
+fn default_stalled_timeout() -> u64 {
+    300
+}
+
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
@@ -131,6 +149,15 @@ impl Default for PerformanceConfig {
             read_timeout: default_read_timeout(),
             max_concurrent_reads: default_max_concurrent_reads(),
             readahead_size: default_readahead_size(),
+        }
+    }
+}
+
+impl Default for MonitoringConfig {
+    fn default() -> Self {
+        Self {
+            status_poll_interval: default_status_poll_interval(),
+            stalled_timeout: default_stalled_timeout(),
         }
     }
 }
@@ -239,6 +266,20 @@ impl Config {
         if let Ok(val) = std::env::var("TORRENT_FUSE_AUTO_UNMOUNT") {
             self.mount.auto_unmount = val.parse::<bool>().map_err(|_| {
                 ConfigError::InvalidValue("TORRENT_FUSE_AUTO_UNMOUNT must be true or false".into())
+            })?;
+        }
+
+        if let Ok(interval) = std::env::var("TORRENT_FUSE_STATUS_POLL_INTERVAL") {
+            self.monitoring.status_poll_interval = interval.parse().map_err(|_| {
+                ConfigError::InvalidValue(
+                    "TORRENT_FUSE_STATUS_POLL_INTERVAL must be a number".into(),
+                )
+            })?;
+        }
+
+        if let Ok(timeout) = std::env::var("TORRENT_FUSE_STALLED_TIMEOUT") {
+            self.monitoring.stalled_timeout = timeout.parse().map_err(|_| {
+                ConfigError::InvalidValue("TORRENT_FUSE_STALLED_TIMEOUT must be a number".into())
             })?;
         }
 

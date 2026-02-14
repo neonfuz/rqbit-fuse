@@ -150,3 +150,93 @@ impl PieceBitfield {
         self.downloaded_count() == self.num_pieces
     }
 }
+
+/// Status of a torrent for monitoring
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TorrentState {
+    /// Torrent is downloading
+    Downloading,
+    /// Torrent is seeding (complete)
+    Seeding,
+    /// Torrent is paused
+    Paused,
+    /// Torrent appears stalled (no progress)
+    Stalled,
+    /// Torrent has encountered an error
+    Error,
+    /// Unknown state
+    Unknown,
+}
+
+impl std::fmt::Display for TorrentState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TorrentState::Downloading => write!(f, "downloading"),
+            TorrentState::Seeding => write!(f, "seeding"),
+            TorrentState::Paused => write!(f, "paused"),
+            TorrentState::Stalled => write!(f, "stalled"),
+            TorrentState::Error => write!(f, "error"),
+            TorrentState::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+/// Comprehensive torrent status information
+#[derive(Debug, Clone)]
+pub struct TorrentStatus {
+    pub torrent_id: u64,
+    pub state: TorrentState,
+    pub progress_pct: f64,
+    pub progress_bytes: u64,
+    pub total_bytes: u64,
+    pub downloaded_pieces: usize,
+    pub total_pieces: usize,
+    pub last_updated: std::time::Instant,
+}
+
+impl TorrentStatus {
+    /// Create a new status from stats and bitfield
+    pub fn new(torrent_id: u64, stats: &TorrentStats, bitfield: Option<&PieceBitfield>) -> Self {
+        let state = if stats.finished {
+            TorrentState::Seeding
+        } else {
+            TorrentState::Downloading
+        };
+
+        let (downloaded_pieces, total_pieces) = if let Some(bf) = bitfield {
+            (bf.downloaded_count(), bf.num_pieces)
+        } else {
+            (0, 0)
+        };
+
+        Self {
+            torrent_id,
+            state,
+            progress_pct: stats.progress_pct,
+            progress_bytes: stats.progress_bytes,
+            total_bytes: stats.total_bytes,
+            downloaded_pieces,
+            total_pieces,
+            last_updated: std::time::Instant::now(),
+        }
+    }
+
+    /// Check if the torrent is complete
+    pub fn is_complete(&self) -> bool {
+        self.state == TorrentState::Seeding || self.progress_pct >= 100.0
+    }
+
+    /// Get status as a JSON string for xattr
+    pub fn to_json(&self) -> String {
+        format!(
+            r#"{{"torrent_id":{},"state":"{}","progress_pct":{:.2},"progress_bytes":{},"total_bytes":{},"downloaded_pieces":{},"total_pieces":{}}}"#,
+            self.torrent_id,
+            self.state,
+            self.progress_pct,
+            self.progress_bytes,
+            self.total_bytes,
+            self.downloaded_pieces,
+            self.total_pieces
+        )
+    }
+}

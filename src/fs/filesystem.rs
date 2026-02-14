@@ -1,12 +1,15 @@
 use crate::api::client::RqbitClient;
+use crate::api::types::{TorrentState, TorrentStatus};
 use crate::config::Config;
 use crate::fs::inode::InodeManager;
 use crate::types::inode::InodeEntry;
 use anyhow::{Context, Result};
+use dashmap::DashMap;
 use fuser::Filesystem;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tokio::time::interval;
 use tracing::{debug, error, info, trace, warn};
 
 /// Tracks read state for a file handle to detect sequential access patterns
@@ -67,6 +70,10 @@ pub struct TorrentFS {
     initialized: bool,
     /// Tracks read patterns per file handle for read-ahead
     read_states: Arc<Mutex<HashMap<u64, ReadState>>>,
+    /// Cache of torrent statuses for monitoring
+    torrent_statuses: Arc<DashMap<u64, TorrentStatus>>,
+    /// Handle to the status monitoring task
+    monitor_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl TorrentFS {
@@ -82,7 +89,95 @@ impl TorrentFS {
             inode_manager,
             initialized: false,
             read_states: Arc::new(Mutex::new(HashMap::new())),
+            torrent_statuses: Arc::new(DashMap::new()),
+            monitor_handle: Arc::new(Mutex::new(None)),
         })
+    }
+
+    /// Start the background status monitoring task
+    fn start_status_monitoring(&self) {
+        let api_client = Arc::clone(&self.api_client);
+        let statuses = Arc::clone(&self.torrent_statuses);
+        let poll_interval = self.config.monitoring.status_poll_interval;
+        let stalled_timeout = Duration::from_secs(self.config.monitoring.stalled_timeout);
+
+        let handle = tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(poll_interval));
+            
+            loop {
+                ticker.tick().await;
+                
+                // Get list of torrents to monitor
+                let torrent_ids: Vec<u64> = statuses.iter().map(|e| *e.key()).collect();
+                
+                for torrent_id in torrent_ids {
+                    match api_client.get_torrent_stats(torrent_id).await {
+                        Ok(stats) => {
+                            // Try to get piece bitfield
+                            let bitfield_result = api_client.get_piece_bitfield(torrent_id).await.ok();
+                            
+                            let mut new_status = TorrentStatus::new(torrent_id, &stats, bitfield_result.as_ref());
+                            
+                            // Check if torrent appears stalled
+                            if let Some(existing) = statuses.get(&torrent_id) {
+                                let time_since_update = existing.last_updated.elapsed();
+                                if time_since_update > stalled_timeout && !new_status.is_complete() {
+                                    new_status.state = TorrentState::Stalled;
+                                }
+                            }
+                            
+                            statuses.insert(torrent_id, new_status);
+                            trace!("Updated status for torrent {}", torrent_id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to get stats for torrent {}: {}", torrent_id, e);
+                            // Mark as error if we can't get stats
+                            if let Some(mut status) = statuses.get_mut(&torrent_id) {
+                                status.state = TorrentState::Error;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if let Ok(mut h) = self.monitor_handle.lock() {
+            *h = Some(handle);
+        }
+
+        info!("Started status monitoring with {} second poll interval", poll_interval);
+    }
+
+    /// Stop the status monitoring task
+    fn stop_status_monitoring(&self) {
+        if let Ok(mut handle) = self.monitor_handle.lock() {
+            if let Some(h) = handle.take() {
+                h.abort();
+                info!("Stopped status monitoring");
+            }
+        }
+    }
+
+    /// Get the current status of a torrent
+    pub fn get_torrent_status(&self, torrent_id: u64) -> Option<TorrentStatus> {
+        self.torrent_statuses.get(&torrent_id).map(|s| s.clone())
+    }
+
+    /// Add a torrent to status monitoring
+    pub fn monitor_torrent(&self, torrent_id: u64, initial_status: TorrentStatus) {
+        self.torrent_statuses.insert(torrent_id, initial_status);
+        debug!("Started monitoring torrent {}", torrent_id);
+    }
+
+    /// Remove a torrent from status monitoring
+    pub fn unmonitor_torrent(&self, torrent_id: u64) {
+        self.torrent_statuses.remove(&torrent_id);
+        debug!("Stopped monitoring torrent {}", torrent_id);
+    }
+
+    /// Get all monitored torrent statuses
+    pub fn list_torrent_statuses(&self) -> Vec<TorrentStatus> {
+        self.torrent_statuses.iter().map(|e| e.clone()).collect()
     }
 
     /// Returns a reference to the API client
@@ -695,6 +790,110 @@ impl Filesystem for TorrentFS {
         reply.error(libc::EROFS);
     }
 
+    /// Get extended attribute value.
+    /// Exposes torrent status information via extended attributes.
+    fn getxattr(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        name: &std::ffi::OsStr,
+        size: u32,
+        reply: fuser::ReplyXattr,
+    ) {
+        let name_str = name.to_string_lossy();
+        debug!("getxattr: ino={}, name={}", ino, name_str);
+
+        // Only support the "user.torrent.status" attribute
+        if name_str != "user.torrent.status" {
+            reply.error(libc::ENOATTR);
+            return;
+        }
+
+        // Get the torrent ID for this inode
+        let torrent_id = match self.inode_manager.get(ino) {
+            Some(entry) => match entry {
+                InodeEntry::File { torrent_id, .. } => torrent_id,
+                InodeEntry::Directory { .. } => {
+                    // For directories, try to find torrent_id by looking up which torrent maps to this inode
+                    self.inode_manager.torrent_to_inode()
+                        .iter()
+                        .find(|item| *item.value() == ino)
+                        .map(|item| *item.key())
+                        .unwrap_or(0)
+                }
+            },
+            None => {
+                reply.error(libc::ENOENT);
+                return;
+            }
+        };
+
+        if torrent_id == 0 {
+            // This directory is not associated with a torrent (e.g., subdirectory)
+            reply.error(libc::ENOATTR);
+            return;
+        }
+
+        // Get the status
+        match self.torrent_statuses.get(&torrent_id) {
+            Some(status) => {
+                let json = status.to_json();
+                let data = json.as_bytes();
+
+                if size == 0 {
+                    // Return the size needed
+                    reply.size(data.len() as u32);
+                } else if data.len() <= size as usize {
+                    // Return the data
+                    reply.data(data);
+                } else {
+                    // Buffer too small
+                    reply.error(libc::ERANGE);
+                }
+            }
+            None => {
+                // Torrent not being monitored yet, return empty status
+                let json = format!(r#"{{"torrent_id":{},"state":"unknown"}}"#, torrent_id);
+                let data = json.as_bytes();
+
+                if size == 0 {
+                    reply.size(data.len() as u32);
+                } else {
+                    reply.data(data);
+                }
+            }
+        }
+    }
+
+    /// List extended attributes.
+    fn listxattr(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        size: u32,
+        reply: fuser::ReplyXattr,
+    ) {
+        debug!("listxattr: ino={}", ino);
+
+        // Check if inode exists
+        if self.inode_manager.get(ino).is_none() {
+            reply.error(libc::ENOENT);
+            return;
+        }
+
+        // The only attribute we support
+        let attr_list = "user.torrent.status\0";
+        let data = attr_list.as_bytes();
+
+        if size == 0 {
+            reply.size(data.len() as u32);
+        } else if data.len() <= size as usize {
+            reply.data(data);
+        } else {
+            reply.error(libc::ERANGE);
+        }
+    }
+
     /// Initialize the filesystem.
     /// Called when the filesystem is mounted. Sets up the connection to rqbit,
     /// validates the mount point, and initializes the root inode.
@@ -726,10 +925,8 @@ impl Filesystem for TorrentFS {
             }
         }
 
-        // We need to check the rqbit connection, but init() is synchronous
-        // The actual connection check will happen lazily or we spawn a task
-        // For now, we mark as initialized and the first operation will validate
-        // This is a common pattern in FUSE filesystems
+        // Start the background status monitoring task
+        self.start_status_monitoring();
 
         self.initialized = true;
         info!("torrent-fuse filesystem initialized successfully");
@@ -742,6 +939,8 @@ impl Filesystem for TorrentFS {
     fn destroy(&mut self) {
         info!("Shutting down torrent-fuse filesystem");
         self.initialized = false;
+        // Stop the status monitoring task
+        self.stop_status_monitoring();
         // Clean up any resources
     }
 }
@@ -864,6 +1063,20 @@ impl TorrentFS {
                 &mut created_dirs,
             )?;
         }
+
+        // Start monitoring this torrent's status
+        // Create an initial unknown status that will be updated by the monitoring task
+        let initial_status = TorrentStatus {
+            torrent_id,
+            state: TorrentState::Unknown,
+            progress_pct: 0.0,
+            progress_bytes: 0,
+            total_bytes: torrent_info.files.iter().map(|f| f.length).sum(),
+            downloaded_pieces: 0,
+            total_pieces: 0,
+            last_updated: Instant::now(),
+        };
+        self.monitor_torrent(torrent_id, initial_status);
 
         info!(
             "Created filesystem structure for torrent {} with {} files",

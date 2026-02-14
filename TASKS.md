@@ -96,7 +96,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Create directory structure for new torrents
   - Handle duplicate torrent detection
 
-- [ ] **Implement torrent status monitoring**
+- [x] **Implement torrent status monitoring** (2026-02-13)
   - Poll rqbit for download progress
   - Expose piece availability via filesystem attributes
   - Handle stalled/failed torrents gracefully
@@ -213,6 +213,20 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 ## Completed
 
 *Tasks as they are finished*
+
+- [x] **Implement torrent status monitoring** (2026-02-13)
+  - Added `MonitoringConfig` struct with `status_poll_interval` (default 5s) and `stalled_timeout` (default 300s)
+  - Created `TorrentState` enum with states: Downloading, Seeding, Paused, Stalled, Error, Unknown
+  - Created `TorrentStatus` struct tracking: torrent_id, state, progress_pct, progress_bytes, total_bytes, downloaded_pieces, total_pieces, last_updated
+  - Implemented background status monitoring task with configurable polling interval
+  - Added `getxattr` FUSE callback exposing `user.torrent.status` extended attribute with JSON status
+  - Added `listxattr` FUSE callback listing available extended attributes
+  - Implemented stalled detection based on timeout without progress updates
+  - Added `monitor_torrent()` and `unmonitor_torrent()` methods to add/remove torrents from monitoring
+  - Updated `create_torrent_structure()` to automatically start monitoring new torrents
+  - Status monitoring starts in `init()` and stops in `destroy()` callbacks
+  - Environment variables: `TORRENT_FUSE_STATUS_POLL_INTERVAL` and `TORRENT_FUSE_STALLED_TIMEOUT`
+  - All 29 tests passing, no clippy warnings
 
 - [x] **Implement torrent addition flow** (2026-02-13)
   - Added `add_torrent_magnet()` method to TorrentFS for adding torrents from magnet links
