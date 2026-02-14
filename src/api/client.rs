@@ -1,3 +1,4 @@
+use crate::api::streaming::PersistentStreamManager;
 use crate::api::types::*;
 use crate::metrics::ApiMetrics;
 use anyhow::{Context, Result};
@@ -117,6 +118,8 @@ pub struct RqbitClient {
     circuit_breaker: CircuitBreaker,
     /// Metrics collection
     metrics: Arc<ApiMetrics>,
+    /// Persistent stream manager for efficient sequential reads
+    stream_manager: PersistentStreamManager,
 }
 
 impl RqbitClient {
@@ -138,6 +141,8 @@ impl RqbitClient {
             .build()
             .expect("Failed to build HTTP client");
 
+        let stream_manager = PersistentStreamManager::new(client.clone(), base_url.clone());
+
         Self {
             client,
             base_url,
@@ -145,6 +150,7 @@ impl RqbitClient {
             retry_delay,
             circuit_breaker: CircuitBreaker::new(5, Duration::from_secs(30)),
             metrics,
+            stream_manager,
         }
     }
 
@@ -163,6 +169,8 @@ impl RqbitClient {
             .build()
             .expect("Failed to build HTTP client");
 
+        let stream_manager = PersistentStreamManager::new(client.clone(), base_url.clone());
+
         Self {
             client,
             base_url,
@@ -170,6 +178,7 @@ impl RqbitClient {
             retry_delay,
             circuit_breaker: CircuitBreaker::new(failure_threshold, circuit_timeout),
             metrics,
+            stream_manager,
         }
     }
 
@@ -546,7 +555,7 @@ impl RqbitClient {
                 let is_full_response = status == StatusCode::OK && is_range_request;
                 
                 if is_full_response {
-                    warn!(
+                    debug!(
                         api_op = "read_file",
                         torrent_id = torrent_id,
                         file_idx = file_idx,
@@ -621,6 +630,60 @@ impl RqbitClient {
                 Ok(Bytes::from(result))
             }
         }
+    }
+
+    /// Read file data using persistent streaming for efficient sequential access
+    ///
+    /// This method maintains open HTTP connections and reuses them for sequential reads,
+    /// significantly improving performance when rqbit ignores Range headers and returns
+    /// full file responses.
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent
+    /// * `file_idx` - Index of the file within the torrent
+    /// * `offset` - Byte offset to start reading from
+    /// * `size` - Number of bytes to read
+    ///
+    /// # Returns
+    /// * `Result<Bytes>` - The requested data
+    pub async fn read_file_streaming(
+        &self,
+        torrent_id: u64,
+        file_idx: usize,
+        offset: u64,
+        size: usize,
+    ) -> Result<Bytes> {
+        trace!(
+            api_op = "read_file_streaming",
+            torrent_id = torrent_id,
+            file_idx = file_idx,
+            offset = offset,
+            size = size
+        );
+
+        self.stream_manager.read(torrent_id, file_idx, offset, size).await
+    }
+
+    /// Close a persistent stream for a specific file
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent
+    /// * `file_idx` - Index of the file within the torrent
+    pub async fn close_file_stream(&self, torrent_id: u64, file_idx: usize) {
+        self.stream_manager.close_stream(torrent_id, file_idx).await;
+    }
+
+    /// Close all persistent streams for a torrent
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent
+    pub async fn close_torrent_streams(&self, torrent_id: u64) {
+        self.stream_manager.close_torrent_streams(torrent_id).await;
+    }
+
+    /// Get statistics about the persistent stream manager
+    pub async fn stream_stats(&self) -> crate::api::streaming::StreamManagerStats {
+        self.stream_manager.stats().await
     }
 
     // =========================================================================

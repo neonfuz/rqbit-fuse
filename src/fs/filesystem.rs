@@ -646,9 +646,12 @@ impl Filesystem for TorrentFS {
             }
         }
 
-        // Perform the read via HTTP Range request
-        // rqbit will block until data is available, respecting the read_timeout
-        
+        // Perform the read using persistent streaming for efficient sequential access
+        // This maintains open HTTP connections and reuses them, significantly improving
+        // performance when rqbit ignores Range headers and returns full file responses.
+        //
+        // Note: The persistent stream manager handles connection lifecycle internally,
+        // including idle timeouts and automatic cleanup.
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 // Set a timeout to avoid blocking forever on slow pieces
@@ -657,7 +660,7 @@ impl Filesystem for TorrentFS {
                 tokio::time::timeout(
                     timeout_duration,
                     self.api_client
-                        .read_file(torrent_id, file_index, Some((offset, end))),
+                        .read_file_streaming(torrent_id, file_index, offset, size as usize),
                 )
                 .await
             })
