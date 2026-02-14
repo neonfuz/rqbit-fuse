@@ -182,12 +182,13 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Integrated Metrics struct into TorrentFS and RqbitClient
   - All 52 tests passing, no clippy warnings
 
-- [ ] **Create user documentation**
-  - Write comprehensive README
-  - Document installation steps
-  - Document configuration options
-  - Provide usage examples
-  - Document limitations and known issues
+- [x] **Create user documentation** (2026-02-13)
+  - Wrote comprehensive README.md with project description, features, and architecture
+  - Documented installation steps for all platforms
+  - Documented configuration options (TOML config and environment variables)
+  - Provided usage examples including streaming, systemd service, and extended attributes
+  - Documented limitations, known issues, and troubleshooting guide
+  - All 52 tests passing, no clippy warnings
 
 ## Phase 7: Testing & Quality
 
