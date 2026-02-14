@@ -57,8 +57,9 @@ This ensures that even when the children vector hasn't been populated yet (due t
 
 ### [P1] Stats API mismatch causing warnings
 
-**Status:** 🔧 Identified  
+**Status:** ✅ Fixed  
 **Discovered:** 2026-02-14  
+**Fixed:** 2026-02-14  
 **Reporter:** User (neonfuz)
 
 **Problem:**
@@ -68,12 +69,12 @@ This ensures that even when the children vector hasn't been populated yet (due t
 **Actual API Response:**
 ```json
 {
-  "snapshot": { "downloaded_and_checked_bytes": 0, ... },
+  "snapshot": { "downloaded_and_checked_bytes": 0, "total_bytes": 0, ... },
   "download_speed": { "mbps": 0.0, "human_readable": "0.00 MiB/s" }
 }
 ```
 
-**Expected by Code:**
+**Expected by Code (OLD):**
 ```rust
 pub struct TorrentStats {
     pub file_count: usize,      // Missing from API
@@ -83,19 +84,24 @@ pub struct TorrentStats {
 }
 ```
 
-**Impact:** 
-- Warning spam every 5 seconds (monitoring interval)
-- No actual functionality broken - monitoring just logs warnings
+**Fix:**
+Updated `TorrentStats` struct to match actual API v1 response structure:
+- Added `TorrentSnapshot` struct with `downloaded_and_checked_bytes`, `total_bytes`, and optional fields
+- Added `DownloadSpeed` struct with `mbps` and `human_readable`
+- Updated `TorrentStats` to contain `snapshot` and `download_speed` fields
+- Updated `TorrentStatus::new()` to calculate `progress_pct` from bytes
+- Updated trace logging in client to use new fields
+- Updated tests to mock correct response structure
 
-**Fix Options:**
-1. **Option A:** Update `TorrentStats` struct to match actual API (preferred)
-2. **Option B:** Make all fields optional with `#[serde(default)]`
-3. **Option C:** Silently ignore parse errors in monitoring loop
+**Files Modified:**
+- `src/api/types.rs` - Replaced TorrentStats with new structure matching API
+- `src/api/client.rs` - Updated trace logging and test mocks
 
-**Next Steps:**
-- [ ] Verify stats endpoint behavior across different rqbit versions
-- [ ] Decide on fix approach (likely Option A or B)
-- [ ] Update `src/api/types.rs`
+**Result:**
+- All 98 tests passing
+- No clippy warnings
+- Warning spam eliminated
+- API responses deserialize correctly
 
 ---
 

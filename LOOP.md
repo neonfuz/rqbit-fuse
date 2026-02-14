@@ -87,5 +87,12 @@ Next Tasks (Phase 7: Testing & Quality):
   - Fallback now triggers when children list is empty, not just when parent isn't a directory
   - All 98 tests passing (76 unit + 12 integration + 10 performance)
   - See FIXES.md for full details
+- [x] Fix P1: Stats API mismatch causing warnings (see FIXES.md)
+  - **FIXED**: Updated `TorrentStats` struct to match actual rqbit API v1 stats endpoint
+  - Changed struct to use `snapshot` (with `downloaded_and_checked_bytes`, `total_bytes`) and `download_speed` fields
+  - Updated `TorrentStatus::new()` to calculate progress_pct from bytes
+  - Updated trace logging and tests to use new structure
+  - All 98 tests passing, no clippy warnings
+  - Warning spam eliminated - API responses now deserialize correctly
 
 (End of file - total 89 lines)

@@ -190,19 +190,41 @@ pub struct FileInfo {
     pub components: Vec<String>,
 }
 
-/// Response from getting torrent statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TorrentStats {
-    #[serde(rename = "file_count")]
-    pub file_count: usize,
-    pub files: Vec<FileStats>,
-    pub finished: bool,
-    #[serde(rename = "progress_bytes")]
-    pub progress_bytes: u64,
-    #[serde(rename = "progress_pct")]
-    pub progress_pct: f64,
+/// Download speed information from stats endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DownloadSpeed {
+    pub mbps: f64,
+    #[serde(rename = "human_readable")]
+    pub human_readable: String,
+}
+
+/// Snapshot of torrent download state from stats endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TorrentSnapshot {
+    #[serde(rename = "downloaded_and_checked_bytes")]
+    pub downloaded_and_checked_bytes: u64,
+    #[serde(rename = "downloaded_and_checked_pieces")]
+    pub downloaded_and_checked_pieces: Option<u64>,
+    #[serde(rename = "fetched_bytes")]
+    pub fetched_bytes: Option<u64>,
+    #[serde(rename = "uploaded_bytes")]
+    pub uploaded_bytes: Option<u64>,
+    #[serde(rename = "remaining_bytes")]
+    pub remaining_bytes: Option<u64>,
     #[serde(rename = "total_bytes")]
     pub total_bytes: u64,
+    #[serde(rename = "total_piece_download_ms")]
+    pub total_piece_download_ms: Option<u64>,
+    #[serde(rename = "peer_stats")]
+    pub peer_stats: Option<serde_json::Value>,
+}
+
+/// Response from getting torrent statistics (v1 endpoint)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentStats {
+    pub snapshot: TorrentSnapshot,
+    #[serde(rename = "download_speed")]
+    pub download_speed: DownloadSpeed,
 }
 
 /// File statistics from API
@@ -313,7 +335,18 @@ pub struct TorrentStatus {
 impl TorrentStatus {
     /// Create a new status from stats and bitfield
     pub fn new(torrent_id: u64, stats: &TorrentStats, bitfield: Option<&PieceBitfield>) -> Self {
-        let state = if stats.finished {
+        let progress_bytes = stats.snapshot.downloaded_and_checked_bytes;
+        let total_bytes = stats.snapshot.total_bytes;
+
+        // Calculate progress percentage
+        let progress_pct = if total_bytes > 0 {
+            (progress_bytes as f64 / total_bytes as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Determine state based on progress
+        let state = if progress_bytes >= total_bytes && total_bytes > 0 {
             TorrentState::Seeding
         } else {
             TorrentState::Downloading
@@ -328,9 +361,9 @@ impl TorrentStatus {
         Self {
             torrent_id,
             state,
-            progress_pct: stats.progress_pct,
-            progress_bytes: stats.progress_bytes,
-            total_bytes: stats.total_bytes,
+            progress_pct,
+            progress_bytes,
+            total_bytes,
             downloaded_pieces,
             total_pieces,
             last_updated: std::time::Instant::now(),

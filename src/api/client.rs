@@ -412,10 +412,16 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let stats: TorrentStats = response.json().await?;
+                let progress_pct = if stats.snapshot.total_bytes > 0 {
+                    (stats.snapshot.downloaded_and_checked_bytes as f64 / stats.snapshot.total_bytes as f64) * 100.0
+                } else {
+                    0.0
+                };
                 trace!(
                     api_op = "get_torrent_stats",
                     id = id,
-                    progress_pct = stats.progress_pct
+                    progress_pct = progress_pct,
+                    download_speed_mbps = stats.download_speed.mbps
                 );
                 Ok(stats)
             }
@@ -1051,15 +1057,14 @@ mod tests {
         let client = RqbitClient::new(mock_server.uri(), metrics);
 
         let response_body = serde_json::json!({
-            "file_count": 2,
-            "files": [
-                {"length": 1024, "included": true},
-                {"length": 2048, "included": true}
-            ],
-            "finished": false,
-            "progress_bytes": 1500,
-            "progress_pct": 0.5,
-            "total_bytes": 3072
+            "snapshot": {
+                "downloaded_and_checked_bytes": 1500,
+                "total_bytes": 3072
+            },
+            "download_speed": {
+                "mbps": 1.5,
+                "human_readable": "1.50 MiB/s"
+            }
         });
 
         Mock::given(method("GET"))
@@ -1069,11 +1074,10 @@ mod tests {
             .await;
 
         let stats = client.get_torrent_stats(1).await.unwrap();
-        assert_eq!(stats.file_count, 2);
-        assert_eq!(stats.progress_bytes, 1500);
-        assert_eq!(stats.progress_pct, 0.5);
-        assert_eq!(stats.total_bytes, 3072);
-        assert!(!stats.finished);
+        assert_eq!(stats.snapshot.downloaded_and_checked_bytes, 1500);
+        assert_eq!(stats.snapshot.total_bytes, 3072);
+        assert_eq!(stats.download_speed.mbps, 1.5);
+        assert_eq!(stats.download_speed.human_readable, "1.50 MiB/s");
     }
 
     #[tokio::test]
