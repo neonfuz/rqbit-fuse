@@ -60,6 +60,37 @@ Access your torrents through standard filesystem operations—stream videos whil
    rqbit server start
    ```
 
+## Platform Support
+
+| Platform | Support | Notes |
+|----------|---------|-------|
+| Linux    | Full    | Native FUSE support, all features available |
+| macOS    | Full    | Requires macFUSE, all features available |
+| Windows  | None    | Not supported - use WSL2 as alternative |
+
+### Windows Alternative: WSL2
+
+Since Windows does not have native FUSE support and the `fuser` crate used by this project does not support Windows, you can run torrent-fuse on Windows using WSL2:
+
+1. Install WSL2 with a Linux distribution (Ubuntu recommended)
+2. Install FUSE libraries inside WSL2:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install libfuse-dev
+   ```
+3. Install rqbit and torrent-fuse within WSL2
+4. Mount the filesystem to a path inside WSL2:
+   ```bash
+   mkdir -p ~/torrents
+   torrent-fuse mount ~/torrents
+   ```
+5. Access the mount from Windows via `\\wsl$\Ubuntu\home\<user>\torrents`
+
+**Technical Note:** Windows support would require either:
+- Using WinFsp or Dokan as FUSE alternatives (requires significant code changes)
+- Implementing a native Windows filesystem driver (major undertaking)
+- Using WSL2's FUSE passthrough (current recommended approach)
+
 ## Installation
 
 ### From source:

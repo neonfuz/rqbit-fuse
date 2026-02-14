@@ -71,9 +71,10 @@ Next Tasks (Phase 7: Testing & Quality):
   - [x] Determined Windows support requires major refactoring or alternative approach
   - **Decision**: Windows not supported; document WSL2 as alternative
   - Research findings: `research/windows-build-support.md`
-- [ ] Document Windows limitations in README
-  - Add "Platform Support" section explaining Linux/macOS only
-  - Document WSL2 as Windows alternative
-  - Explain technical reasons (fuser crate doesn't support Windows)
+- [x] Document Windows limitations in README
+  - Added "Platform Support" section with Linux/macOS/Windows support matrix
+  - Documented WSL2 as Windows alternative with setup instructions
+  - Explained technical reasons (fuser crate doesn't support Windows)
+  - Located in README.md after Prerequisites section
 
 (End of file - total 79 lines)
