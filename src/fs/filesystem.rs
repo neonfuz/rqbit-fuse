@@ -654,6 +654,17 @@ impl Filesystem for TorrentFS {
 
         // Perform the read via HTTP Range request
         // rqbit will block until data is available, respecting the read_timeout
+        info!(
+            fuse_op = "read",
+            ino = ino,
+            torrent_id = torrent_id,
+            file_index = file_index,
+            range_start = offset,
+            range_end = end,
+            requested_size = size,
+            "Starting API read"
+        );
+        
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 // Set a timeout to avoid blocking forever on slow pieces
@@ -675,6 +686,19 @@ impl Filesystem for TorrentFS {
                 let bytes_read = data.len() as u64;
                 self.metrics.fuse.record_read(bytes_read, latency);
 
+                // Detailed logging to diagnose zero-byte reads
+                info!(
+                    fuse_op = "read",
+                    ino = ino,
+                    torrent_id = torrent_id,
+                    file_index = file_index,
+                    offset = offset,
+                    requested_size = size,
+                    api_response_bytes = bytes_read,
+                    latency_ms = latency.as_millis() as u64,
+                    "API read completed"
+                );
+
                 if self.config.logging.log_fuse_operations {
                     debug!(
                         fuse_op = "read",
@@ -690,8 +714,19 @@ impl Filesystem for TorrentFS {
 
                 // Truncate data to requested size to prevent "Too much data" FUSE panic
                 // The API might return more data than requested (e.g., entire piece)
-                let data = &data[..std::cmp::min(data.len(), size as usize)];
-                reply.data(data);
+                let data_slice = if data.len() > size as usize {
+                    warn!(
+                        fuse_op = "read",
+                        ino = ino,
+                        api_response_bytes = data.len(),
+                        requested_size = size,
+                        "Truncating API response to requested size"
+                    );
+                    &data[..size as usize]
+                } else {
+                    &data[..]
+                };
+                reply.data(data_slice);
             }
             Ok(Err(e)) => {
                 self.metrics.fuse.record_error();
