@@ -410,7 +410,13 @@ impl TorrentFS {
 
     /// Build file attributes for a given inode entry.
     /// Converts internal InodeEntry to FUSE FileAttr.
-    fn build_file_attr(&self, entry: &crate::types::inode::InodeEntry) -> fuser::FileAttr {
+    ///
+    /// # Arguments
+    /// * `entry` - The inode entry to build attributes for
+    ///
+    /// # Returns
+    /// * `fuser::FileAttr` - The FUSE file attributes
+    pub fn build_file_attr(&self, entry: &crate::types::inode::InodeEntry) -> fuser::FileAttr {
         use crate::types::inode::InodeEntry;
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -1441,7 +1447,16 @@ impl TorrentFS {
     /// Creates the filesystem directory structure for a torrent.
     /// For single-file torrents, the file is added directly to root.
     /// For multi-file torrents, a directory is created with the torrent name.
-    fn create_torrent_structure(
+    /// 
+    /// # Arguments
+    /// * `torrent_info` - The torrent metadata from rqbit API
+    /// 
+    /// # Returns
+    /// * `Result<()>` - Ok if structure was created successfully
+    /// 
+    /// # Errors
+    /// Returns an error if inode allocation fails
+    pub fn create_torrent_structure(
         &self,
         torrent_info: &crate::api::types::TorrentInfo,
     ) -> Result<()> {

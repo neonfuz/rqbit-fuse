@@ -199,11 +199,16 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Configuration parsing: 4 tests for TOML/JSON parsing and CLI merging
   - Total: 76 tests passing, no clippy warnings
 
-- [ ] **Integration tests**
-  - Test FUSE operations with memory filesystem
-  - Test with actual rqbit server
-  - Test with sample torrents
-  - Test error scenarios
+- [x] **Integration tests** (2026-02-13)
+  - Created 12 comprehensive integration tests in `tests/integration_tests.rs`
+  - Tests cover: filesystem initialization, torrent structure creation (single/multi-file)
+  - Tests nested directory structures and deeply nested paths
+  - Tests edge cases: unicode filenames, empty files, concurrent additions
+  - Tests error scenarios: API unavailable, network failures
+  - Tests metrics collection and file attribute generation
+  - Tests torrent removal with proper inode cleanup
+  - Made `create_torrent_structure` and `build_file_attr` public for testing
+  - All 88 tests passing (76 unit + 12 integration), no clippy warnings
 
 - [ ] **Performance tests**
   - Benchmark read throughput
