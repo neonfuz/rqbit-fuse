@@ -27,7 +27,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Add retry logic with exponential backoff
   - Map API errors to appropriate types with FUSE error code conversion
 
-- [ ] **Create configuration system**
+- [x] **Create configuration system**
   - Define `Config` struct with all options
   - Support config file (JSON/YAML/TOML)
   - Support environment variables
@@ -237,6 +237,16 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Created comprehensive `ApiError` enum with FUSE error code mapping
   - Added health check endpoint for connection validation
   - All 4 API client tests passing
+
+- [x] **Create configuration system** (2026-02-13)
+  - Defined comprehensive `Config` struct with nested structures (ApiConfig, CacheConfig, MountConfig, PerformanceConfig)
+  - Support for TOML and JSON config files
+  - Support for environment variables with TORRENT_FUSE_* prefix
+  - Support for CLI argument overrides using clap
+  - Default config locations: ~/.config/torrent-fuse/config.toml, /etc/torrent-fuse/config.toml, ./torrent-fuse.toml
+  - Configuration merging: defaults -> file -> env -> CLI
+  - Added 4 unit tests for config parsing and merging
+  - All 8 tests passing, no clippy warnings
 
 ## Discovered Issues
 
