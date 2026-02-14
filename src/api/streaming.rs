@@ -77,11 +77,9 @@ impl PersistentStream {
 
         // Check if we got a successful response
         if !status.is_success() && status != StatusCode::PARTIAL_CONTENT {
-            return Err(ApiError::HttpError(format!(
-                "Failed to create stream: HTTP {}",
-                status
-            ))
-            .into());
+            return Err(
+                ApiError::HttpError(format!("Failed to create stream: HTTP {}", status)).into(),
+            );
         }
 
         // Check if server returned 200 OK for a range request (rqbit bug workaround)
@@ -139,7 +137,8 @@ impl PersistentStream {
             let to_copy = pending.len().min(buf.len());
             buf[..to_copy].copy_from_slice(&pending[..to_copy]);
             bytes_read += to_copy;
-            
+            self.current_position += to_copy as u64; // Update position!
+
             if to_copy < pending.len() {
                 // Still have data left in pending
                 *pending = pending.slice(to_copy..);
@@ -196,7 +195,8 @@ impl PersistentStream {
         if let Some(ref mut pending) = self.pending_buffer {
             let to_skip = pending.len().min(bytes_to_skip as usize);
             skipped += to_skip as u64;
-            
+            self.current_position += to_skip as u64; // Update position!
+
             if to_skip < pending.len() {
                 // Still have data left in pending
                 *pending = pending.slice(to_skip..);
@@ -386,10 +386,7 @@ impl PersistentStreamManager {
             // If we need to seek forward a bit, do it
             if offset > stream.current_position {
                 let gap = offset - stream.current_position;
-                trace!(
-                    bytes_to_skip = gap,
-                    "Skipping forward in existing stream"
-                );
+                trace!(bytes_to_skip = gap, "Skipping forward in existing stream");
                 stream.skip(gap).await?;
             }
 
@@ -474,7 +471,6 @@ impl PersistentStreamManager {
                 torrent_id = torrent_id,
                 closed_count = before_count - after_count,
                 "Closed all streams for torrent"
-                
             );
         }
     }

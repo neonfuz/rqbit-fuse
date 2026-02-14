@@ -217,24 +217,82 @@ Returns an M3U8 playlist for a specific torrent.
 
 **Description:** Get detailed download statistics.
 
-**Response:**
+**Response (Live Torrent):**
 ```json
 {
-  "file_count": 1,
-  "files": [
-    {
-      "length": 5120000000,
-      "included": true
-    }
-  ],
-  "finished": false,
-  "progress_bytes": 104857600,
-  "progress_pct": 2.05,
-  "total_bytes": 5120000000
+  "state": "live",
+  "file_progress": [5702520832],
+  "error": null,
+  "progress_bytes": 5702520832,
+  "uploaded_bytes": 872448,
+  "total_bytes": 5702520832,
+  "finished": true,
+  "live": {
+    "snapshot": {
+      "downloaded_and_checked_bytes": 5702520832,
+      "downloaded_and_checked_pieces": 21754,
+      "fetched_bytes": 6735450112,
+      "uploaded_bytes": 872448,
+      "peer_stats": {
+        "queued": 0,
+        "connecting": 0,
+        "live": 0,
+        "seen": 12999,
+        "dead": 0,
+        "not_needed": 12999,
+        "steals": 5694
+      },
+      "total_piece_download_ms": 38607086
+    },
+    "average_piece_download_time": {
+      "secs": 1,
+      "nanos": 774712053
+    },
+    "download_speed": {
+      "mbps": 0.0,
+      "human_readable": "0.00 MiB/s"
+    },
+    "upload_speed": {
+      "mbps": 0.0,
+      "human_readable": "0.00 MiB/s"
+    },
+    "time_remaining": null
+  }
 }
 ```
 
-**Usage:** Show download progress, check if file is complete.
+**Response (Error State):**
+```json
+{
+  "state": "error",
+  "file_progress": [],
+  "error": "error writing to file...\n\nCaused by:\n    No space left on device (os error 28)",
+  "progress_bytes": 0,
+  "uploaded_bytes": 0,
+  "total_bytes": 2969567232,
+  "finished": false,
+  "live": null
+}
+```
+
+**Fields:**
+- `state`: Torrent state ("live", "paused", "error")
+- `file_progress`: Array of bytes downloaded per file
+- `error`: Error message if in error state, null otherwise
+- `progress_bytes`: Total bytes downloaded
+- `uploaded_bytes`: Total bytes uploaded
+- `total_bytes`: Total torrent size
+- `finished`: Whether the torrent is complete
+  - `live`: Live statistics (null if torrent is in error state)
+    - `snapshot`: Detailed download progress information (does not include total_bytes)
+    - `download_speed`: Current download speed
+    - `upload_speed`: Current upload speed
+    - `average_piece_download_time`: Average time to download a piece
+    - `time_remaining`: Estimated time remaining
+
+**Usage:** Show download progress, check if file is complete, monitor errors.
+
+**Note:** The `live` field is null when the torrent is in an error state. Always check for null before accessing nested fields.
 
 **Cache TTL:** 10 seconds
 

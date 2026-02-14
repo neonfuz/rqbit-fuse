@@ -198,6 +198,14 @@ pub struct DownloadSpeed {
     pub human_readable: String,
 }
 
+/// Upload speed information from stats endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UploadSpeed {
+    pub mbps: f64,
+    #[serde(rename = "human_readable")]
+    pub human_readable: String,
+}
+
 /// Snapshot of torrent download state from stats endpoint
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TorrentSnapshot {
@@ -211,20 +219,41 @@ pub struct TorrentSnapshot {
     pub uploaded_bytes: Option<u64>,
     #[serde(rename = "remaining_bytes")]
     pub remaining_bytes: Option<u64>,
-    #[serde(rename = "total_bytes")]
-    pub total_bytes: u64,
     #[serde(rename = "total_piece_download_ms")]
     pub total_piece_download_ms: Option<u64>,
     #[serde(rename = "peer_stats")]
     pub peer_stats: Option<serde_json::Value>,
 }
 
+/// Live stats for an active torrent (present when state is "live")
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveStats {
+    pub snapshot: TorrentSnapshot,
+    #[serde(rename = "average_piece_download_time")]
+    pub average_piece_download_time: Option<serde_json::Value>,
+    #[serde(rename = "download_speed")]
+    pub download_speed: DownloadSpeed,
+    #[serde(rename = "upload_speed")]
+    pub upload_speed: UploadSpeed,
+    #[serde(rename = "time_remaining")]
+    pub time_remaining: Option<serde_json::Value>,
+}
+
 /// Response from getting torrent statistics (v1 endpoint)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentStats {
-    pub snapshot: TorrentSnapshot,
-    #[serde(rename = "download_speed")]
-    pub download_speed: DownloadSpeed,
+    pub state: String,
+    #[serde(rename = "file_progress")]
+    pub file_progress: Vec<u64>,
+    pub error: Option<String>,
+    #[serde(rename = "progress_bytes")]
+    pub progress_bytes: u64,
+    #[serde(rename = "uploaded_bytes")]
+    pub uploaded_bytes: u64,
+    #[serde(rename = "total_bytes")]
+    pub total_bytes: u64,
+    pub finished: bool,
+    pub live: Option<LiveStats>,
 }
 
 /// File statistics from API
@@ -335,8 +364,8 @@ pub struct TorrentStatus {
 impl TorrentStatus {
     /// Create a new status from stats and bitfield
     pub fn new(torrent_id: u64, stats: &TorrentStats, bitfield: Option<&PieceBitfield>) -> Self {
-        let progress_bytes = stats.snapshot.downloaded_and_checked_bytes;
-        let total_bytes = stats.snapshot.total_bytes;
+        let progress_bytes = stats.progress_bytes;
+        let total_bytes = stats.total_bytes;
 
         // Calculate progress percentage
         let progress_pct = if total_bytes > 0 {
@@ -345,11 +374,17 @@ impl TorrentStatus {
             0.0
         };
 
-        // Determine state based on progress
-        let state = if progress_bytes >= total_bytes && total_bytes > 0 {
+        // Determine state from API response and progress
+        let state = if stats.error.is_some() {
+            TorrentState::Error
+        } else if stats.finished || (progress_bytes >= total_bytes && total_bytes > 0) {
             TorrentState::Seeding
-        } else {
+        } else if stats.state == "paused" {
+            TorrentState::Paused
+        } else if stats.state == "live" {
             TorrentState::Downloading
+        } else {
+            TorrentState::Unknown
         };
 
         let (downloaded_pieces, total_pieces) = if let Some(bf) = bitfield {

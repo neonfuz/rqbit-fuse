@@ -217,25 +217,48 @@ impl InodeManager {
         // First check if it's a directory and use its children list
         if let Some(parent_entry) = self.entries.get(&parent_inode) {
             if let InodeEntry::Directory { children, .. } = &*parent_entry {
+                tracing::debug!(
+                    parent = parent_inode,
+                    children_count = children.len(),
+                    "get_children: found directory"
+                );
                 // If children list is populated, use it
                 if !children.is_empty() {
-                    return children
+                    let result: Vec<_> = children
                         .iter()
                         .filter_map(|&child_ino| {
                             self.entries.get(&child_ino).map(|e| (child_ino, e.clone()))
                         })
                         .collect();
+                    tracing::debug!(
+                        parent = parent_inode,
+                        result_count = result.len(),
+                        "get_children: returning children from list"
+                    );
+                    return result;
                 }
+            } else {
+                tracing::warn!(parent = parent_inode, "get_children: not a directory");
             }
+        } else {
+            tracing::warn!(parent = parent_inode, "get_children: parent not found");
         }
 
         // Fallback: filter by parent field for entries not yet in children list
         // This handles the case where DashMap writes haven't propagated yet
-        self.entries
+        let result: Vec<_> = self
+            .entries
             .iter()
             .filter(|entry| entry.parent() == parent_inode)
             .map(|entry| (entry.ino(), entry.clone()))
-            .collect()
+            .collect();
+        tracing::debug!(
+            parent = parent_inode,
+            result_count = result.len(),
+            total_entries = self.entries.len(),
+            "get_children: using fallback scan"
+        );
+        result
     }
 
     /// Gets the next inode number without allocating it.
@@ -337,12 +360,29 @@ impl InodeManager {
 
     /// Adds a child to a directory's children list.
     pub fn add_child(&self, parent: u64, child: u64) {
+        tracing::debug!(parent = parent, child = child, "add_child called");
         if let Some(mut entry) = self.entries.get_mut(&parent) {
             if let InodeEntry::Directory { children, .. } = &mut *entry {
                 if !children.contains(&child) {
                     children.push(child);
+                    tracing::debug!(
+                        parent = parent,
+                        child = child,
+                        children_count = children.len(),
+                        "Added child to directory"
+                    );
+                } else {
+                    tracing::debug!(
+                        parent = parent,
+                        child = child,
+                        "Child already exists in directory"
+                    );
                 }
+            } else {
+                tracing::warn!(parent = parent, "Parent is not a directory");
             }
+        } else {
+            tracing::warn!(parent = parent, "Parent inode not found");
         }
     }
 

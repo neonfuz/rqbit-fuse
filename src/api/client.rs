@@ -5,13 +5,13 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 
+use futures::stream::StreamExt;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{debug, error, trace, warn};
-use futures::stream::StreamExt;
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -423,16 +423,24 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let stats: TorrentStats = response.json().await?;
-                let progress_pct = if stats.snapshot.total_bytes > 0 {
-                    (stats.snapshot.downloaded_and_checked_bytes as f64 / stats.snapshot.total_bytes as f64) * 100.0
+                let progress_pct = if stats.total_bytes > 0 {
+                    (stats.progress_bytes as f64 / stats.total_bytes as f64) * 100.0
                 } else {
                     0.0
                 };
+                let download_speed_mbps = stats
+                    .live
+                    .as_ref()
+                    .map(|live| live.download_speed.mbps)
+                    .unwrap_or(0.0);
                 trace!(
                     api_op = "get_torrent_stats",
                     id = id,
+                    state = %stats.state,
                     progress_pct = progress_pct,
-                    download_speed_mbps = stats.download_speed.mbps
+                    download_speed_mbps = download_speed_mbps,
+                    finished = stats.finished,
+                    error = ?stats.error
                 );
                 Ok(stats)
             }
@@ -550,10 +558,10 @@ impl RqbitClient {
                 let status = response.status();
                 let is_range_request = range.is_some();
                 let requested_size = range.map(|(start, end)| (end - start + 1) as usize);
-                
+
                 // Check if server returned 200 OK for a range request (rqbit bug workaround)
                 let is_full_response = status == StatusCode::OK && is_range_request;
-                
+
                 if is_full_response {
                     debug!(
                         api_op = "read_file",
@@ -563,9 +571,9 @@ impl RqbitClient {
                         requested_size.unwrap_or(0)
                     );
                 }
-                
+
                 let response = self.check_response(response).await?;
-                
+
                 // Stream the response and apply byte limit if needed
                 let mut stream = response.bytes_stream();
                 let mut result = Vec::new();
@@ -580,10 +588,10 @@ impl RqbitClient {
                 } else {
                     (None, 0)
                 };
-                
+
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk?;
-                    
+
                     // Handle skipping bytes for full response workaround
                     if bytes_to_skip > 0 {
                         if chunk.len() <= bytes_to_skip {
@@ -594,7 +602,7 @@ impl RqbitClient {
                             // Partial skip - take remaining bytes from this chunk
                             let remaining = &chunk[bytes_to_skip..];
                             bytes_to_skip = 0;
-                            
+
                             if let Some(limit) = limit {
                                 let to_take = remaining.len().min(limit.saturating_sub(total_read));
                                 result.extend_from_slice(&remaining[..to_take]);
@@ -609,7 +617,7 @@ impl RqbitClient {
                             continue;
                         }
                     }
-                    
+
                     // Normal reading (no skip needed)
                     if let Some(limit) = limit {
                         let remaining = limit.saturating_sub(total_read);
@@ -661,7 +669,9 @@ impl RqbitClient {
             size = size
         );
 
-        self.stream_manager.read(torrent_id, file_idx, offset, size).await
+        self.stream_manager
+            .read(torrent_id, file_idx, offset, size)
+            .await
     }
 
     /// Close a persistent stream for a specific file
@@ -1192,13 +1202,25 @@ mod tests {
         let client = RqbitClient::new(mock_server.uri(), metrics);
 
         let response_body = serde_json::json!({
-            "snapshot": {
-                "downloaded_and_checked_bytes": 1500,
-                "total_bytes": 3072
-            },
-            "download_speed": {
-                "mbps": 1.5,
-                "human_readable": "1.50 MiB/s"
+            "state": "live",
+            "file_progress": [1500],
+            "error": null,
+            "progress_bytes": 1500,
+            "uploaded_bytes": 0,
+            "total_bytes": 3072,
+            "finished": false,
+            "live": {
+                "snapshot": {
+                    "downloaded_and_checked_bytes": 1500
+                },
+                "download_speed": {
+                    "mbps": 1.5,
+                    "human_readable": "1.50 MiB/s"
+                },
+                "upload_speed": {
+                    "mbps": 0.5,
+                    "human_readable": "0.50 MiB/s"
+                }
             }
         });
 
@@ -1209,10 +1231,47 @@ mod tests {
             .await;
 
         let stats = client.get_torrent_stats(1).await.unwrap();
-        assert_eq!(stats.snapshot.downloaded_and_checked_bytes, 1500);
-        assert_eq!(stats.snapshot.total_bytes, 3072);
-        assert_eq!(stats.download_speed.mbps, 1.5);
-        assert_eq!(stats.download_speed.human_readable, "1.50 MiB/s");
+        assert_eq!(stats.state, "live");
+        assert_eq!(stats.progress_bytes, 1500);
+        assert_eq!(stats.total_bytes, 3072);
+        assert!(!stats.finished);
+        assert!(stats.live.is_some());
+        let live = stats.live.unwrap();
+        assert_eq!(live.snapshot.downloaded_and_checked_bytes, 1500);
+        assert_eq!(live.download_speed.mbps, 1.5);
+        assert_eq!(live.download_speed.human_readable, "1.50 MiB/s");
+    }
+
+    #[tokio::test]
+    async fn test_get_torrent_stats_error_state() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let response_body = serde_json::json!({
+            "state": "error",
+            "file_progress": [],
+            "error": "No space left on device",
+            "progress_bytes": 0,
+            "uploaded_bytes": 0,
+            "total_bytes": 1000000000,
+            "finished": false,
+            "live": null
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/3/stats/v1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let stats = client.get_torrent_stats(3).await.unwrap();
+        assert_eq!(stats.state, "error");
+        assert_eq!(stats.error, Some("No space left on device".to_string()));
+        assert_eq!(stats.progress_bytes, 0);
+        assert_eq!(stats.total_bytes, 1000000000);
+        assert!(!stats.finished);
+        assert!(stats.live.is_none());
     }
 
     #[tokio::test]

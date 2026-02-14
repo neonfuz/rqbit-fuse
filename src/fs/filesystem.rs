@@ -75,8 +75,12 @@ pub struct TorrentFS {
     torrent_statuses: Arc<DashMap<u64, TorrentStatus>>,
     /// Handle to the status monitoring task
     monitor_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Handle to the torrent discovery task
+    discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Metrics collection
     metrics: Arc<Metrics>,
+    /// Last time torrent discovery was performed
+    last_discovery: Arc<Mutex<Instant>>,
 }
 
 impl TorrentFS {
@@ -97,7 +101,9 @@ impl TorrentFS {
             read_states: Arc::new(Mutex::new(HashMap::new())),
             torrent_statuses: Arc::new(DashMap::new()),
             monitor_handle: Arc::new(Mutex::new(None)),
+            discovery_handle: Arc::new(Mutex::new(None)),
             metrics,
+            last_discovery: Arc::new(Mutex::new(Instant::now())),
         })
     }
 
@@ -169,6 +175,280 @@ impl TorrentFS {
                 info!("Stopped status monitoring");
             }
         }
+    }
+
+    /// Start the background torrent discovery task
+    fn start_torrent_discovery(&self) {
+        let api_client = Arc::clone(&self.api_client);
+        let inode_manager = Arc::clone(&self.inode_manager);
+        let last_discovery = Arc::clone(&self.last_discovery);
+        let poll_interval = Duration::from_secs(30); // Check every 30 seconds
+
+        let handle = tokio::spawn(async move {
+            let mut ticker = interval(poll_interval);
+
+            loop {
+                ticker.tick().await;
+
+                // Get list of torrents from rqbit
+                match api_client.list_torrents().await {
+                    Ok(torrents) => {
+                        let mut new_count = 0;
+
+                        for torrent_info in torrents {
+                            // Check if we already have this torrent
+                            if inode_manager.lookup_torrent(torrent_info.id).is_none() {
+                                // New torrent found - create filesystem structure
+                                if let Err(e) = Self::create_torrent_structure_static(
+                                    &inode_manager,
+                                    &torrent_info,
+                                ) {
+                                    warn!(
+                                        "Failed to create structure for torrent {}: {}",
+                                        torrent_info.id, e
+                                    );
+                                } else {
+                                    new_count += 1;
+                                    info!(
+                                        "Discovered new torrent {}: {}",
+                                        torrent_info.id, torrent_info.name
+                                    );
+                                }
+                            }
+                        }
+
+                        if new_count > 0 {
+                            info!("Background discovery found {} new torrents", new_count);
+                        }
+
+                        // Update last discovery time
+                        if let Ok(mut last) = last_discovery.lock() {
+                            *last = Instant::now();
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to discover torrents in background task: {}", e);
+                    }
+                }
+            }
+        });
+
+        if let Ok(mut h) = self.discovery_handle.lock() {
+            *h = Some(handle);
+        }
+
+        info!(
+            "Started background torrent discovery with {} second interval",
+            30
+        );
+    }
+
+    /// Stop the torrent discovery task
+    fn stop_torrent_discovery(&self) {
+        if let Ok(mut handle) = self.discovery_handle.lock() {
+            if let Some(h) = handle.take() {
+                h.abort();
+                info!("Stopped torrent discovery");
+            }
+        }
+    }
+
+    /// Refresh torrent list from rqbit with cooldown protection.
+    /// Returns true if a refresh was performed, false if skipped due to cooldown.
+    ///
+    /// # Arguments
+    /// * `force` - If true, bypass the cooldown check
+    ///
+    /// # Returns
+    /// * `bool` - True if refresh was performed, false if skipped
+    pub async fn refresh_torrents(&self, force: bool) -> bool {
+        const DISCOVERY_COOLDOWN: Duration = Duration::from_secs(5);
+
+        // Check cooldown
+        if !force {
+            if let Ok(last) = self.last_discovery.lock() {
+                if last.elapsed() < DISCOVERY_COOLDOWN {
+                    trace!(
+                        "Skipping torrent discovery - cooldown in effect ({}s remaining)",
+                        (DISCOVERY_COOLDOWN - last.elapsed()).as_secs()
+                    );
+                    return false;
+                }
+            }
+        }
+
+        // Perform discovery
+        match self.api_client.list_torrents().await {
+            Ok(torrents) => {
+                let mut new_count = 0;
+
+                for torrent_info in torrents {
+                    // Check if we already have this torrent
+                    if self.inode_manager.lookup_torrent(torrent_info.id).is_none() {
+                        // New torrent found - create filesystem structure
+                        if let Err(e) = self.create_torrent_structure(&torrent_info) {
+                            warn!(
+                                "Failed to create structure for torrent {}: {}",
+                                torrent_info.id, e
+                            );
+                        } else {
+                            new_count += 1;
+                            info!(
+                                "Discovered new torrent {}: {}",
+                                torrent_info.id, torrent_info.name
+                            );
+                        }
+                    }
+                }
+
+                if new_count > 0 {
+                    info!("Discovered {} new torrent(s)", new_count);
+                } else {
+                    trace!("No new torrents found");
+                }
+
+                // Update last discovery time
+                if let Ok(mut last) = self.last_discovery.lock() {
+                    *last = Instant::now();
+                }
+
+                true
+            }
+            Err(e) => {
+                warn!("Failed to refresh torrents: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Static version of create_torrent_structure for use in background tasks
+    fn create_torrent_structure_static(
+        inode_manager: &Arc<InodeManager>,
+        torrent_info: &crate::api::types::TorrentInfo,
+    ) -> Result<()> {
+        use std::collections::HashMap;
+
+        let torrent_name = sanitize_filename(&torrent_info.name);
+        let torrent_id = torrent_info.id;
+
+        debug!(
+            "Creating filesystem structure for torrent {}: {} ({} files)",
+            torrent_id,
+            torrent_name,
+            torrent_info.files.len()
+        );
+
+        // Handle single-file torrents differently - add file directly to root
+        if torrent_info.files.len() == 1 {
+            let file_info = &torrent_info.files[0];
+            let file_name = if file_info.components.is_empty() {
+                torrent_name.clone()
+            } else {
+                sanitize_filename(file_info.components.last().unwrap())
+            };
+
+            let file_inode =
+                inode_manager.allocate_file(file_name.clone(), 1, torrent_id, 0, file_info.length);
+
+            inode_manager.add_child(1, file_inode);
+            inode_manager
+                .torrent_to_inode()
+                .insert(torrent_id, file_inode);
+
+            debug!(
+                "Created single-file torrent entry {} -> {} (size: {})",
+                file_name, file_inode, file_info.length
+            );
+        } else {
+            // Multi-file torrent
+            let torrent_dir_inode =
+                inode_manager.allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
+
+            inode_manager.add_child(1, torrent_dir_inode);
+
+            let mut created_dirs: HashMap<String, u64> = HashMap::new();
+            created_dirs.insert("".to_string(), torrent_dir_inode);
+
+            for (file_idx, file_info) in torrent_info.files.iter().enumerate() {
+                Self::create_file_entry_static(
+                    inode_manager,
+                    file_info,
+                    file_idx,
+                    torrent_id,
+                    torrent_dir_inode,
+                    &mut created_dirs,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Static version of create_file_entry for use in background tasks
+    fn create_file_entry_static(
+        inode_manager: &Arc<InodeManager>,
+        file_info: &crate::api::types::FileInfo,
+        file_idx: usize,
+        torrent_id: u64,
+        torrent_dir_inode: u64,
+        created_dirs: &mut std::collections::HashMap<String, u64>,
+    ) -> Result<()> {
+        let components = &file_info.components;
+
+        if components.is_empty() {
+            return Ok(());
+        }
+
+        let mut current_dir_inode = torrent_dir_inode;
+        let mut current_path = String::new();
+
+        for dir_component in components.iter().take(components.len().saturating_sub(1)) {
+            if !current_path.is_empty() {
+                current_path.push('/');
+            }
+            current_path.push_str(dir_component);
+
+            if let Some(&inode) = created_dirs.get(&current_path) {
+                current_dir_inode = inode;
+            } else {
+                let dir_name = sanitize_filename(dir_component);
+                let new_dir_inode = inode_manager.allocate(InodeEntry::Directory {
+                    ino: 0,
+                    name: dir_name.clone(),
+                    parent: current_dir_inode,
+                    children: Vec::new(),
+                });
+
+                inode_manager.add_child(current_dir_inode, new_dir_inode);
+                created_dirs.insert(current_path.clone(), new_dir_inode);
+                current_dir_inode = new_dir_inode;
+
+                debug!(
+                    "Created directory {} at inode {}",
+                    current_path, new_dir_inode
+                );
+            }
+        }
+
+        let file_name = components.last().unwrap();
+        let sanitized_name = sanitize_filename(file_name);
+
+        let file_inode = inode_manager.allocate_file(
+            sanitized_name,
+            current_dir_inode,
+            torrent_id,
+            file_idx,
+            file_info.length,
+        );
+
+        inode_manager.add_child(current_dir_inode, file_inode);
+
+        debug!(
+            "Created file {} at inode {} (size: {})",
+            file_name, file_inode, file_info.length
+        );
+
+        Ok(())
     }
 
     /// Get the current status of a torrent
@@ -370,19 +650,15 @@ impl TorrentFS {
                         let prefetch_end =
                             std::cmp::min(next_offset + readahead_size - 1, file_size - 1);
 
-
-
                         match api_client
                             .read_file(torrent_id, file_index, Some((next_offset, prefetch_end)))
                             .await
                         {
                             Ok(_data) => {
-    
+
                                 // Could store in cache here
                             }
-                            Err(_e) => {
-    
-                            }
+                            Err(_e) => {}
                         }
 
                         // Mark prefetch as complete
@@ -659,8 +935,12 @@ impl Filesystem for TorrentFS {
                     std::time::Duration::from_secs(self.config.performance.read_timeout);
                 tokio::time::timeout(
                     timeout_duration,
-                    self.api_client
-                        .read_file_streaming(torrent_id, file_index, offset, size as usize),
+                    self.api_client.read_file_streaming(
+                        torrent_id,
+                        file_index,
+                        offset,
+                        size as usize,
+                    ),
                 )
                 .await
             })
@@ -883,12 +1163,7 @@ impl Filesystem for TorrentFS {
     /// Called when the kernel needs to get attributes for a file or directory.
     /// This is a fundamental operation used by ls, stat, and most file operations.
     #[instrument(skip(self, reply), fields(ino))]
-    fn getattr(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        reply: fuser::ReplyAttr,
-    ) {
+    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         self.metrics.fuse.record_getattr();
 
         if self.config.logging.log_fuse_operations {
@@ -934,13 +1209,7 @@ impl Filesystem for TorrentFS {
     /// Called when the kernel needs to open a file for reading.
     /// Returns a file handle that will be used in subsequent read operations.
     #[instrument(skip(self, reply), fields(ino))]
-    fn open(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        flags: i32,
-        reply: fuser::ReplyOpen,
-    ) {
+    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         self.metrics.fuse.record_open();
 
         if self.config.logging.log_fuse_operations {
@@ -1007,12 +1276,7 @@ impl Filesystem for TorrentFS {
                 let fh = ino;
 
                 if self.config.logging.log_fuse_operations {
-                    debug!(
-                        fuse_op = "open",
-                        ino = ino,
-                        result = "success",
-                        fh = fh
-                    );
+                    debug!(fuse_op = "open", ino = ino, result = "success", fh = fh);
                 }
 
                 reply.opened(fh, 0);
@@ -1058,6 +1322,7 @@ impl Filesystem for TorrentFS {
 
     /// Read directory entries.
     /// Called when the kernel needs to list the contents of a directory.
+    /// For the root directory, this will also trigger a torrent discovery check.
     #[instrument(skip(self, reply), fields(ino))]
     fn readdir(
         &mut self,
@@ -1071,6 +1336,64 @@ impl Filesystem for TorrentFS {
 
         if self.config.logging.log_fuse_operations {
             debug!(fuse_op = "readdir", ino = ino, offset = offset);
+        }
+
+        // Trigger torrent discovery when listing root directory (with cooldown)
+        if ino == 1 {
+            let api_client = Arc::clone(&self.api_client);
+            let inode_manager = Arc::clone(&self.inode_manager);
+            let last_discovery = Arc::clone(&self.last_discovery);
+
+            tokio::spawn(async move {
+                const DISCOVERY_COOLDOWN: Duration = Duration::from_secs(5);
+
+                // Check cooldown
+                let should_run = {
+                    if let Ok(last) = last_discovery.lock() {
+                        last.elapsed() >= DISCOVERY_COOLDOWN
+                    } else {
+                        false
+                    }
+                };
+
+                if should_run {
+                    if let Ok(torrents) = api_client.list_torrents().await {
+                        let mut new_count = 0;
+
+                        for torrent_info in torrents {
+                            if inode_manager.lookup_torrent(torrent_info.id).is_none() {
+                                if let Err(e) = Self::create_torrent_structure_static(
+                                    &inode_manager,
+                                    &torrent_info,
+                                ) {
+                                    warn!(
+                                        "Failed to create structure for torrent {}: {}",
+                                        torrent_info.id, e
+                                    );
+                                } else {
+                                    new_count += 1;
+                                    info!(
+                                        "Discovered new torrent {}: {}",
+                                        torrent_info.id, torrent_info.name
+                                    );
+                                }
+                            }
+                        }
+
+                        if new_count > 0 {
+                            info!(
+                                "Found {} new torrent(s) during directory listing",
+                                new_count
+                            );
+                        }
+
+                        // Update last discovery time
+                        if let Ok(mut last) = last_discovery.lock() {
+                            *last = Instant::now();
+                        }
+                    }
+                }
+            });
         }
 
         // Get the directory entry
@@ -1440,6 +1763,9 @@ impl Filesystem for TorrentFS {
         // Start the background status monitoring task
         self.start_status_monitoring();
 
+        // Start the background torrent discovery task
+        self.start_torrent_discovery();
+
         self.initialized = true;
         info!("torrent-fuse filesystem initialized successfully");
 
@@ -1453,6 +1779,8 @@ impl Filesystem for TorrentFS {
         self.initialized = false;
         // Stop the status monitoring task
         self.stop_status_monitoring();
+        // Stop the torrent discovery task
+        self.stop_torrent_discovery();
         // Clean up any resources
     }
 }
@@ -1734,7 +2062,20 @@ impl TorrentFS {
     ) -> Result<()> {
         let components = &file_info.components;
 
+        debug!(
+            torrent_id = torrent_id,
+            file_idx = file_idx,
+            components = ?components,
+            torrent_dir_inode = torrent_dir_inode,
+            "create_file_entry called"
+        );
+
         if components.is_empty() {
+            debug!(
+                torrent_id = torrent_id,
+                file_idx = file_idx,
+                "create_file_entry: empty components, returning"
+            );
             return Ok(());
         }
 
