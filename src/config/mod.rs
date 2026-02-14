@@ -14,6 +14,8 @@ pub struct Config {
     pub performance: PerformanceConfig,
     #[serde(default)]
     pub monitoring: MonitoringConfig,
+    #[serde(default)]
+    pub logging: LoggingConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +66,20 @@ pub struct MonitoringConfig {
     pub status_poll_interval: u64,
     #[serde(default = "default_stalled_timeout")]
     pub stalled_timeout: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    #[serde(default = "default_log_level")]
+    pub level: String,
+    #[serde(default = "default_log_fuse_operations")]
+    pub log_fuse_operations: bool,
+    #[serde(default = "default_log_api_calls")]
+    pub log_api_calls: bool,
+    #[serde(default = "default_metrics_enabled")]
+    pub metrics_enabled: bool,
+    #[serde(default = "default_metrics_interval_secs")]
+    pub metrics_interval_secs: u64,
 }
 
 fn default_api_url() -> String {
@@ -126,6 +142,26 @@ fn default_stalled_timeout() -> u64 {
     300
 }
 
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
+fn default_log_fuse_operations() -> bool {
+    true
+}
+
+fn default_log_api_calls() -> bool {
+    true
+}
+
+fn default_metrics_enabled() -> bool {
+    true
+}
+
+fn default_metrics_interval_secs() -> u64 {
+    60
+}
+
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
@@ -172,6 +208,18 @@ impl Default for MonitoringConfig {
         Self {
             status_poll_interval: default_status_poll_interval(),
             stalled_timeout: default_stalled_timeout(),
+        }
+    }
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: default_log_level(),
+            log_fuse_operations: default_log_fuse_operations(),
+            log_api_calls: default_log_api_calls(),
+            metrics_enabled: default_metrics_enabled(),
+            metrics_interval_secs: default_metrics_interval_secs(),
         }
     }
 }
@@ -308,6 +356,36 @@ impl Config {
         if let Ok(val) = std::env::var("TORRENT_FUSE_RETURN_EAGAIN") {
             self.performance.return_eagain_for_unavailable = val.parse::<bool>().map_err(|_| {
                 ConfigError::InvalidValue("TORRENT_FUSE_RETURN_EAGAIN must be true or false".into())
+            })?;
+        }
+
+        if let Ok(level) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
+            self.logging.level = level;
+        }
+
+        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_FUSE_OPS") {
+            self.logging.log_fuse_operations = val.parse::<bool>().map_err(|_| {
+                ConfigError::InvalidValue("TORRENT_FUSE_LOG_FUSE_OPS must be true or false".into())
+            })?;
+        }
+
+        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_API_CALLS") {
+            self.logging.log_api_calls = val.parse::<bool>().map_err(|_| {
+                ConfigError::InvalidValue("TORRENT_FUSE_LOG_API_CALLS must be true or false".into())
+            })?;
+        }
+
+        if let Ok(val) = std::env::var("TORRENT_FUSE_METRICS_ENABLED") {
+            self.logging.metrics_enabled = val.parse::<bool>().map_err(|_| {
+                ConfigError::InvalidValue(
+                    "TORRENT_FUSE_METRICS_ENABLED must be true or false".into(),
+                )
+            })?;
+        }
+
+        if let Ok(interval) = std::env::var("TORRENT_FUSE_METRICS_INTERVAL") {
+            self.logging.metrics_interval_secs = interval.parse().map_err(|_| {
+                ConfigError::InvalidValue("TORRENT_FUSE_METRICS_INTERVAL must be a number".into())
             })?;
         }
 

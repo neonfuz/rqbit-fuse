@@ -1,4 +1,5 @@
 use crate::api::types::*;
+use crate::metrics::ApiMetrics;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
@@ -112,16 +113,18 @@ pub struct RqbitClient {
     retry_delay: Duration,
     /// Circuit breaker for resilience
     circuit_breaker: CircuitBreaker,
+    /// Metrics collection
+    metrics: Arc<ApiMetrics>,
 }
 
 impl RqbitClient {
     /// Create a new RqbitClient with default configuration
-    pub fn new(base_url: String) -> Self {
-        Self::with_config(base_url, 3, Duration::from_millis(500))
+    pub fn new(base_url: String, metrics: Arc<ApiMetrics>) -> Self {
+        Self::with_config(base_url, 3, Duration::from_millis(500), metrics)
     }
 
     /// Create a new RqbitClient with custom retry configuration
-    pub fn with_config(base_url: String, max_retries: u32, retry_delay: Duration) -> Self {
+    pub fn with_config(base_url: String, max_retries: u32, retry_delay: Duration, metrics: Arc<ApiMetrics>) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
@@ -134,6 +137,7 @@ impl RqbitClient {
             max_retries,
             retry_delay,
             circuit_breaker: CircuitBreaker::new(5, Duration::from_secs(30)),
+            metrics,
         }
     }
 
@@ -144,6 +148,7 @@ impl RqbitClient {
         retry_delay: Duration,
         failure_threshold: u32,
         circuit_timeout: Duration,
+        metrics: Arc<ApiMetrics>,
     ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
@@ -157,6 +162,7 @@ impl RqbitClient {
             max_retries,
             retry_delay,
             circuit_breaker: CircuitBreaker::new(failure_threshold, circuit_timeout),
+            metrics,
         }
     }
 
@@ -166,13 +172,17 @@ impl RqbitClient {
     }
 
     /// Helper method to execute a request with retry logic and circuit breaker
-    async fn execute_with_retry<F, Fut>(&self, operation: F) -> Result<reqwest::Response>
+    async fn execute_with_retry<F, Fut>(&self, endpoint: &str, operation: F) -> Result<reqwest::Response>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = reqwest::Result<reqwest::Response>>,
     {
+        let start_time = Instant::now();
+        self.metrics.record_request(endpoint);
+
         // Check circuit breaker first
         if !self.circuit_breaker.can_execute().await {
+            self.metrics.record_failure(endpoint, "circuit_breaker_open");
             return Err(ApiError::CircuitBreakerOpen.into());
         }
 
@@ -185,11 +195,13 @@ impl RqbitClient {
                     // Check if we got a server error that might be transient
                     let status = response.status();
                     if status.is_server_error() && attempt < self.max_retries {
+                        self.metrics.record_retry(endpoint, attempt + 1);
                         warn!(
-                            "Server error {} on attempt {}/{}, retrying...",
-                            status,
-                            attempt + 1,
-                            self.max_retries + 1
+                            endpoint = endpoint,
+                            status = status.as_u16(),
+                            attempt = attempt + 1,
+                            max_attempts = self.max_retries + 1,
+                            "Server error, retrying..."
                         );
                         sleep(self.retry_delay * (attempt + 1)).await;
                         continue;
@@ -203,11 +215,13 @@ impl RqbitClient {
                     
                     // Check if error is transient and we should retry
                     if api_error.is_transient() && attempt < self.max_retries {
+                        self.metrics.record_retry(endpoint, attempt + 1);
                         warn!(
-                            "Transient error on attempt {}/{}, retrying: {}",
-                            attempt + 1,
-                            self.max_retries + 1,
-                            api_error
+                            endpoint = endpoint,
+                            attempt = attempt + 1,
+                            max_attempts = self.max_retries + 1,
+                            error = %api_error,
+                            "Transient error, retrying"
                         );
                         sleep(self.retry_delay * (attempt + 1)).await;
                     } else {
@@ -219,24 +233,26 @@ impl RqbitClient {
             }
         }
 
-        // Record result in circuit breaker
+        // Record result in circuit breaker and metrics
         match final_result {
             Some(Ok(response)) => {
                 self.circuit_breaker.record_success().await;
+                self.metrics.record_success(endpoint, start_time.elapsed());
                 Ok(response)
             }
             Some(Err(api_error)) => {
                 if api_error.is_transient() {
                     self.circuit_breaker.record_failure().await;
                 }
+                self.metrics.record_failure(endpoint, &api_error.to_string());
                 Err(api_error.into())
             }
             None => {
                 // All retries exhausted with transient errors
                 self.circuit_breaker.record_failure().await;
-                Err(last_error
-                    .unwrap_or(ApiError::RetryLimitExceeded)
-                    .into())
+                let error = last_error.unwrap_or(ApiError::RetryLimitExceeded);
+                self.metrics.record_failure(endpoint, &error.to_string());
+                Err(error.into())
             }
         }
     }
@@ -268,27 +284,28 @@ impl RqbitClient {
     pub async fn list_torrents(&self) -> Result<Vec<TorrentInfo>> {
         let url = format!("{}/torrents", self.base_url);
 
-        trace!("Listing torrents from {}", url);
+        trace!(api_op = "list_torrents", url = %url);
 
         let response = self
-            .execute_with_retry(|| self.client.get(&url).send())
+            .execute_with_retry("/torrents", || self.client.get(&url).send())
             .await?;
 
         let response = self.check_response(response).await?;
         let data: TorrentListResponse = response.json().await?;
 
-        debug!("Listed {} torrents", data.torrents.len());
+        debug!(api_op = "list_torrents", count = data.torrents.len(), "Listed torrents");
         Ok(data.torrents)
     }
 
     /// Get detailed information about a specific torrent
     pub async fn get_torrent(&self, id: u64) -> Result<TorrentInfo> {
         let url = format!("{}/torrents/{}", self.base_url, id);
+        let endpoint = format!("/torrents/{}", id);
 
-        trace!("Getting torrent {} from {}", id, url);
+        trace!(api_op = "get_torrent", id = id);
 
         let response = self
-            .execute_with_retry(|| self.client.get(&url).send())
+            .execute_with_retry(&endpoint, || self.client.get(&url).send())
             .await?;
 
         match response.status() {
@@ -296,7 +313,7 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let torrent: TorrentInfo = response.json().await?;
-                debug!("Got torrent {}: {}", id, torrent.name);
+                debug!(api_op = "get_torrent", id = id, name = %torrent.name);
                 Ok(torrent)
             }
         }
@@ -309,16 +326,16 @@ impl RqbitClient {
             magnet_link: magnet_link.to_string(),
         };
 
-        trace!("Adding torrent from magnet link");
+        trace!(api_op = "add_torrent_magnet");
 
         let response = self
-            .execute_with_retry(|| self.client.post(&url).json(&request).send())
+            .execute_with_retry("/torrents", || self.client.post(&url).json(&request).send())
             .await?;
 
         let response = self.check_response(response).await?;
         let result: AddTorrentResponse = response.json().await?;
 
-        debug!("Added torrent {} with hash {}", result.id, result.info_hash);
+        debug!(api_op = "add_torrent_magnet", id = result.id, info_hash = %result.info_hash);
         Ok(result)
     }
 
@@ -329,27 +346,28 @@ impl RqbitClient {
             torrent_link: torrent_url.to_string(),
         };
 
-        trace!("Adding torrent from URL: {}", torrent_url);
+        trace!(api_op = "add_torrent_url", url = %torrent_url);
 
         let response = self
-            .execute_with_retry(|| self.client.post(&url).json(&request).send())
+            .execute_with_retry("/torrents", || self.client.post(&url).json(&request).send())
             .await?;
 
         let response = self.check_response(response).await?;
         let result: AddTorrentResponse = response.json().await?;
 
-        debug!("Added torrent {} with hash {}", result.id, result.info_hash);
+        debug!(api_op = "add_torrent_url", id = result.id, info_hash = %result.info_hash);
         Ok(result)
     }
 
     /// Get statistics for a torrent
     pub async fn get_torrent_stats(&self, id: u64) -> Result<TorrentStats> {
         let url = format!("{}/torrents/{}/stats/v1", self.base_url, id);
+        let endpoint = format!("/torrents/{}/stats", id);
 
-        trace!("Getting stats for torrent {} from {}", id, url);
+        trace!(api_op = "get_torrent_stats", id = id);
 
         let response = self
-            .execute_with_retry(|| self.client.get(&url).send())
+            .execute_with_retry(&endpoint, || self.client.get(&url).send())
             .await?;
 
         match response.status() {
@@ -357,7 +375,7 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let stats: TorrentStats = response.json().await?;
-                trace!("Torrent {} progress: {:.2}%", id, stats.progress_pct);
+                trace!(api_op = "get_torrent_stats", id = id, progress_pct = stats.progress_pct);
                 Ok(stats)
             }
         }
@@ -366,11 +384,12 @@ impl RqbitClient {
     /// Get piece availability bitfield for a torrent
     pub async fn get_piece_bitfield(&self, id: u64) -> Result<PieceBitfield> {
         let url = format!("{}/torrents/{}/haves", self.base_url, id);
+        let endpoint = format!("/torrents/{}/haves", id);
 
-        trace!("Getting piece bitfield for torrent {} from {}", id, url);
+        trace!(api_op = "get_piece_bitfield", id = id);
 
         let response = self
-            .execute_with_retry(|| {
+            .execute_with_retry(&endpoint, || {
                 self.client
                     .get(&url)
                     .header("Accept", "application/octet-stream")
@@ -394,10 +413,10 @@ impl RqbitClient {
                 let bits = response.bytes().await?.to_vec();
 
                 trace!(
-                    "Got piece bitfield for torrent {}: {} bytes, {} pieces",
-                    id,
-                    bits.len(),
-                    num_pieces
+                    api_op = "get_piece_bitfield",
+                    id = id,
+                    bytes = bits.len(),
+                    num_pieces = num_pieces
                 );
 
                 Ok(PieceBitfield { bits, num_pieces })
@@ -423,6 +442,7 @@ impl RqbitClient {
             "{}/torrents/{}/stream/{}",
             self.base_url, torrent_id, file_idx
         );
+        let endpoint = format!("/torrents/{}/stream/{}", torrent_id, file_idx);
 
         let mut request = self.client.get(&url);
 
@@ -437,22 +457,22 @@ impl RqbitClient {
             }
             let range_header = format!("bytes={}-{}", start, end);
             trace!(
-                "Reading file {} from torrent {} with range: {}",
-                file_idx,
-                torrent_id,
-                range_header
+                api_op = "read_file",
+                torrent_id = torrent_id,
+                file_idx = file_idx,
+                range = %range_header
             );
             request = request.header("Range", range_header);
         } else {
             trace!(
-                "Reading entire file {} from torrent {}",
-                file_idx,
-                torrent_id
+                api_op = "read_file",
+                torrent_id = torrent_id,
+                file_idx = file_idx
             );
         }
 
         let response = self
-            .execute_with_retry(|| request.try_clone().unwrap().send())
+            .execute_with_retry(&endpoint, || request.try_clone().unwrap().send())
             .await?;
 
         match response.status() {
@@ -473,10 +493,10 @@ impl RqbitClient {
                 let bytes = response.bytes().await?;
 
                 trace!(
-                    "Read {} bytes from file {} in torrent {}",
-                    bytes.len(),
-                    file_idx,
-                    torrent_id
+                    api_op = "read_file",
+                    torrent_id = torrent_id,
+                    file_idx = file_idx,
+                    bytes_read = bytes.len()
                 );
 
                 Ok(bytes)
@@ -491,18 +511,19 @@ impl RqbitClient {
     /// Pause a torrent
     pub async fn pause_torrent(&self, id: u64) -> Result<()> {
         let url = format!("{}/torrents/{}/pause", self.base_url, id);
+        let endpoint = format!("/torrents/{}/pause", id);
 
-        trace!("Pausing torrent {}", id);
+        trace!(api_op = "pause_torrent", id = id);
 
         let response = self
-            .execute_with_retry(|| self.client.post(&url).send())
+            .execute_with_retry(&endpoint, || self.client.post(&url).send())
             .await?;
 
         match response.status() {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
-                debug!("Paused torrent {}", id);
+                debug!(api_op = "pause_torrent", id = id, "Paused torrent");
                 Ok(())
             }
         }
@@ -511,18 +532,19 @@ impl RqbitClient {
     /// Resume/start a torrent
     pub async fn start_torrent(&self, id: u64) -> Result<()> {
         let url = format!("{}/torrents/{}/start", self.base_url, id);
+        let endpoint = format!("/torrents/{}/start", id);
 
-        trace!("Starting torrent {}", id);
+        trace!(api_op = "start_torrent", id = id);
 
         let response = self
-            .execute_with_retry(|| self.client.post(&url).send())
+            .execute_with_retry(&endpoint, || self.client.post(&url).send())
             .await?;
 
         match response.status() {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
-                debug!("Started torrent {}", id);
+                debug!(api_op = "start_torrent", id = id, "Started torrent");
                 Ok(())
             }
         }
@@ -531,18 +553,19 @@ impl RqbitClient {
     /// Remove torrent from session (keep files)
     pub async fn forget_torrent(&self, id: u64) -> Result<()> {
         let url = format!("{}/torrents/{}/forget", self.base_url, id);
+        let endpoint = format!("/torrents/{}/forget", id);
 
-        trace!("Forgetting torrent {}", id);
+        trace!(api_op = "forget_torrent", id = id);
 
         let response = self
-            .execute_with_retry(|| self.client.post(&url).send())
+            .execute_with_retry(&endpoint, || self.client.post(&url).send())
             .await?;
 
         match response.status() {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
-                debug!("Forgot torrent {}", id);
+                debug!(api_op = "forget_torrent", id = id, "Forgot torrent");
                 Ok(())
             }
         }
@@ -551,18 +574,19 @@ impl RqbitClient {
     /// Remove torrent from session and delete files
     pub async fn delete_torrent(&self, id: u64) -> Result<()> {
         let url = format!("{}/torrents/{}/delete", self.base_url, id);
+        let endpoint = format!("/torrents/{}/delete", id);
 
-        trace!("Deleting torrent {}", id);
+        trace!(api_op = "delete_torrent", id = id);
 
         let response = self
-            .execute_with_retry(|| self.client.post(&url).send())
+            .execute_with_retry(&endpoint, || self.client.post(&url).send())
             .await?;
 
         match response.status() {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
-                debug!("Deleted torrent {}", id);
+                debug!(api_op = "delete_torrent", id = id, "Deleted torrent");
                 Ok(())
             }
         }
@@ -670,7 +694,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_creation() {
-        let client = RqbitClient::new("http://localhost:3030".to_string());
+        use crate::metrics::ApiMetrics;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new("http://localhost:3030".to_string(), metrics);
         assert_eq!(client.base_url, "http://localhost:3030");
         assert_eq!(client.max_retries, 3);
     }

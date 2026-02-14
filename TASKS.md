@@ -165,11 +165,22 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Added verbose/quiet logging options (-v, -vv for DEBUG/TRACE, -q for ERROR only)
   - All 50 tests passing, no clippy warnings
 
-- [ ] **Implement logging and observability**
-  - Add structured logging with tracing
-  - Log all FUSE operations (debug mode)
-  - Log API calls and responses
-  - Add metrics: cache hit rate, read latency, throughput
+- [x] **Implement logging and observability** (2026-02-13)
+  - Added structured logging with tracing and `#[instrument]` macros
+  - Created comprehensive `metrics.rs` module with FuseMetrics and ApiMetrics
+  - Implemented FUSE operation logging with detailed structured fields (ino, result, error, latency)
+  - Implemented API call logging with endpoint tracking, latency measurement, and retry counting
+  - Added metrics for: cache hit/miss rate, read latency, throughput (MB/s), API success rate
+  - Added LoggingConfig with environment variable support:
+    - `TORRENT_FUSE_LOG_LEVEL` - set log level
+    - `TORRENT_FUSE_LOG_FUSE_OPS` - enable/disable FUSE operation logging
+    - `TORRENT_FUSE_LOG_API_CALLS` - enable/disable API call logging  
+    - `TORRENT_FUSE_METRICS_ENABLED` - enable/disable metrics collection
+    - `TORRENT_FUSE_METRICS_INTERVAL` - metrics reporting interval
+  - All FUSE callbacks now record metrics via `metrics.fuse.record_*()` methods
+  - All API methods now record metrics via `metrics.api.record_*()` methods
+  - Integrated Metrics struct into TorrentFS and RqbitClient
+  - All 52 tests passing, no clippy warnings
 
 - [ ] **Create user documentation**
   - Write comprehensive README
