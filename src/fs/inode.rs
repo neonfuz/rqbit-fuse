@@ -217,16 +217,20 @@ impl InodeManager {
         // First check if it's a directory and use its children list
         if let Some(parent_entry) = self.entries.get(&parent_inode) {
             if let InodeEntry::Directory { children, .. } = &*parent_entry {
-                return children
-                    .iter()
-                    .filter_map(|&child_ino| {
-                        self.entries.get(&child_ino).map(|e| (child_ino, e.clone()))
-                    })
-                    .collect();
+                // If children list is populated, use it
+                if !children.is_empty() {
+                    return children
+                        .iter()
+                        .filter_map(|&child_ino| {
+                            self.entries.get(&child_ino).map(|e| (child_ino, e.clone()))
+                        })
+                        .collect();
+                }
             }
         }
 
         // Fallback: filter by parent field for entries not yet in children list
+        // This handles the case where DashMap writes haven't propagated yet
         self.entries
             .iter()
             .filter(|entry| entry.parent() == parent_inode)
