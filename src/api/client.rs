@@ -819,4 +819,521 @@ mod tests {
         assert!(cb.can_execute().await);
         assert_eq!(cb.state().await, CircuitState::Closed);
     }
+
+    // =========================================================================
+    // Mocked HTTP Response Tests
+    // =========================================================================
+
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path, header, body_json};
+
+    #[tokio::test]
+    async fn test_list_torrents_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let response_body = serde_json::json!({
+            "torrents": [
+                {
+                    "id": 1,
+                    "info_hash": "abc123",
+                    "name": "Test Torrent",
+                    "output_folder": "/downloads",
+                    "file_count": 2,
+                    "files": [
+                        {"name": "file1.txt", "length": 1024, "components": ["file1.txt"]},
+                        {"name": "file2.txt", "length": 2048, "components": ["file2.txt"]}
+                    ],
+                    "piece_length": 1048576
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let torrents = client.list_torrents().await.unwrap();
+        assert_eq!(torrents.len(), 1);
+        assert_eq!(torrents[0].id, 1);
+        assert_eq!(torrents[0].name, "Test Torrent");
+        assert_eq!(torrents[0].info_hash, "abc123");
+        assert_eq!(torrents[0].file_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_torrents_empty() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let response_body = serde_json::json!({
+            "torrents": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let torrents = client.list_torrents().await.unwrap();
+        assert!(torrents.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_torrent_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let response_body = serde_json::json!({
+            "id": 1,
+            "info_hash": "abc123",
+            "name": "Test Torrent",
+            "output_folder": "/downloads",
+            "file_count": 1,
+            "files": [
+                {"name": "test.txt", "length": 1024, "components": ["test.txt"]}
+            ],
+            "piece_length": 1048576
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let torrent = client.get_torrent(1).await.unwrap();
+        assert_eq!(torrent.id, 1);
+        assert_eq!(torrent.name, "Test Torrent");
+    }
+
+    #[tokio::test]
+    async fn test_get_torrent_not_found() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/999"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.get_torrent(999).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+    }
+
+    #[tokio::test]
+    async fn test_add_torrent_magnet_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let request_body = serde_json::json!({
+            "magnet_link": "magnet:?xt=urn:btih:abc123"
+        });
+
+        let response_body = serde_json::json!({
+            "id": 42,
+            "info_hash": "abc123"
+        });
+
+        Mock::given(method("POST"))
+            .and(path("/torrents"))
+            .and(header("content-type", "application/json"))
+            .and(body_json(request_body))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.add_torrent_magnet("magnet:?xt=urn:btih:abc123").await.unwrap();
+        assert_eq!(result.id, 42);
+        assert_eq!(result.info_hash, "abc123");
+    }
+
+    #[tokio::test]
+    async fn test_add_torrent_url_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let request_body = serde_json::json!({
+            "torrent_link": "http://example.com/test.torrent"
+        });
+
+        let response_body = serde_json::json!({
+            "id": 43,
+            "info_hash": "def456"
+        });
+
+        Mock::given(method("POST"))
+            .and(path("/torrents"))
+            .and(header("content-type", "application/json"))
+            .and(body_json(request_body))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.add_torrent_url("http://example.com/test.torrent").await.unwrap();
+        assert_eq!(result.id, 43);
+        assert_eq!(result.info_hash, "def456");
+    }
+
+    #[tokio::test]
+    async fn test_get_torrent_stats_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let response_body = serde_json::json!({
+            "file_count": 2,
+            "files": [
+                {"length": 1024, "included": true},
+                {"length": 2048, "included": true}
+            ],
+            "finished": false,
+            "progress_bytes": 1500,
+            "progress_pct": 0.5,
+            "total_bytes": 3072
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stats/v1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&mock_server)
+            .await;
+
+        let stats = client.get_torrent_stats(1).await.unwrap();
+        assert_eq!(stats.file_count, 2);
+        assert_eq!(stats.progress_bytes, 1500);
+        assert_eq!(stats.progress_pct, 0.5);
+        assert_eq!(stats.total_bytes, 3072);
+        assert!(!stats.finished);
+    }
+
+    #[tokio::test]
+    async fn test_get_piece_bitfield_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        // Bitfield with pieces 0, 1, 3 downloaded (binary: 1011 = 0x0B)
+        let bitfield_data = vec![0b00001011u8];
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/haves"))
+            .and(header("accept", "application/octet-stream"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(bitfield_data.clone())
+                    .append_header("x-bitfield-len", "4")
+            )
+            .mount(&mock_server)
+            .await;
+
+        let bitfield = client.get_piece_bitfield(1).await.unwrap();
+        assert_eq!(bitfield.num_pieces, 4);
+        assert!(bitfield.has_piece(0));
+        assert!(bitfield.has_piece(1));
+        assert!(!bitfield.has_piece(2));
+        assert!(bitfield.has_piece(3));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let file_data = b"Hello, World!";
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(file_data.as_slice()))
+            .mount(&mock_server)
+            .await;
+
+        let data = client.read_file(1, 0, None).await.unwrap();
+        assert_eq!(data.as_ref(), file_data);
+    }
+
+    #[tokio::test]
+    async fn test_read_file_with_range() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        let file_data = b"World";
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("range", "bytes=7-11"))
+            .respond_with(
+                ResponseTemplate::new(206)
+                    .set_body_bytes(file_data.as_slice())
+                    .append_header("content-range", "bytes 7-11/13")
+            )
+            .mount(&mock_server)
+            .await;
+
+        let data = client.read_file(1, 0, Some((7, 11))).await.unwrap();
+        assert_eq!(data.as_ref(), file_data);
+    }
+
+    #[tokio::test]
+    async fn test_read_file_not_found() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/99"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.read_file(1, 99, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::FileNotFound { torrent_id: 1, file_idx: 99 }));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_invalid_range() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("range", "bytes=100-200"))
+            .respond_with(ResponseTemplate::new(416).set_body_string("Range not satisfiable"))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.read_file(1, 0, Some((100, 200))).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::InvalidRange(_)));
+    }
+
+    #[tokio::test]
+    async fn test_pause_torrent_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/1/pause"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        client.pause_torrent(1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pause_torrent_not_found() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/999/pause"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.pause_torrent(999).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+    }
+
+    #[tokio::test]
+    async fn test_start_torrent_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/1/start"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        client.start_torrent(1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_start_torrent_not_found() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/999/start"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.start_torrent(999).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+    }
+
+    #[tokio::test]
+    async fn test_forget_torrent_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/1/forget"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        client.forget_torrent(1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_forget_torrent_not_found() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/999/forget"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.forget_torrent(999).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+    }
+
+    #[tokio::test]
+    async fn test_delete_torrent_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/1/delete"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        client.delete_torrent(1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_delete_torrent_not_found() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("POST"))
+            .and(path("/torrents/999/delete"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.delete_torrent(999).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+    }
+
+    #[tokio::test]
+    async fn test_health_check_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})))
+            .mount(&mock_server)
+            .await;
+
+        let healthy = client.health_check().await.unwrap();
+        assert!(healthy);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&mock_server)
+            .await;
+
+        let healthy = client.health_check().await.unwrap();
+        assert!(!healthy);
+    }
+
+    #[tokio::test]
+    async fn test_retry_on_server_error() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        // Use client with 1 retry for faster test
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            1,
+            Duration::from_millis(10),
+            metrics
+        );
+
+        // First request fails with 503, second succeeds
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})))
+            .mount(&mock_server)
+            .await;
+
+        let torrents = client.list_torrents().await.unwrap();
+        assert!(torrents.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_api_error_response() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal server error"))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.list_torrents().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        assert!(matches!(err, ApiError::ApiError { status: 500, .. }));
+    }
 }

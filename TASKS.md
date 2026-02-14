@@ -192,11 +192,12 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## Phase 7: Testing & Quality
 
-- [ ] **Unit tests**
-  - Test inode management
-  - Test API client with mocked responses
-  - Test cache operations
-  - Test configuration parsing
+- [x] **Unit tests** (2026-02-13)
+  - Inode management: 16 comprehensive tests covering allocation, lookup, removal, symlinks, concurrent access
+  - API client with mocked responses: 24 new tests using wiremock for all API endpoints
+  - Cache operations: 6 tests covering TTL, LRU eviction, basic operations
+  - Configuration parsing: 4 tests for TOML/JSON parsing and CLI merging
+  - Total: 76 tests passing, no clippy warnings
 
 - [ ] **Integration tests**
   - Test FUSE operations with memory filesystem
