@@ -1,0 +1,50 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InodeEntry {
+    Directory {
+        ino: u64,
+        name: String,
+        parent: u64,
+        children: Vec<u64>,
+    },
+    File {
+        ino: u64,
+        name: String,
+        parent: u64,
+        torrent_id: u64,
+        file_index: usize,
+        size: u64,
+    },
+}
+
+impl InodeEntry {
+    pub fn ino(&self) -> u64 {
+        match self {
+            InodeEntry::Directory { ino, .. } => *ino,
+            InodeEntry::File { ino, .. } => *ino,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            InodeEntry::Directory { name, .. } => name,
+            InodeEntry::File { name, .. } => name,
+        }
+    }
+
+    pub fn parent(&self) -> u64 {
+        match self {
+            InodeEntry::Directory { parent, .. } => *parent,
+            InodeEntry::File { parent, .. } => *parent,
+        }
+    }
+
+    pub fn is_directory(&self) -> bool {
+        matches!(self, InodeEntry::Directory { .. })
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self, InodeEntry::File { .. })
+    }
+}

@@ -1,0 +1,54 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+**/*.rlib
+**/*.rmeta
+
+# Cargo lock file (for libraries; remove if this is a binary that should commit Cargo.lock)
+# Cargo.lock
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and configuration files
+.env
+.env.local
+.env.*.local
+*.local.toml
+
+# Application-specific: FUSE mount and cache directories
+/mnt
+/mount
+/cache
+*.torrent
+.downloads/
+
+# Test data and logs
+/test-data/
+*.log
+/logs/
+
+# Profiling and debugging
+*.prof
+*.profraw
+perf.data*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
