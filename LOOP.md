@@ -33,8 +33,18 @@ Next Tasks (Phase 7: Testing & Quality):
     - memory_usage (cache overhead, inode manager)
   - All 88 tests passing (76 unit + 12 integration + 10 performance)
   - No clippy warnings in performance code
-- [ ] Add CI/CD
-  - GitHub Actions workflow
-  - Run tests on PR
-  - Build releases for multiple platforms
-  - Publish to crates.io
+- [x] Add CI/CD (completed)
+  - Created `.github/workflows/ci.yml` with comprehensive CI pipeline
+    - Runs tests, clippy, and formatting checks on PR/push
+    - Tests on both Linux (Ubuntu) and macOS
+    - Generates code coverage reports with cargo-tarpaulin
+    - Includes cargo dependency caching for faster builds
+  - Created `.github/workflows/release.yml` for automated releases
+    - Builds release binaries for 5 platforms: Linux x86_64-gnu/musl/aarch64, macOS x86_64/aarch64
+    - Creates GitHub releases automatically on version tags
+    - Publishes to crates.io with CARGO_REGISTRY_TOKEN secret
+  - Next: Need to set up required secrets (CARGO_REGISTRY_TOKEN, CODECOV_TOKEN) in GitHub repo settings
+- [ ] Create CHANGELOG.md (required by release workflow)
+- [ ] Add security audit workflow with cargo-audit
+- [ ] Add dependabot configuration for dependency updates
+- [ ] Add Windows build support to release workflow
