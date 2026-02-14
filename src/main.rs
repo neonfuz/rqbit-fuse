@@ -17,7 +17,12 @@ struct Cli {
     #[arg(short, long, help = "rqbit API URL", env = "TORRENT_FUSE_API_URL")]
     api_url: Option<String>,
 
-    #[arg(short, long, help = "Mount point path", env = "TORRENT_FUSE_MOUNT_POINT")]
+    #[arg(
+        short,
+        long,
+        help = "Mount point path",
+        env = "TORRENT_FUSE_MOUNT_POINT"
+    )]
     mount_point: Option<PathBuf>,
 }
 

@@ -36,7 +36,7 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
 
 ## Phase 2: FUSE Filesystem Core
 
-- [ ] **Implement inode management**
+- [x] **Implement inode management** (2026-02-13)
   - Create `InodeManager` with DashMap for concurrent access
   - Implement inode allocation (starting at 1 for root)
   - Map inodes to paths and vice versa
@@ -247,6 +247,16 @@ Prioritized task list for building torrent-fuse. Tasks are ordered by dependency
   - Configuration merging: defaults -> file -> env -> CLI
   - Added 4 unit tests for config parsing and merging
   - All 8 tests passing, no clippy warnings
+
+- [x] **Implement inode management** (2026-02-13)
+  - Created `InodeManager` in `src/fs/inode.rs` with DashMap for concurrent access
+  - Thread-safe inode allocation using AtomicU64 (starting at 1 for root)
+  - Bidirectional mapping: inode -> entry and path -> inode
+  - Specialized methods: `allocate_torrent_directory()`, `allocate_file()`
+  - Parent-child relationship tracking via `add_child()` / `remove_child()`
+  - Lifecycle methods: `remove_inode()`, `clear_torrents()`
+  - Added 10 comprehensive unit tests including concurrent allocation test
+  - All 18 tests passing, no clippy warnings
 
 ## Discovered Issues
 
