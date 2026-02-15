@@ -69,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed read_states memory leak with TTL-based cleanup (FS-004)
+  - Added TTL-based eviction for orphaned file handles (1 hour TTL, checked every 5 minutes)
+  - Added memory usage metrics for file handles via `memory_usage()` method
+  - Created background cleanup task that runs alongside status monitoring and torrent discovery
+  - Added `created_at` and `is_expired()` to FileHandle for TTL tracking
+  - Added `remove_expired_handles()`, `memory_usage()`, and `count_expired()` to FileHandleManager
+  - Prevents memory leaks from handles that are opened but never properly released
+  - All 90 tests pass, clippy clean, code formatted
+
 - Fixed failing cache unit tests to work with Moka's async behavior
   - `test_cache_basic_operations`: Adjusted expectations for eventually consistent entry count
   - `test_cache_lru_eviction`: Updated to work with TinyLFU algorithm behavior

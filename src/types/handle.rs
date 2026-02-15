@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Represents state associated with an open file handle.
 /// Tracks read patterns for sequential access detection and prefetching.
@@ -60,6 +60,8 @@ pub struct FileHandle {
     pub flags: i32,
     /// Optional state for tracking read patterns
     pub state: Option<FileHandleState>,
+    /// When this handle was created (for TTL-based cleanup)
+    pub created_at: Instant,
 }
 
 impl FileHandle {
@@ -70,7 +72,13 @@ impl FileHandle {
             inode,
             flags,
             state: None,
+            created_at: Instant::now(),
         }
+    }
+
+    /// Check if this handle has exceeded its TTL
+    pub fn is_expired(&self, ttl: Duration) -> bool {
+        self.created_at.elapsed() > ttl
     }
 
     /// Initialize read tracking state
@@ -216,6 +224,42 @@ impl FileHandleManager {
     pub fn get_all_handles(&self) -> Vec<u64> {
         let handles = self.handles.lock().unwrap();
         handles.keys().copied().collect()
+    }
+
+    /// Remove handles that have exceeded the TTL (time-to-live).
+    /// Returns the number of handles removed.
+    pub fn remove_expired_handles(&self, ttl: Duration) -> usize {
+        let mut handles = self.handles.lock().unwrap();
+        let expired: Vec<u64> = handles
+            .iter()
+            .filter(|(_, handle)| handle.is_expired(ttl))
+            .map(|(fh, _)| *fh)
+            .collect();
+
+        let count = expired.len();
+        for fh in expired {
+            handles.remove(&fh);
+        }
+
+        count
+    }
+
+    /// Get the total memory usage estimate for all handles in bytes.
+    /// This is an approximation based on the size of FileHandle structs.
+    pub fn memory_usage(&self) -> usize {
+        let handles = self.handles.lock().unwrap();
+        // FileHandle size: ~72 bytes (without state) + state overhead
+        // This is a rough estimate for monitoring purposes
+        handles.len() * std::mem::size_of::<FileHandle>()
+    }
+
+    /// Get the number of handles that would be expired with the given TTL.
+    pub fn count_expired(&self, ttl: Duration) -> usize {
+        let handles = self.handles.lock().unwrap();
+        handles
+            .values()
+            .filter(|handle| handle.is_expired(ttl))
+            .count()
     }
 }
 

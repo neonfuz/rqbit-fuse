@@ -105,10 +105,16 @@ Each item is designed to be completed independently. Research references are sto
   - Removed `ReadState` struct (now part of FileHandle)
   - All tests pass, no clippy warnings
 
-- [ ] **FS-004**: Fix read_states memory leak
-  - Clean up `read_states` entries in `release()` callback
-  - Add TTL-based eviction for orphaned states
-  - Add memory usage metrics for read_states
+- [x] **FS-004**: Fix read_states memory leak
+  - Clean up `read_states` entries in `release()` callback (already implemented in FileHandleManager)
+  - Added TTL-based eviction for orphaned file handles (1 hour TTL, checked every 5 minutes)
+  - Added memory usage metrics for file handles via `memory_usage()` method
+  - Created `start_handle_cleanup()` and `stop_handle_cleanup()` background task methods
+  - Added `created_at` and `is_expired()` to FileHandle for TTL tracking
+  - Added `remove_expired_handles()`, `memory_usage()`, and `count_expired()` to FileHandleManager
+  - All tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
 
 - [ ] **FS-005**: Replace std::sync::Mutex with tokio::sync::Mutex
   - Find all std::sync::Mutex in async context (lines 73, 77, 79, 83, 101, 102)

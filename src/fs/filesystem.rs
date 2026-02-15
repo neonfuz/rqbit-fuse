@@ -35,6 +35,8 @@ pub struct TorrentFS {
     monitor_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Handle to the torrent discovery task
     discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Handle to the file handle cleanup task
+    cleanup_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Metrics collection
     metrics: Arc<Metrics>,
     /// Timestamp of last discovery (ms since Unix epoch) to prevent too frequent scans
@@ -75,6 +77,7 @@ impl TorrentFS {
             torrent_statuses: Arc::new(DashMap::new()),
             monitor_handle: Arc::new(Mutex::new(None)),
             discovery_handle: Arc::new(Mutex::new(None)),
+            cleanup_handle: Arc::new(Mutex::new(None)),
             metrics,
             last_discovery: Arc::new(AtomicU64::new(0)),
             async_worker,
@@ -225,6 +228,65 @@ impl TorrentFS {
             if let Some(h) = handle.take() {
                 h.abort();
                 info!("Stopped torrent discovery");
+            }
+        }
+    }
+
+    /// Start the background file handle cleanup task
+    /// Cleans up orphaned file handles that haven't been accessed for a while
+    fn start_handle_cleanup(&self) {
+        const HANDLE_TTL: Duration = Duration::from_secs(3600); // 1 hour TTL
+        const CHECK_INTERVAL: Duration = Duration::from_secs(300); // Check every 5 minutes
+
+        let file_handles = Arc::clone(&self.file_handles);
+
+        let handle = tokio::spawn(async move {
+            let mut ticker = interval(CHECK_INTERVAL);
+
+            loop {
+                ticker.tick().await;
+
+                // Clean up expired handles
+                let removed = file_handles.remove_expired_handles(HANDLE_TTL);
+                if removed > 0 {
+                    warn!(
+                        "Cleaned up {} expired file handles (TTL: {:?})",
+                        removed, HANDLE_TTL
+                    );
+                }
+
+                // Log current handle stats periodically
+                let total_handles = file_handles.len();
+                let expired_count = file_handles.count_expired(HANDLE_TTL);
+                let memory_usage = file_handles.memory_usage();
+
+                if total_handles > 0 {
+                    trace!(
+                        "File handle stats: total={}, expired={}, memory={}KB",
+                        total_handles,
+                        expired_count,
+                        memory_usage / 1024
+                    );
+                }
+            }
+        });
+
+        if let Ok(mut h) = self.cleanup_handle.lock() {
+            *h = Some(handle);
+        }
+
+        info!(
+            "Started file handle cleanup task with TTL: {:?}",
+            HANDLE_TTL
+        );
+    }
+
+    /// Stop the file handle cleanup task
+    fn stop_handle_cleanup(&self) {
+        if let Ok(mut handle) = self.cleanup_handle.lock() {
+            if let Some(h) = handle.take() {
+                h.abort();
+                info!("Stopped file handle cleanup");
             }
         }
     }
@@ -1765,6 +1827,9 @@ impl Filesystem for TorrentFS {
         // Start the background torrent discovery task
         self.start_torrent_discovery();
 
+        // Start the file handle cleanup task
+        self.start_handle_cleanup();
+
         self.initialized = true;
         info!("torrent-fuse filesystem initialized successfully");
 
@@ -1780,6 +1845,8 @@ impl Filesystem for TorrentFS {
         self.stop_status_monitoring();
         // Stop the torrent discovery task
         self.stop_torrent_discovery();
+        // Stop the file handle cleanup task
+        self.stop_handle_cleanup();
         // Clean up any resources
     }
 }
