@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplify inode allocation logic (SIMPLIFY-007)
+  - Added `with_ino()` method to `InodeEntry` in `src/types/inode.rs`
+  - Created generic `allocate_entry()` helper to consolidate allocation logic
+  - Simplified `allocate()`, `allocate_torrent_directory()`, `allocate_file()`, and `allocate_symlink()` methods
+  - Converted `build_path()` from recursive to iterative implementation
+  - Reduced ~64 lines of duplicated allocation boilerplate
+  - All fs::inode::tests pass, clippy clean
+
+### Changed
+
 - Replace std::sync::Mutex with tokio::sync::Mutex in async contexts (FS-005)
   - Replaced blocking std::sync::Mutex with async tokio::sync::Mutex in `src/api/streaming.rs`
   - Updated field declarations, initializations, and function signatures

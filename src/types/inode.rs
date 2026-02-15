@@ -60,4 +60,47 @@ impl InodeEntry {
     pub fn is_symlink(&self) -> bool {
         matches!(self, InodeEntry::Symlink { .. })
     }
+
+    /// Returns a new InodeEntry with the specified inode number
+    pub fn with_ino(&self, ino: u64) -> Self {
+        match self {
+            InodeEntry::Directory {
+                name,
+                parent,
+                children,
+                ..
+            } => InodeEntry::Directory {
+                ino,
+                name: name.clone(),
+                parent: *parent,
+                children: children.clone(),
+            },
+            InodeEntry::File {
+                name,
+                parent,
+                torrent_id,
+                file_index,
+                size,
+                ..
+            } => InodeEntry::File {
+                ino,
+                name: name.clone(),
+                parent: *parent,
+                torrent_id: *torrent_id,
+                file_index: *file_index,
+                size: *size,
+            },
+            InodeEntry::Symlink {
+                name,
+                parent,
+                target,
+                ..
+            } => InodeEntry::Symlink {
+                ino,
+                name: name.clone(),
+                parent: *parent,
+                target: target.clone(),
+            },
+        }
+    }
 }

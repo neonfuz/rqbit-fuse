@@ -102,13 +102,13 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### Inode Management (`src/fs/inode.rs`, `src/types/inode.rs`)
 
-- [ ] **SIMPLIFY-007**: Simplify inode allocation
+- [x] **SIMPLIFY-007**: Simplify inode allocation
   - [migration:SIMPLIFY-007-inode-allocation](migration/SIMPLIFY-007-inode-allocation.md)
   - Create generic `allocate_entry()` helper
   - Add `with_ino()` to `InodeEntry`, simplify `build_path()`
   - **Lines reduced**: ~64 lines (730 → 666)
   - **Risk**: Medium - touches core data structures
-  - **Test**: `cargo test fs::inode::tests`
+  - **Test**: `cargo test fs::inode::tests` ✅ All tests pass
 
 ### Cache (`src/cache.rs`, `src/lib/`)
 

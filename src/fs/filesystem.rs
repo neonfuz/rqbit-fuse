@@ -226,8 +226,7 @@ impl TorrentFS {
             // Check if we already have this torrent
             if inode_manager.lookup_torrent(torrent_info.id).is_none() {
                 // New torrent found - create filesystem structure
-                if let Err(e) =
-                    Self::create_torrent_structure_static(inode_manager, &torrent_info)
+                if let Err(e) = Self::create_torrent_structure_static(inode_manager, &torrent_info)
                 {
                     warn!(
                         "Failed to create structure for torrent {}: {}",
@@ -1147,13 +1146,7 @@ impl Filesystem for TorrentFS {
     /// Called when the kernel needs to open a file for reading.
     /// Returns a file handle that will be used in subsequent read operations.
     #[instrument(skip(self, reply), fields(ino))]
-    fn open(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        flags: i32,
-        reply: fuser::ReplyOpen,
-    ) {
+    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         self.metrics.fuse.record_open();
 
         fuse_log!(self, "open", ino = ino, flags = flags);

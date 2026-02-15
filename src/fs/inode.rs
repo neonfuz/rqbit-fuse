@@ -41,68 +41,14 @@ impl InodeManager {
         }
     }
 
-    /// Allocates a new inode for the given entry.
-    /// Returns the allocated inode number.
-    pub fn allocate(&self, entry: InodeEntry) -> u64 {
+    /// Allocates an inode for the given entry and registers it.
+    fn allocate_entry(&self, entry: InodeEntry, torrent_id: Option<u64>) -> u64 {
         let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+        let entry = entry.with_ino(inode);
+        let path = self.build_path(&entry);
 
-        // Create the entry with the correct inode number
-        let entry = match entry {
-            InodeEntry::Directory {
-                name,
-                parent,
-                children,
-                ..
-            } => InodeEntry::Directory {
-                ino: inode,
-                name,
-                parent,
-                children,
-            },
-            InodeEntry::File {
-                name,
-                parent,
-                torrent_id,
-                file_index,
-                size,
-                ..
-            } => InodeEntry::File {
-                ino: inode,
-                name,
-                parent,
-                torrent_id,
-                file_index,
-                size,
-            },
-            InodeEntry::Symlink {
-                name,
-                parent,
-                target,
-                ..
-            } => InodeEntry::Symlink {
-                ino: inode,
-                name,
-                parent,
-                target,
-            },
-        };
-
-        // Build the path for reverse lookup
-        let path = self.build_path(inode, &entry);
-
-        // Track torrent mappings
-        if let InodeEntry::Directory { .. } = &entry {
-            // Check if this is a torrent directory by looking at parent
-            if let Some(parent_entry) = self.entries.get(&entry.parent()) {
-                if parent_entry.ino() == 1 {
-                    // This is a torrent directory - parse torrent_id from name
-                    // Format is typically "{id}_{name}" or we track it separately
-                }
-            }
-        }
-
-        if let InodeEntry::File { torrent_id, .. } = &entry {
-            self.torrent_to_inode.insert(*torrent_id, entry.parent());
+        if let Some(id) = torrent_id {
+            self.torrent_to_inode.insert(id, inode);
         }
 
         self.path_to_inode.insert(path, inode);
@@ -111,25 +57,20 @@ impl InodeManager {
         inode
     }
 
-    /// Allocates a directory inode for a torrent.
-    /// The torrent_id is tracked separately from the inode.
-    pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
-        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+    /// Allocates a new inode for the given entry.
+    pub fn allocate(&self, entry: InodeEntry) -> u64 {
+        self.allocate_entry(entry, None)
+    }
 
+    /// Allocates a directory inode for a torrent.
+    pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
         let entry = InodeEntry::Directory {
-            ino: inode,
-            name: name.clone(),
+            ino: 0, // Will be assigned
+            name,
             parent,
             children: Vec::new(),
         };
-
-        let path = self.build_path(inode, &entry);
-
-        self.torrent_to_inode.insert(torrent_id, inode);
-        self.path_to_inode.insert(path, inode);
-        self.entries.insert(inode, entry);
-
-        inode
+        self.allocate_entry(entry, Some(torrent_id))
     }
 
     /// Allocates a file inode within a torrent.
@@ -141,42 +82,28 @@ impl InodeManager {
         file_index: usize,
         size: u64,
     ) -> u64 {
-        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-
         let entry = InodeEntry::File {
-            ino: inode,
-            name: name.clone(),
+            ino: 0, // Will be assigned
+            name,
             parent,
             torrent_id,
             file_index,
             size,
         };
-
-        let path = self.build_path(inode, &entry);
-
-        self.path_to_inode.insert(path, inode);
-        self.entries.insert(inode, entry);
-
+        let inode = self.allocate_entry(entry, None);
+        self.torrent_to_inode.insert(torrent_id, parent);
         inode
     }
 
     /// Allocates a symbolic link inode.
     pub fn allocate_symlink(&self, name: String, parent: u64, target: String) -> u64 {
-        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-
         let entry = InodeEntry::Symlink {
-            ino: inode,
-            name: name.clone(),
+            ino: 0, // Will be assigned
+            name,
             parent,
             target,
         };
-
-        let path = self.build_path(inode, &entry);
-
-        self.path_to_inode.insert(path, inode);
-        self.entries.insert(inode, entry);
-
-        inode
+        self.allocate_entry(entry, None)
     }
 
     /// Looks up an inode by its number.
@@ -292,7 +219,7 @@ impl InodeManager {
 
         // Remove from path mapping
         if let Some(entry) = self.entries.get(&inode) {
-            let path = self.build_path(inode, &entry);
+            let path = self.build_path(&entry);
             self.path_to_inode.remove(&path);
 
             // Remove from torrent mapping if it's a torrent directory
@@ -336,25 +263,25 @@ impl InodeManager {
         self.next_inode.store(2, Ordering::SeqCst);
     }
 
-    /// Builds the full path for an inode.
-    fn build_path(&self, inode: u64, entry: &InodeEntry) -> String {
-        if inode == 1 {
-            return "/".to_string();
+    /// Builds the full path for an inode using iteration.
+    fn build_path(&self, entry: &InodeEntry) -> String {
+        let mut components = vec![entry.name().to_string()];
+        let mut current = entry.parent();
+
+        while current != 1 {
+            if let Some(parent_entry) = self.entries.get(&current) {
+                components.push(parent_entry.name().to_string());
+                current = parent_entry.parent();
+            } else {
+                break;
+            }
         }
 
-        let name = entry.name();
-        let parent = entry.parent();
-
-        if parent == 1 {
-            format!("/{}", name)
+        components.reverse();
+        if components.is_empty() || components[0].is_empty() {
+            "/".to_string()
         } else {
-            match self.entries.get(&parent) {
-                Some(parent_entry) => {
-                    let parent_path = self.build_path(parent, &parent_entry);
-                    format!("{}/{}", parent_path, name)
-                }
-                None => format!("/{}", name),
-            }
+            format!("/{}", components.join("/"))
         }
     }
 
