@@ -49,6 +49,9 @@ pub enum ApiError {
 
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Authentication failed: {0}")]
+    AuthenticationError(String),
 }
 
 impl From<reqwest::Error> for ApiError {
@@ -97,6 +100,7 @@ impl ApiError {
             ApiError::ServiceUnavailable(_)
             | ApiError::CircuitBreakerOpen
             | ApiError::RetryLimitExceeded => libc::EAGAIN,
+            ApiError::AuthenticationError(_) => libc::EACCES,
             ApiError::HttpError(_)
             | ApiError::ClientInitializationError(_)
             | ApiError::RequestCloneError(_) => libc::EIO,

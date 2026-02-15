@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add HTTP Basic Authentication support to API client (API-002)
+  - Added `auth_credentials` field to `RqbitClient` and `PersistentStreamManager` structs
+  - Added `with_auth()` constructor for creating authenticated client instances
+  - Added `create_auth_header()` helper method for Base64 encoding of credentials
+  - Modified all HTTP request methods to include Authorization header when credentials configured
+  - Added `AuthenticationError` variant to `ApiError` enum with proper FUSE error mapping (EACCES)
+  - Updated `check_response()` to handle 401 Unauthorized responses with clear error messages
+  - Updated all constructors (`new`, `with_config`, `with_circuit_breaker`) to support auth parameter
+  - Added base64 crate dependency (v0.22) for credential encoding
+  - Enables torrent-fuse to connect to rqbit servers protected by HTTP Basic Authentication
+  - Compatible with rqbit's `RQBIT_HTTP_BASIC_AUTH_USERPASS` environment variable configuration
+  - All 275+ tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 ### Research
 
 - Researched rqbit authentication methods (API-002.1)

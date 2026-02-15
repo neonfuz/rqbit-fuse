@@ -2,6 +2,7 @@ use crate::api::streaming::PersistentStreamManager;
 use crate::api::types::*;
 use crate::metrics::ApiMetrics;
 use anyhow::{Context, Result};
+use base64::Engine;
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 
@@ -120,12 +121,30 @@ pub struct RqbitClient {
     metrics: Arc<ApiMetrics>,
     /// Persistent stream manager for efficient sequential reads
     stream_manager: PersistentStreamManager,
+    /// Optional authentication credentials for HTTP Basic Auth
+    auth_credentials: Option<(String, String)>,
 }
 
 impl RqbitClient {
     /// Create a new RqbitClient with default configuration
     pub fn new(base_url: String, metrics: Arc<ApiMetrics>) -> Result<Self> {
-        Self::with_config(base_url, 3, Duration::from_millis(500), metrics)
+        Self::with_config(base_url, 3, Duration::from_millis(500), None, metrics)
+    }
+
+    /// Create a new RqbitClient with authentication
+    pub fn with_auth(
+        base_url: String,
+        username: String,
+        password: String,
+        metrics: Arc<ApiMetrics>,
+    ) -> Result<Self> {
+        Self::with_config(
+            base_url,
+            3,
+            Duration::from_millis(500),
+            Some((username, password)),
+            metrics,
+        )
     }
 
     /// Create a new RqbitClient with custom retry configuration
@@ -133,6 +152,7 @@ impl RqbitClient {
         base_url: String,
         max_retries: u32,
         retry_delay: Duration,
+        auth_credentials: Option<(String, String)>,
         metrics: Arc<ApiMetrics>,
     ) -> Result<Self> {
         let client = Client::builder()
@@ -141,7 +161,11 @@ impl RqbitClient {
             .build()
             .map_err(|e| ApiError::ClientInitializationError(e.to_string()))?;
 
-        let stream_manager = PersistentStreamManager::new(client.clone(), base_url.clone());
+        let stream_manager = PersistentStreamManager::new(
+            client.clone(),
+            base_url.clone(),
+            auth_credentials.clone(),
+        );
 
         Ok(Self {
             client,
@@ -151,6 +175,7 @@ impl RqbitClient {
             circuit_breaker: CircuitBreaker::new(5, Duration::from_secs(30)),
             metrics,
             stream_manager,
+            auth_credentials,
         })
     }
 
@@ -161,6 +186,7 @@ impl RqbitClient {
         retry_delay: Duration,
         failure_threshold: u32,
         circuit_timeout: Duration,
+        auth_credentials: Option<(String, String)>,
         metrics: Arc<ApiMetrics>,
     ) -> Result<Self> {
         let client = Client::builder()
@@ -169,7 +195,11 @@ impl RqbitClient {
             .build()
             .map_err(|e| ApiError::ClientInitializationError(e.to_string()))?;
 
-        let stream_manager = PersistentStreamManager::new(client.clone(), base_url.clone());
+        let stream_manager = PersistentStreamManager::new(
+            client.clone(),
+            base_url.clone(),
+            auth_credentials.clone(),
+        );
 
         Ok(Self {
             client,
@@ -179,12 +209,22 @@ impl RqbitClient {
             circuit_breaker: CircuitBreaker::new(failure_threshold, circuit_timeout),
             metrics,
             stream_manager,
+            auth_credentials,
         })
     }
 
     /// Get the current circuit breaker state
     pub async fn circuit_state(&self) -> CircuitState {
         self.circuit_breaker.state().await
+    }
+
+    /// Create Authorization header for HTTP Basic Auth
+    fn create_auth_header(&self) -> Option<String> {
+        self.auth_credentials.as_ref().map(|(username, password)| {
+            let credentials = format!("{}:{}", username, password);
+            let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+            format!("Basic {}", encoded)
+        })
     }
 
     /// Helper method to execute a request with retry logic and circuit breaker
@@ -285,6 +325,17 @@ impl RqbitClient {
 
         if status.is_success() || status == StatusCode::PARTIAL_CONTENT {
             Ok(response)
+        } else if status == StatusCode::UNAUTHORIZED {
+            let message = response.text().await.unwrap_or_default();
+            Err(ApiError::AuthenticationError(format!(
+                "Authentication failed: {}",
+                if message.is_empty() {
+                    "Invalid credentials".to_string()
+                } else {
+                    message
+                }
+            ))
+            .into())
         } else {
             let message = match response.text().await {
                 Ok(text) => text,
@@ -311,7 +362,13 @@ impl RqbitClient {
         url: &str,
     ) -> Result<T> {
         let response = self
-            .execute_with_retry(endpoint, || self.client.get(url).send())
+            .execute_with_retry(endpoint, || {
+                let mut req = self.client.get(url);
+                if let Some(auth_header) = self.create_auth_header() {
+                    req = req.header("Authorization", auth_header);
+                }
+                req.send()
+            })
             .await?;
         let response = self.check_response(response).await?;
         Ok(response.json().await?)
@@ -325,7 +382,13 @@ impl RqbitClient {
         body: &B,
     ) -> Result<T> {
         let response = self
-            .execute_with_retry(endpoint, || self.client.post(url).json(body).send())
+            .execute_with_retry(endpoint, || {
+                let mut req = self.client.post(url).json(body);
+                if let Some(auth_header) = self.create_auth_header() {
+                    req = req.header("Authorization", auth_header);
+                }
+                req.send()
+            })
             .await?;
         let response = self.check_response(response).await?;
         Ok(response.json().await?)
@@ -353,7 +416,13 @@ impl RqbitClient {
         let url = format!("{}/torrents", self.base_url);
 
         let response = self
-            .execute_with_retry("/torrents", || self.client.get(&url).send())
+            .execute_with_retry("/torrents", || {
+                let mut req = self.client.get(&url);
+                if let Some(auth_header) = self.create_auth_header() {
+                    req = req.header("Authorization", auth_header);
+                }
+                req.send()
+            })
             .await?;
 
         let response = self.check_response(response).await?;
@@ -507,10 +576,14 @@ impl RqbitClient {
 
         let response = self
             .execute_with_retry(&endpoint, || {
-                self.client
+                let mut req = self
+                    .client
                     .get(&url)
-                    .header("Accept", "application/octet-stream")
-                    .send()
+                    .header("Accept", "application/octet-stream");
+                if let Some(auth_header) = self.create_auth_header() {
+                    req = req.header("Authorization", auth_header);
+                }
+                req.send()
             })
             .await?;
 
@@ -556,6 +629,11 @@ impl RqbitClient {
         let endpoint = format!("/torrents/{}/stream/{}", torrent_id, file_idx);
 
         let mut request = self.client.get(&url);
+
+        // Add Authorization header if credentials are configured
+        if let Some(auth_header) = self.create_auth_header() {
+            request = request.header("Authorization", auth_header);
+        }
 
         // Add Range header if specified
         if let Some((start, end)) = range {
@@ -1634,9 +1712,14 @@ mod tests {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
         // Use client with 1 retry for faster test
-        let client =
-            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), metrics)
-                .unwrap();
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            1,
+            Duration::from_millis(10),
+            None,
+            metrics,
+        )
+        .unwrap();
 
         // First request fails with 503, second succeeds
         Mock::given(method("GET"))

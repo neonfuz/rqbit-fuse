@@ -1,5 +1,6 @@
 use crate::api::types::ApiError;
 use anyhow::{Context, Result};
+use base64::Engine;
 use bytes::Bytes;
 use futures::stream::StreamExt;
 use reqwest::{Client, StatusCode};
@@ -57,6 +58,7 @@ impl PersistentStream {
         torrent_id: u64,
         file_idx: usize,
         start_offset: u64,
+        auth_header: Option<&str>,
     ) -> Result<Self> {
         let url = format!("{}/torrents/{}/stream/{}", base_url, torrent_id, file_idx);
 
@@ -70,9 +72,14 @@ impl PersistentStream {
 
         // Request from the start offset to get a stream we can read sequentially
         let range_header = format!("bytes={}-", start_offset);
-        let response = client
-            .get(&url)
-            .header("Range", range_header)
+        let mut request = client.get(&url).header("Range", range_header);
+
+        // Add Authorization header if credentials are provided
+        if let Some(auth) = auth_header {
+            request = request.header("Authorization", auth);
+        }
+
+        let response = request
             .send()
             .await
             .context("Failed to create persistent stream")?;
@@ -275,11 +282,17 @@ pub struct PersistentStreamManager {
     streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>>,
     /// Cleanup task handle stored in an Option<tokio::task::JoinHandle>
     cleanup_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Optional authentication credentials for HTTP Basic Auth
+    auth_credentials: Option<(String, String)>,
 }
 
 impl PersistentStreamManager {
     /// Create a new stream manager
-    pub fn new(client: Client, base_url: String) -> Self {
+    pub fn new(
+        client: Client,
+        base_url: String,
+        auth_credentials: Option<(String, String)>,
+    ) -> Self {
         let streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
@@ -290,12 +303,22 @@ impl PersistentStreamManager {
             base_url,
             streams: Arc::clone(&streams),
             cleanup_handle: Arc::clone(&cleanup_handle),
+            auth_credentials,
         };
 
         // Start cleanup task
         manager.start_cleanup_task(streams, cleanup_handle);
 
         manager
+    }
+
+    /// Create Authorization header for HTTP Basic Auth
+    fn create_auth_header(&self) -> Option<String> {
+        self.auth_credentials.as_ref().map(|(username, password)| {
+            let credentials = format!("{}:{}", username, password);
+            let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+            format!("Basic {}", encoded)
+        })
     }
 
     /// Start background task to clean up idle streams
@@ -419,9 +442,16 @@ impl PersistentStreamManager {
                 "Creating new stream for read"
             );
 
-            let mut new_stream =
-                PersistentStream::new(&self.client, &self.base_url, torrent_id, file_idx, offset)
-                    .await?;
+            let auth_header = self.create_auth_header();
+            let mut new_stream = PersistentStream::new(
+                &self.client,
+                &self.base_url,
+                torrent_id,
+                file_idx,
+                offset,
+                auth_header.as_deref(),
+            )
+            .await?;
 
             let result = self
                 .read_from_stream(&mut new_stream, size, torrent_id, file_idx)
@@ -534,6 +564,7 @@ mod tests {
         let manager = Arc::new(PersistentStreamManager::new(
             client,
             "http://localhost:0".to_string(),
+            None,
         ));
 
         // Create a barrier for synchronization
@@ -584,6 +615,7 @@ mod tests {
         let manager = Arc::new(PersistentStreamManager::new(
             client,
             "http://localhost:0".to_string(),
+            None,
         ));
 
         let barrier = Arc::new(Barrier::new(5));
@@ -620,6 +652,7 @@ mod tests {
         let manager = Arc::new(PersistentStreamManager::new(
             client,
             "http://localhost:0".to_string(),
+            None,
         ));
 
         // Test that checking stream usability and getting the stream is atomic
@@ -654,6 +687,7 @@ mod tests {
         let manager = Arc::new(PersistentStreamManager::new(
             client,
             "http://localhost:0".to_string(),
+            None,
         ));
 
         // This test verifies that when multiple concurrent reads happen,
@@ -698,7 +732,7 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri());
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
 
         // First read at offset 0
         let _ = manager.read(1, 0, 0, 100).await;
@@ -727,7 +761,7 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri());
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
 
         // Read at offset 0
         let result1 = manager.read(1, 0, 0, 100).await;
@@ -761,7 +795,7 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri());
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
 
         // Read at offset 0
         let _ = manager.read(1, 0, 0, 100).await;
@@ -790,7 +824,7 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri());
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
 
         // Sequential reads at increasing offsets
         for i in 0..10 {
@@ -825,7 +859,7 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri());
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
 
         // Read at offset 100
         let _ = manager.read(1, 0, 100, 100).await;
