@@ -790,3 +790,389 @@ async fn test_concurrent_operations() {
         assert!(file.is_some(), "File should be found");
     }
 }
+
+// ============================================================================
+// FS-007.3: Lookup Operation Tests
+// ============================================================================
+// These tests verify the lookup operation scenarios that the FUSE lookup()
+// callback must handle correctly. The lookup callback resolves path components
+// to inodes and is called during path resolution by the kernel.
+
+/// Test successful file lookup - lookup should resolve file paths to inodes
+#[tokio::test]
+async fn test_lookup_successful_file() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent (2+ files creates a directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "readme.txt".to_string(),
+                length: 1024,
+                components: vec!["readme.txt".to_string()],
+            },
+            FileInfo {
+                name: "data.bin".to_string(),
+                length: 2048,
+                components: vec!["data.bin".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    // Simulate lookup from torrent directory to file
+    // In FUSE: lookup(parent=torrent_dir_ino, name="readme.txt") -> file_ino
+    let inode_manager = fs.inode_manager();
+    let torrent_dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent directory should exist");
+
+    // Verify the file exists in the parent's children
+    let children = inode_manager.get_children(torrent_dir_ino);
+    let readme = children
+        .iter()
+        .find(|(_, entry)| entry.name() == "readme.txt")
+        .expect("readme.txt should be in children");
+
+    // Verify file attributes can be built (this is what lookup returns)
+    let file_entry = inode_manager.get(readme.0).expect("File entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+    assert_eq!(attr.kind, fuser::FileType::RegularFile);
+    assert_eq!(attr.size, 1024);
+}
+
+/// Test successful directory lookup - lookup should resolve directory paths to inodes
+#[tokio::test]
+async fn test_lookup_successful_directory() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent (needs 2+ files to create directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    // Simulate lookup from root to torrent directory
+    // In FUSE: lookup(parent=1, name="Test Torrent") -> dir_ino
+    let inode_manager = fs.inode_manager();
+
+    // Verify torrent directory exists in root's children
+    let root_children = inode_manager.get_children(1);
+    let torrent_dir = root_children
+        .iter()
+        .find(|(_, entry)| entry.name() == "Test Torrent")
+        .expect("Torrent should be in root children");
+
+    // Verify directory attributes can be built
+    let dir_entry = inode_manager.get(torrent_dir.0).expect("Directory entry should exist");
+    let attr = fs.build_file_attr(&dir_entry);
+    assert_eq!(attr.kind, fuser::FileType::Directory);
+}
+
+/// Test lookup for non-existent paths - should return None (becomes ENOENT in FUSE)
+#[tokio::test]
+async fn test_lookup_nonexistent_path() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with known files (needs 2+ files to create directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "exists.txt".to_string(),
+                length: 1024,
+                components: vec!["exists.txt".to_string()],
+            },
+            FileInfo {
+                name: "other.txt".to_string(),
+                length: 2048,
+                components: vec!["other.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test various non-existent paths
+    // In FUSE: lookup(parent=torrent_dir, name="nonexistent.txt") -> ENOENT
+    let torrent_dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent dir should exist");
+
+    // Check children for non-existent file
+    let children = inode_manager.get_children(torrent_dir_ino);
+    let nonexistent = children
+        .iter()
+        .find(|(_, entry)| entry.name() == "nonexistent.txt");
+    assert!(nonexistent.is_none(), "Non-existent file should not be found");
+
+    // Verify lookup_by_path returns None for non-existent full paths
+    assert!(
+        inode_manager.lookup_by_path("/Test Torrent/nonexistent.txt").is_none(),
+        "Non-existent path should return None"
+    );
+    assert!(
+        inode_manager.lookup_by_path("/nonexistent").is_none(),
+        "Non-existent torrent should return None"
+    );
+    assert!(
+        inode_manager.lookup_by_path("/Test Torrent/subdir/nonexistent.txt").is_none(),
+        "Non-existent nested path should return None"
+    );
+}
+
+/// Test lookup with invalid parent - looking up in non-directory should fail
+#[tokio::test]
+async fn test_lookup_invalid_parent() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with a file
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get the file inode (which is not a directory)
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file1.txt")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("File entry should exist");
+
+    // Verify the entry is NOT a directory
+    assert!(!file_entry.is_directory(), "File should not be a directory");
+
+    // Files should have no children (not directories)
+    let file_children = inode_manager.get_children(file_ino);
+    assert!(
+        file_children.is_empty(),
+        "Files should not have children (ENOTDIR behavior)"
+    );
+}
+
+/// Test lookup for non-existent parent inode
+#[tokio::test]
+async fn test_lookup_nonexistent_parent() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let inode_manager = fs.inode_manager();
+
+    // Test that looking up with a non-existent parent returns None
+    // In FUSE: lookup(parent=99999, name="anything") -> ENOENT
+    assert!(
+        inode_manager.get(99999).is_none(),
+        "Non-existent inode should return None"
+    );
+
+    // Verify that children lookup on non-existent inode returns empty
+    let children = inode_manager.get_children(99999);
+    assert!(
+        children.is_empty(),
+        "Non-existent inode should have no children"
+    );
+}
+
+/// Test lookup with deeply nested paths
+#[tokio::test]
+async fn test_lookup_deeply_nested() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with deeply nested structure (needs 2+ files for directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "nested123".to_string(),
+        name: "Nested Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "deep.txt".to_string(),
+                length: 1024,
+                components: vec![
+                    "level1".to_string(),
+                    "level2".to_string(),
+                    "level3".to_string(),
+                    "deep.txt".to_string(),
+                ],
+            },
+            FileInfo {
+                name: "shallow.txt".to_string(),
+                length: 512,
+                components: vec!["shallow.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test lookup at each level
+    let root = inode_manager.lookup_by_path("/");
+    assert!(root.is_some(), "Root should exist");
+
+    let torrent_dir = inode_manager.lookup_by_path("/Nested Torrent");
+    assert!(torrent_dir.is_some(), "Torrent directory should exist");
+
+    let level1 = inode_manager.lookup_by_path("/Nested Torrent/level1");
+    assert!(level1.is_some(), "Level1 should exist");
+
+    let level2 = inode_manager.lookup_by_path("/Nested Torrent/level1/level2");
+    assert!(level2.is_some(), "Level2 should exist");
+
+    let level3 = inode_manager.lookup_by_path("/Nested Torrent/level1/level2/level3");
+    assert!(level3.is_some(), "Level3 should exist");
+
+    let deep_file = inode_manager.lookup_by_path("/Nested Torrent/level1/level2/level3/deep.txt");
+    assert!(deep_file.is_some(), "Deep file should exist");
+
+    // Verify the file attributes
+    let deep_entry = inode_manager.get(deep_file.unwrap()).unwrap();
+    let attr = fs.build_file_attr(&deep_entry);
+    assert_eq!(attr.kind, fuser::FileType::RegularFile);
+    assert_eq!(attr.size, 1024);
+}
+
+/// Test lookup with special characters in names
+#[tokio::test]
+async fn test_lookup_special_characters() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with special characters in file names
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "special123".to_string(),
+        name: "Special Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "file with spaces.txt".to_string(),
+                length: 100,
+                components: vec!["file with spaces.txt".to_string()],
+            },
+            FileInfo {
+                name: "unicode_日本語.txt".to_string(),
+                length: 200,
+                components: vec!["unicode_日本語.txt".to_string()],
+            },
+            FileInfo {
+                name: "symbols@#$%.txt".to_string(),
+                length: 300,
+                components: vec!["symbols@#$%.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let torrent_dir_ino = inode_manager
+        .lookup_by_path("/Special Torrent")
+        .expect("Torrent directory should exist");
+
+    // Verify each special file can be looked up
+    let children = inode_manager.get_children(torrent_dir_ino);
+    let names: Vec<_> = children.iter().map(|(_, entry)| entry.name()).collect();
+
+    assert!(names.contains(&"file with spaces.txt"), "Spaces in filename should work");
+    assert!(names.contains(&"unicode_日本語.txt"), "Unicode in filename should work");
+    assert!(names.contains(&"symbols@#$%.txt"), "Symbols in filename should work");
+
+    // Verify full path lookup works
+    assert!(
+        inode_manager.lookup_by_path("/Special Torrent/file with spaces.txt").is_some()
+    );
+    assert!(
+        inode_manager.lookup_by_path("/Special Torrent/unicode_日本語.txt").is_some()
+    );
+}
