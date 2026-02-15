@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Implement FUSE access operation (PERF-004)
+  - Added access() method to check file permissions
+  - F_OK: Returns ENOENT if inode doesn't exist
+  - W_OK: Always denied (read-only filesystem)
+  - X_OK: Allowed for directories, denied for files
+  - R_OK: Allowed if inode exists
+  - All tests pass, clippy clean, code formatted
+
 - Fix statfs FUSE operation (PERF-003)
   - Fixed method signature from `&self` to `&mut self` for fuser trait compatibility
   - Fixed `reply.statfs()` to use correct 8 arguments (removed extra arguments)

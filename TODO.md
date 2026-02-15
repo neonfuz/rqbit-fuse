@@ -685,10 +685,19 @@ Each item is designed to be completed independently. Research references are sto
   - Returns: blocks=0, bfree=0, bavail=0, files=inode_count, ffree=inode_count, bsize=4096, namelen=255, frsize=4096
   - All tests pass, clippy clean, code formatted
 
-- [ ] **PERF-004**: Implement access operation
+- [x] **PERF-004**: Implement access operation
   - Add FUSE access callback
   - Check file permissions
   - Required for proper permission handling
+  - Implemented in src/fs/filesystem.rs:
+    - Added access() method to Filesystem impl
+    - F_OK: Returns ENOENT if inode doesn't exist
+    - W_OK: Always denied (read-only filesystem)
+    - X_OK: Allowed for directories, denied for files
+    - R_OK: Allowed if inode exists
+  - All tests pass: cargo test ✅
+  - No clippy warnings: cargo clippy ✅
+  - Code formatted: cargo fmt ✅
 
 - [x] **PERF-005**: Optimize buffer allocation
   - streaming.rs: Changed from vec![0u8; size] to BytesMut

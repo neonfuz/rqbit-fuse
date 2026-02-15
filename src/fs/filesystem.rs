@@ -1766,6 +1766,52 @@ impl Filesystem for TorrentFS {
 
         reply.statfs(0, 0, 0, inode_count, inode_count, 4096, 255, 4096);
     }
+
+    /// Check file access permissions.
+    /// This is called for the access() system call.
+    /// Since this is a read-only filesystem:
+    /// - R_OK (read) is allowed if the inode exists
+    /// - W_OK (write) is always denied (read-only filesystem)
+    /// - X_OK (execute) is allowed for directories (to traverse), denied for files
+    fn access(&mut self, _req: &fuser::Request<'_>, ino: u64, mask: i32, reply: fuser::ReplyEmpty) {
+        debug!("access: ino={}, mask={}", ino, mask);
+
+        const W_OK: i32 = 2;
+        const X_OK: i32 = 1;
+        const F_OK: i32 = 0;
+
+        if mask == F_OK {
+            if self.inode_manager.contains(ino) {
+                reply.ok();
+            } else {
+                reply.error(libc::ENOENT);
+            }
+            return;
+        }
+
+        if mask & W_OK != 0 {
+            debug!("access: denying write access for ino={}", ino);
+            reply.error(libc::EACCES);
+            return;
+        }
+
+        match self.inode_manager.get(ino) {
+            Some(entry) => {
+                if entry.is_directory() {
+                    reply.ok();
+                } else if mask & X_OK != 0 {
+                    debug!("access: denying execute on file ino={}", ino);
+                    reply.error(libc::EACCES);
+                } else {
+                    reply.ok();
+                }
+            }
+            None => {
+                debug!("access: inode not found ino={}", ino);
+                reply.error(libc::ENOENT);
+            }
+        }
+    }
 }
 
 impl TorrentFS {
