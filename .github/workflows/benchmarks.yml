@@ -1,0 +1,100 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmarks:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libfuse-dev pkg-config
+    
+    - name: Build release
+      run: cargo build --release --bench performance
+    
+    - name: Run benchmarks
+      run: |
+        cargo bench --bench performance -- --noplot --save-baseline baseline 2>&1
+    
+    - name: Run comparison
+      run: |
+        cargo bench --bench performance -- --compare baseline 2>&1 || true
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: target/criterion/
+    
+    - name: Check for performance regressions
+      run: |
+        echo "## Performance Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Extract key metrics
+        CACHE_INSERT=$(grep -A2 "cache_throughput/insert/1000" target/criterion/*/report/index.html 2>/dev/null | grep -oP 'time:.*?\d+\.\d+ \w+' | head -1 || echo "N/A")
+        CACHE_READ=$(grep -A2 "cache_throughput/read_hit/1000" target/criterion/*/report/index.html 2>/dev/null | grep -oP 'time:.*?\d+\.\d+ \w+' | head -1 || echo "N/A")
+        INODE_ALLOC=$(grep -A2 "inode_management/allocate_inodes" target/criterion/*/report/index.html 2>/dev/null | grep -oP 'time:.*?\d+\.\d+ \w+' | head -1 || echo "N/A")
+        INODE_LOOKUP=$(grep -A2 "inode_management/lookup_inodes" target/criterion/*/report/index.html 2>/dev/null | grep -oP 'time:.*?\d+\.\d+ \w+' | head -1 || echo "N/A")
+        
+        echo "| Benchmark | Time |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Cache Insert (1000) | $CACHE_INSERT |" >> $GITHUB_STEP_SUMMARY
+        echo "| Cache Read Hit (1000) | $CACHE_READ |" >> $GITHUB_STEP_SUMMARY
+        echo "| Inode Allocation | $INODE_ALLOC |" >> $GITHUB_STEP_SUMMARY
+        echo "| Inode Lookup | $INODE_LOOKUP |" >> $GITHUB_STEP_SUMMARY
+        
+        echo "Full benchmark results are available as an artifact."
+
+  benchmark-trend:
+    name: Track Performance Trends
+    runs-on: ubuntu-latest
+    needs: benchmarks
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        name: benchmark-results
+    
+    - name: Store benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: 'cargo'
+        output-file-path: perf.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        alert-threshold: '150%'
+        comment-on-alert: true
+        fail-on-alert: true

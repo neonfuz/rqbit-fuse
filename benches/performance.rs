@@ -9,6 +9,7 @@
 //! - Memory usage patterns
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use dashmap::DashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -156,14 +157,14 @@ fn bench_inode_management(c: &mut Criterion) {
             ino: 0, // Will be assigned
             name: "dir1".to_string(),
             parent: root,
-            children: Vec::new(),
+            children: DashSet::new(),
             canonical_path: "/dir1".to_string(),
         });
         let dir2 = manager.allocate(InodeEntry::Directory {
             ino: 0, // Will be assigned
             name: "dir2".to_string(),
             parent: root,
-            children: Vec::new(),
+            children: DashSet::new(),
             canonical_path: "/dir2".to_string(),
         });
 
@@ -256,6 +257,7 @@ fn bench_concurrent_reads(c: &mut Criterion) {
                                     size: 1024,
                                     torrent_id: i as u64,
                                     file_index: 0,
+                                    canonical_path: format!("/file_{}.txt", i),
                                 };
                                 let inode = manager_clone.allocate(entry);
                                 let _ = manager_clone.get(inode);
@@ -326,7 +328,8 @@ fn bench_memory_usage(c: &mut Criterion) {
                     ino: 0, // Will be assigned
                     name: format!("dir_{}", depth),
                     parent: current_dir,
-                    children: Vec::new(),
+                    children: DashSet::new(),
+                    canonical_path: format!("/dir_{}", depth),
                 });
                 manager.add_child(current_dir, subdir);
 
@@ -339,6 +342,7 @@ fn bench_memory_usage(c: &mut Criterion) {
                         size: 1024 * 1024, // 1MB
                         torrent_id: depth as u64,
                         file_index: file_idx,
+                        canonical_path: format!("/dir_{}/file_{}.txt", depth, file_idx),
                     });
                     manager.add_child(current_dir, file);
                 }

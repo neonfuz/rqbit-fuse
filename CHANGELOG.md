@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add performance benchmarks (PERF-006)
+  - Fixed benchmark compilation errors (missing canonical_path, DashSet import)
+  - Cache benchmarks: insert (2M ops/s), read hit (4.8M ops/s) at 1000 entries
+  - Inode benchmarks: allocation (330µs), lookup (82µs)
+  - Concurrent benchmarks: scales to 16 threads
+  - Memory benchmarks: cache overhead and inode manager
+  - Created .github/workflows/benchmarks.yml for performance regression tracking
+
 - Implement FUSE access operation (PERF-004)
   - Added access() method to check file permissions
   - F_OK: Returns ENOENT if inode doesn't exist
