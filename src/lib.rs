@@ -3,6 +3,7 @@ pub mod cache;
 pub mod config;
 pub mod fs;
 pub mod metrics;
+pub mod sharded_counter;
 pub mod types;
 
 pub use cache::{Cache, CacheStats};
@@ -10,6 +11,7 @@ pub use config::{CliArgs, Config};
 pub use fs::async_bridge::AsyncFuseWorker;
 pub use fs::filesystem::TorrentFS;
 pub use metrics::Metrics;
+pub use sharded_counter::ShardedCounter;
 
 use anyhow::{Context, Result};
 use std::sync::Arc;

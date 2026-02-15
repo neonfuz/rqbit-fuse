@@ -1,58 +1,8 @@
+use crate::sharded_counter::ShardedCounter;
 use moka::future::Cache as MokaCache;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::trace;
-
-/// Number of shards for statistics counters.
-/// Using 64 shards provides good concurrency reduction while keeping memory overhead low.
-/// Each shard is ~16 bytes (2 AtomicU64s), so 64 shards = 1KB per cache instance.
-const STATS_SHARDS: usize = 64;
-
-/// Sharded counter to reduce contention under high concurrency.
-/// Uses a thread-local counter to select shards, avoiding atomic contention
-/// while working correctly in async contexts where tasks migrate between threads.
-#[derive(Debug)]
-struct ShardedCounter {
-    shards: Vec<AtomicU64>,
-}
-
-impl ShardedCounter {
-    fn new() -> Self {
-        let mut shards = Vec::with_capacity(STATS_SHARDS);
-        for _ in 0..STATS_SHARDS {
-            shards.push(AtomicU64::new(0));
-        }
-        Self { shards }
-    }
-
-    /// Increment a counter shard using round-robin selection via thread-local counter.
-    /// This avoids contention better than a single atomic while working in async contexts.
-    #[inline]
-    fn increment(&self) {
-        // Use a thread-local counter for shard selection
-        // This works in async contexts because we only need distribution, not thread affinity
-        thread_local! {
-            static COUNTER: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-        }
-
-        let shard_idx = COUNTER.with(|c| {
-            let val = c.get();
-            c.set(val.wrapping_add(1));
-            (val as usize) % STATS_SHARDS
-        });
-
-        self.shards[shard_idx].fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Sum all shards to get the total count.
-    fn sum(&self) -> u64 {
-        self.shards
-            .iter()
-            .map(|shard| shard.load(Ordering::Relaxed))
-            .sum()
-    }
-}
 
 /// Cache statistics for monitoring
 #[derive(Debug, Clone, Default)]

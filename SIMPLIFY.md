@@ -112,13 +112,13 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### Cache (`src/cache.rs`, `src/lib/`)
 
-- [ ] **SIMPLIFY-008**: Extract ShardedCounter to lib
+- [x] **SIMPLIFY-008**: Extract ShardedCounter to lib
   - [migration:SIMPLIFY-008-sharded-counter](migration/SIMPLIFY-008-sharded-counter.md)
-  - Move `ShardedCounter` to `src/lib/sharded_counter.rs`
+  - Move `ShardedCounter` to `src/sharded_counter.rs`
   - Make it reusable utility
   - **Lines reduced**: ~43 lines (400 → 357)
   - **Risk**: Low - pure extraction
-  - **Test**: `cargo test cache::tests`, check imports work
+  - **Test**: `cargo test cache::tests` ✅ All tests pass, `cargo test sharded_counter::tests` ✅ 3 new tests pass
 
 ### Types (`src/types/*.rs`, `src/api/types.rs`)
 
