@@ -175,8 +175,9 @@ impl TorrentFS {
             }
         });
 
-        let mut h = tokio::runtime::Handle::current().block_on(self.monitor_handle.lock());
-        *h = Some(handle);
+        if let Ok(mut h) = self.monitor_handle.try_lock() {
+            *h = Some(handle);
+        }
 
         info!(
             "Started status monitoring with {} second poll interval",
@@ -222,8 +223,9 @@ impl TorrentFS {
             }
         });
 
-        let mut h = tokio::runtime::Handle::current().block_on(self.discovery_handle.lock());
-        *h = Some(handle);
+        if let Ok(mut h) = self.discovery_handle.try_lock() {
+            *h = Some(handle);
+        }
 
         info!("Started background torrent discovery with 30 second interval");
     }
@@ -339,8 +341,9 @@ impl TorrentFS {
             }
         });
 
-        let mut h = tokio::runtime::Handle::current().block_on(self.cleanup_handle.lock());
-        *h = Some(handle);
+        if let Ok(mut h) = self.cleanup_handle.try_lock() {
+            *h = Some(handle);
+        }
 
         info!(
             "Started file handle cleanup task with TTL: {:?}",
@@ -813,7 +816,10 @@ impl TorrentFS {
             fuser::MountOption::NoSuid,  // No setuid/setgid
             fuser::MountOption::NoDev,   // No special device files
             fuser::MountOption::NoAtime, // Don't update access times
-            fuser::MountOption::Sync,    // Synchronous writes (safer for FUSE)
+            // NOTE: Sync option removed - causes hangs on macOS due to blocking
+            // on unmount. Since this is a read-only filesystem, data integrity
+            // is not a concern. This fix was needed after macOS system updates
+            // broke FUSE mounting with Sync option enabled.
         ];
 
         if self.config.mount.auto_unmount {
