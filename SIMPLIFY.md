@@ -132,7 +132,7 @@ Each item is designed to be completed independently. Migration guides are stored
   - **Risk**: Low - type changes only
   - **Test**: `cargo check` ✅ Clean, `cargo clippy` ✅ Clean, `cargo fmt` ✅ Applied
 
-- [ ] **SIMPLIFY-012**: Consolidate type files
+- [x] **SIMPLIFY-012**: Consolidate type files
   - [migration:SIMPLIFY-012-type-consolidation](migration/SIMPLIFY-012-type-consolidation.md)
   - Merge `file.rs` into `torrent.rs`, add macro to `inode.rs`
   - Add `base_attr()` helper in `attr.rs`

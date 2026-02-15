@@ -24,29 +24,25 @@ pub enum InodeEntry {
     },
 }
 
+macro_rules! match_fields {
+    ($self:expr, $($variant:ident => $field:ident),+ $(,)?) => {
+        match $self {
+            $(InodeEntry::$variant { $field, .. } => $field,)+
+        }
+    };
+}
+
 impl InodeEntry {
     pub fn ino(&self) -> u64 {
-        match self {
-            InodeEntry::Directory { ino, .. } => *ino,
-            InodeEntry::File { ino, .. } => *ino,
-            InodeEntry::Symlink { ino, .. } => *ino,
-        }
+        *match_fields!(self, Directory => ino, File => ino, Symlink => ino)
     }
 
     pub fn name(&self) -> &str {
-        match self {
-            InodeEntry::Directory { name, .. } => name,
-            InodeEntry::File { name, .. } => name,
-            InodeEntry::Symlink { name, .. } => name,
-        }
+        match_fields!(self, Directory => name, File => name, Symlink => name)
     }
 
     pub fn parent(&self) -> u64 {
-        match self {
-            InodeEntry::Directory { parent, .. } => *parent,
-            InodeEntry::File { parent, .. } => *parent,
-            InodeEntry::Symlink { parent, .. } => *parent,
-        }
+        *match_fields!(self, Directory => parent, File => parent, Symlink => parent)
     }
 
     pub fn is_directory(&self) -> bool {

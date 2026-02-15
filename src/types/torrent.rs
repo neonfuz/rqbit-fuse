@@ -9,3 +9,10 @@ pub struct Torrent {
     pub piece_length: u64,
     pub num_pieces: usize,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentFile {
+    pub path: Vec<String>,
+    pub length: u64,
+    pub offset: u64,
+}

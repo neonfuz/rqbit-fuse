@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidate type files (SIMPLIFY-012)
+  - Merged `TorrentFile` struct from `file.rs` into `torrent.rs`
+  - Added `match_fields!` macro to `inode.rs` reducing repetitive accessor methods
+  - Added `base_attr()` helper to `attr.rs` for shared FileAttr creation
+  - Deleted `src/types/file.rs` (9 lines)
+  - Updated `src/types/mod.rs` to remove `pub mod file`
+  - Reduced ~44 lines total (torrent.rs +11, file.rs -9, inode.rs -24, attr.rs -11)
+  - All compilation checks pass, clippy clean, code formatted
+
 - Simplified API types module (SIMPLIFY-009)
   - Merged `DownloadSpeed` and `UploadSpeed` into unified `Speed` struct
   - Added `strum::Display` derive to `TorrentState`, removed 12-line manual Display impl
