@@ -1,4 +1,4 @@
-# torrent-fuse Improvement Checklist
+# rqbit-fuse Improvement Checklist
 
 ## How to Use This File
 
@@ -588,10 +588,10 @@ Each item is designed to be completed independently. Research references are sto
   - All 209 tests pass, clippy clean, code formatted
 
 - [x] **ARCH-002**: Implement module re-exports
-  - TorrentFS accessible via torrent_fuse::fs::TorrentFS (via fs/mod.rs re-export)
-  - AsyncFuseWorker accessible via torrent_fuse::fs::AsyncFuseWorker
-  - FuseError accessible via torrent_fuse::fs::FuseError
-  - InodeManager accessible via torrent_fuse::fs::InodeManager
+  - TorrentFS accessible via rqbit_fuse::fs::TorrentFS (via fs/mod.rs re-export)
+  - AsyncFuseWorker accessible via rqbit_fuse::fs::AsyncFuseWorker
+  - FuseError accessible via rqbit_fuse::fs::FuseError
+  - InodeManager accessible via rqbit_fuse::fs::InodeManager
   - All re-exports working, docs build successfully
 
 - [x] **ARCH-003**: Extract mount operations

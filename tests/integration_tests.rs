@@ -1,4 +1,4 @@
-//! Integration tests for torrent-fuse
+//! Integration tests for rqbit-fuse
 //!
 //! These tests verify the full integration between:
 //! - FUSE filesystem operations
@@ -12,7 +12,7 @@ use tempfile::TempDir;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use torrent_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
+use rqbit_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
 
 /// Sets up a mock rqbit server with standard responses
 async fn setup_mock_server() -> MockServer {
@@ -40,7 +40,7 @@ fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> Conf
 /// Helper function to create a TorrentFS with an async worker for tests
 fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
     let api_client = Arc::new(
-        torrent_fuse::api::client::RqbitClient::new(
+        rqbit_fuse::api::client::RqbitClient::new(
             config.api.url.clone(),
             Arc::clone(&metrics.api),
         )
@@ -105,14 +105,14 @@ async fn test_torrent_addition_from_magnet() {
 
     // In a real scenario, we would add the torrent through the filesystem
     // For integration test, we verify the structure can be created
-    use torrent_fuse::api::types::TorrentInfo;
+    use rqbit_fuse::api::types::TorrentInfo;
     let torrent_info = TorrentInfo {
         id: 1,
         info_hash: "abc123".to_string(),
         name: "Test Torrent".to_string(),
         output_folder: "/downloads".to_string(),
         file_count: Some(1),
-        files: vec![torrent_fuse::api::types::FileInfo {
+        files: vec![rqbit_fuse::api::types::FileInfo {
             name: "test.txt".to_string(),
             length: 1024,
             components: vec!["test.txt".to_string()],
@@ -150,7 +150,7 @@ async fn test_multi_file_torrent_structure() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     let torrent_info = TorrentInfo {
         id: 2,
@@ -209,7 +209,7 @@ async fn test_duplicate_torrent_detection() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::TorrentInfo;
+    use rqbit_fuse::api::types::TorrentInfo;
 
     let torrent_info = TorrentInfo {
         id: 3,
@@ -217,7 +217,7 @@ async fn test_duplicate_torrent_detection() {
         name: "Duplicate Test".to_string(),
         output_folder: "/downloads".to_string(),
         file_count: Some(1),
-        files: vec![torrent_fuse::api::types::FileInfo {
+        files: vec![rqbit_fuse::api::types::FileInfo {
             name: "file.txt".to_string(),
             length: 100,
             components: vec!["file.txt".to_string()],
@@ -271,7 +271,7 @@ async fn test_file_attribute_generation() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     let torrent_info = TorrentInfo {
         id: 4,
@@ -350,7 +350,7 @@ async fn test_torrent_removal_with_cleanup() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     // Create torrent structure
     let torrent_info = TorrentInfo {
@@ -400,7 +400,7 @@ async fn test_deeply_nested_directory_structure() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     let torrent_info = TorrentInfo {
         id: 6,
@@ -473,7 +473,7 @@ async fn test_unicode_and_special_characters() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     let torrent_info = TorrentInfo {
         id: 7,
@@ -529,7 +529,7 @@ async fn test_empty_torrent_handling() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     // Torrent with zero-byte file
     let torrent_info = TorrentInfo {
@@ -571,7 +571,7 @@ async fn test_concurrent_torrent_additions() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     const NUM_TORRENTS: usize = 5;
     let barrier = Arc::new(Barrier::new(NUM_TORRENTS));
@@ -644,7 +644,7 @@ async fn test_nested_directory_path_resolution() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     let torrent_info = TorrentInfo {
         id: 10,
@@ -765,7 +765,7 @@ async fn debug_nested_structure() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
     let torrent_info = TorrentInfo {
         id: 99,

@@ -63,7 +63,7 @@ The simplest approach - leverage rqbit's existing prefetch:
 
 ### Alternative: Approach 1 (Simple Sequential Detection)
 
-If we want explicit prefetch in torrent-fuse:
+If we want explicit prefetch in rqbit-fuse:
 1. Track sequential access patterns per file handle
 2. Issue prefetch requests in background
 3. More complex but gives more control

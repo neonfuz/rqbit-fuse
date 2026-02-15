@@ -9,7 +9,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-use torrent_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
+use rqbit_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
 
 /// Test filesystem wrapper that handles lifecycle management
 ///
@@ -51,7 +51,7 @@ impl TestFilesystem {
         config.mount.auto_unmount = true;
 
         let metrics = Arc::new(Metrics::new());
-        let api_client = Arc::new(torrent_fuse::api::client::RqbitClient::new(
+        let api_client = Arc::new(rqbit_fuse::api::client::RqbitClient::new(
             config.api.url.clone(),
             Arc::clone(&metrics.api),
         ));
@@ -97,7 +97,7 @@ impl TestFilesystem {
     ///
     /// # Returns
     /// A reference to the InodeManager
-    pub fn inode_manager(&self) -> &torrent_fuse::fs::inode::InodeManager {
+    pub fn inode_manager(&self) -> &rqbit_fuse::fs::inode::InodeManager {
         self.fs.inode_manager()
     }
 
@@ -137,7 +137,7 @@ impl TestFilesystem {
 /// let fs = create_test_fs(config, metrics);
 /// ```
 pub fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
-    let api_client = Arc::new(torrent_fuse::api::client::RqbitClient::new(
+    let api_client = Arc::new(rqbit_fuse::api::client::RqbitClient::new(
         config.api.url.clone(),
         Arc::clone(&metrics.api),
     ));

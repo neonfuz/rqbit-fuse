@@ -2,13 +2,13 @@
 
 ## Overview
 
-Research into child process cleanup mechanisms for torrent-fuse.
+Research into child process cleanup mechanisms for rqbit-fuse.
 
 ## Findings
 
 ### Current Implementation
 
-The main child process spawned by torrent-fuse is `fusermount` (or `fusermount3`) for unmounting the FUSE filesystem. This is invoked via `std::process::Command`.
+The main child process spawned by rqbit-fuse is `fusermount` (or `fusermount3`) for unmounting the FUSE filesystem. This is invoked via `std::process::Command`.
 
 ### Issues Identified
 

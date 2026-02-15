@@ -2,7 +2,7 @@
 
 ## Overview
 
-Research and implementation of typed error handling for torrent-fuse to replace fragile string-based error detection.
+Research and implementation of typed error handling for rqbit-fuse to replace fragile string-based error detection.
 
 ## String-Based Error Detection Issues (RESOLVED)
 

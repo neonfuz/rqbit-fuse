@@ -6,7 +6,7 @@
 
 ## Summary
 
-Reviewed the comprehensive testing specification (1691 lines) for torrent-fuse FUSE filesystem implementation. This document provides a detailed roadmap for implementing proper FUSE operation tests.
+Reviewed the comprehensive testing specification (1691 lines) for rqbit-fuse FUSE filesystem implementation. This document provides a detailed roadmap for implementing proper FUSE operation tests.
 
 ## Key Findings
 

@@ -83,7 +83,7 @@ Cons:
 - More boilerplate
 - Platform-specific (unix only)
 
-## Recommendations for torrent-fuse
+## Recommendations for rqbit-fuse
 
 ### Immediate Needs:
 1. **FUSE unmount on shutdown**: The filesystem should unmount cleanly on SIGINT/SIGTERM
@@ -93,7 +93,7 @@ Cons:
 ### Recommended Approach: Option 1 (tokio::signal)
 
 Keep it simple since:
-- torrent-fuse is a relatively simple application
+- rqbit-fuse is a relatively simple application
 - No need for complex subsystem architecture
 - FUSE mount/unmount can be handled in the shutdown path
 

@@ -4,7 +4,7 @@
 //! including single-file torrents, multi-file torrents, nested structures,
 //! and edge cases like empty files or unicode names.
 
-use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
 /// Create a single-file torrent fixture
 ///

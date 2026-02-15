@@ -266,7 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `check_response()` to handle 401 Unauthorized responses with clear error messages
   - Updated all constructors (`new`, `with_config`, `with_circuit_breaker`) to support auth parameter
   - Added base64 crate dependency (v0.22) for credential encoding
-  - Enables torrent-fuse to connect to rqbit servers protected by HTTP Basic Authentication
+  - Enables rqbit-fuse to connect to rqbit servers protected by HTTP Basic Authentication
   - Compatible with rqbit's `RQBIT_HTTP_BASIC_AUTH_USERPASS` environment variable configuration
   - All 275+ tests pass: `cargo test` ✅
   - No clippy warnings: `cargo clippy` ✅
@@ -298,7 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Identified configuration via `RQBIT_HTTP_BASIC_AUTH_USERPASS` environment variable
   - Analyzed security implications (single-user, timing attack vulnerability, plaintext storage)
   - Created comprehensive research document at `research/rqbit-authentication.md`
-  - Provided implementation recommendations for torrent-fuse client-side auth support
+  - Provided implementation recommendations for rqbit-fuse client-side auth support
 
 ### Fixed
 
@@ -709,7 +709,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of torrent-fuse
+- Initial release of rqbit-fuse
 - FUSE filesystem implementation for mounting torrents as read-only filesystem
 - rqbit HTTP API client with retry logic and circuit breaker pattern
 - Inode management with thread-safe concurrent access
@@ -751,5 +751,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation (README, API docs, architecture)
 - Multi-platform support (Linux, macOS)
 
-[Unreleased]: https://github.com/anomalyco/torrent-fuse/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/anomalyco/torrent-fuse/releases/tag/v0.1.0
+[Unreleased]: https://github.com/anomalyco/rqbit-fuse/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/anomalyco/rqbit-fuse/releases/tag/v0.1.0

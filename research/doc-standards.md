@@ -1,7 +1,7 @@
 # Documentation Standards Research
 
 ## Overview
-This document outlines documentation standards for the torrent-fuse project, following Rust best practices and conventions.
+This document outlines documentation standards for the rqbit-fuse project, following Rust best practices and conventions.
 
 ## Rust Doc Comment Conventions
 

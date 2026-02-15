@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the rqbit HTTP API endpoints used by torrent-fuse and how we interact with them.
+This document describes the rqbit HTTP API endpoints used by rqbit-fuse and how we interact with them.
 
 ## Base URL
 
@@ -329,7 +329,7 @@ Body: torrent file bytes
 }
 ```
 
-**Usage:** Add torrents to rqbit (typically done via rqbit CLI, not torrent-fuse).
+**Usage:** Add torrents to rqbit (typically done via rqbit CLI, not rqbit-fuse).
 
 ---
 
@@ -341,7 +341,7 @@ Body: torrent file bytes
 
 **Description:** Pause or resume torrent downloading.
 
-**Usage:** Control download activity (optional for torrent-fuse).
+**Usage:** Control download activity (optional for rqbit-fuse).
 
 ---
 
@@ -351,7 +351,7 @@ Body: torrent file bytes
 - `POST /torrents/{id_or_infohash}/forget` - Remove from session, keep files
 - `POST /torrents/{id_or_infohash}/delete` - Remove from session, delete files
 
-**Usage:** Cleanup (optional for torrent-fuse). Can be triggered by removing torrent directory via FUSE unlink (if implemented).
+**Usage:** Cleanup (optional for rqbit-fuse). Can be triggered by removing torrent directory via FUSE unlink (if implemented).
 
 ---
 
@@ -375,7 +375,7 @@ All endpoints return standard HTTP status codes:
 
 ### FUSE Error Mapping
 
-The torrent-fuse implementation maps HTTP errors to FUSE error codes:
+The rqbit-fuse implementation maps HTTP errors to FUSE error codes:
 
 | HTTP Status | FUSE Error | Description |
 |-------------|------------|-------------|
@@ -389,7 +389,7 @@ The torrent-fuse implementation maps HTTP errors to FUSE error codes:
 
 ## Rate Limiting
 
-rqbit does not implement rate limiting, but torrent-fuse implements protective measures:
+rqbit does not implement rate limiting, but rqbit-fuse implements protective measures:
 
 - **Concurrent request limiting**: Uses semaphore to limit concurrent `/stream` requests
 - **Connection pooling**: Reuses HTTP connections via `PersistentStreamManager`

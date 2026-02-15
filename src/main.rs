@@ -1,11 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use torrent_fuse::config::{CliArgs, Config};
-use torrent_fuse::mount::{get_mount_info, is_mount_point, setup_logging, unmount_filesystem};
+use rqbit_fuse::config::{CliArgs, Config};
+use rqbit_fuse::mount::{get_mount_info, is_mount_point, setup_logging, unmount_filesystem};
 
 #[derive(Parser)]
-#[command(name = "torrent-fuse")]
+#[command(name = "rqbit-fuse")]
 #[command(about = "A FUSE filesystem for accessing torrents via rqbit")]
 #[command(version)]
 struct Cli {
@@ -180,12 +180,12 @@ async fn run_mount(
         })?;
     }
 
-    tracing::info!("torrent-fuse starting");
+    tracing::info!("rqbit-fuse starting");
     tracing::info!("Using rqbit API at: {}", config.api.url);
     tracing::info!("Mount point: {}", config.mount.mount_point.display());
     tracing::debug!("Configuration: {:?}", config);
 
-    torrent_fuse::run(config).await
+    rqbit_fuse::run(config).await
 }
 
 async fn run_umount(
@@ -217,7 +217,7 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
 
     match format {
         OutputFormat::Text => {
-            println!("torrent-fuse Status");
+            println!("rqbit-fuse Status");
             println!("===================");
             println!();
             println!("Configuration:");

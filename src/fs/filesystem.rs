@@ -31,7 +31,7 @@ pub struct ConcurrencyStats {
     pub available_permits: usize,
 }
 
-/// The main FUSE filesystem implementation for torrent-fuse.
+/// The main FUSE filesystem implementation for rqbit-fuse.
 /// Implements the fuser::Filesystem trait to provide a FUSE interface
 /// over the rqbit HTTP API.
 ///
@@ -669,7 +669,7 @@ impl TorrentFS {
         let mount_point = self.config.mount.mount_point.clone();
         let options = self.build_mount_options();
 
-        info!("Mounting torrent-fuse at: {}", mount_point.display());
+        info!("Mounting rqbit-fuse at: {}", mount_point.display());
 
         // Mount the filesystem
         fuser::mount2(self, &mount_point, &options)
@@ -1709,7 +1709,7 @@ impl Filesystem for TorrentFS {
         _req: &fuser::Request<'_>,
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), libc::c_int> {
-        info!("Initializing torrent-fuse filesystem");
+        info!("Initializing rqbit-fuse filesystem");
 
         // Validate mount point
         if let Err(e) = self.validate_mount_point() {
@@ -1742,7 +1742,7 @@ impl Filesystem for TorrentFS {
         self.start_handle_cleanup();
 
         self.initialized = true;
-        info!("torrent-fuse filesystem initialized successfully");
+        info!("rqbit-fuse filesystem initialized successfully");
 
         Ok(())
     }
@@ -1750,7 +1750,7 @@ impl Filesystem for TorrentFS {
     /// Clean up filesystem.
     /// Called on unmount.
     fn destroy(&mut self) {
-        info!("Shutting down torrent-fuse filesystem");
+        info!("Shutting down rqbit-fuse filesystem");
         self.initialized = false;
         // Stop the status monitoring task
         self.stop_status_monitoring();

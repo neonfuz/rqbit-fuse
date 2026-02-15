@@ -1,4 +1,4 @@
-# Code Review Summary - torrent-fuse
+# Code Review Summary - rqbit-fuse
 
 **Review Date:** February 14, 2026  
 **Files Reviewed:** 19 .rs files  
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The torrent-fuse codebase demonstrates good Rust practices with proper async/await patterns, comprehensive error handling with `anyhow`, and clean module organization. However, there are **critical issues** across multiple areas:
+The rqbit-fuse codebase demonstrates good Rust practices with proper async/await patterns, comprehensive error handling with `anyhow`, and clean module organization. However, there are **critical issues** across multiple areas:
 
 1. **Thread Safety:** Multiple race conditions in cache and inode management
 2. **Memory Management:** Memory leaks in read state tracking, O(n) cache operations
@@ -409,7 +409,7 @@ The code is functional but requires significant refactoring before production us
 
 ## Conclusion
 
-The torrent-fuse codebase shows promise with good Rust practices and clean organization, but it has **critical issues** that must be addressed before production use:
+The rqbit-fuse codebase shows promise with good Rust practices and clean organization, but it has **critical issues** that must be addressed before production use:
 
 1. **Thread safety issues** in cache and inode management
 2. **FUSE compliance issues** with file handles and blocking

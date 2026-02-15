@@ -157,8 +157,8 @@ pub async fn setup_mock_server_with_error(
 pub fn create_test_config(
     mock_uri: String,
     mount_point: std::path::PathBuf,
-) -> torrent_fuse::Config {
-    let mut config = torrent_fuse::Config::default();
+) -> rqbit_fuse::Config {
+    let mut config = rqbit_fuse::Config::default();
     config.api.url = mock_uri;
     config.mount.mount_point = mount_point;
     config.mount.allow_other = false;

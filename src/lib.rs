@@ -1,4 +1,4 @@
-//! # torrent-fuse
+//! # rqbit-fuse
 //!
 //! A read-only FUSE filesystem that mounts BitTorrent torrents as virtual directories,
 //! enabling seamless access to torrent content without waiting for full downloads.
@@ -31,7 +31,7 @@
 //!                               │
 //!                               ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │                  torrent-fuse FUSE Client                    │
+//! │                  rqbit-fuse FUSE Client                    │
 //! │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
 //! │  │ FUSE Handler │  │ HTTP Client │  │ Cache Mgr   │       │
 //! │  │ (fuser)      │  │ (reqwest)   │  │ (moka)      │       │
@@ -52,7 +52,7 @@
 //! This crate can be used as a library or via the CLI binary. For library usage:
 //!
 //! ```ignore
-//! use torrent_fuse::{run, Config};
+//! use rqbit_fuse::{run, Config};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -123,7 +123,7 @@
 //! The FUSE filesystem crashed or was killed. Unmount and remount:
 //! ```bash
 //! fusermount -u ~/torrents
-//! torrent-fuse mount ~/torrents
+//! rqbit-fuse mount ~/torrents
 //! ```
 //!
 //! **"Connection refused" to API**
@@ -146,8 +146,8 @@
 //!
 //! Run with verbose logging to debug issues:
 //! ```bash
-//! torrent-fuse mount ~/torrents -vv  # DEBUG level
-//! torrent-fuse mount ~/torrents -vvv # TRACE level
+//! rqbit-fuse mount ~/torrents -vv  # DEBUG level
+//! rqbit-fuse mount ~/torrents -vvv # TRACE level
 //! ```
 //!
 //! Enable metrics logging to monitor performance:
@@ -253,9 +253,9 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Run the torrent-fuse filesystem.
+/// Run the rqbit-fuse filesystem.
 ///
-/// This is the main entry point for using torrent-fuse as a library.
+/// This is the main entry point for using rqbit-fuse as a library.
 /// It sets up the metrics collection, API client, async worker, and filesystem,
 /// then mounts the FUSE filesystem at the configured mount point.
 ///
@@ -274,7 +274,7 @@ use std::time::Duration;
 /// # Example
 ///
 /// ```ignore
-/// use torrent_fuse::{run, Config};
+/// use rqbit_fuse::{run, Config};
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
@@ -289,7 +289,7 @@ use std::time::Duration;
 /// This function blocks until the filesystem is unmounted. It handles SIGINT and
 /// SIGTERM gracefully, cleaning up resources on shutdown.
 pub async fn run(config: Config) -> Result<()> {
-    tracing::info!(operation = "startup", message = "torrent-fuse starting");
+    tracing::info!(operation = "startup", message = "rqbit-fuse starting");
     tracing::debug!(config = ?config, "Configuration loaded");
 
     // Create metrics

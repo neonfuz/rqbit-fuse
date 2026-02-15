@@ -70,7 +70,7 @@ Access your torrents through standard filesystem operations—stream videos whil
 
 ### Windows Alternative: WSL2
 
-Since Windows does not have native FUSE support and the `fuser` crate used by this project does not support Windows, you can run torrent-fuse on Windows using WSL2:
+Since Windows does not have native FUSE support and the `fuser` crate used by this project does not support Windows, you can run rqbit-fuse on Windows using WSL2:
 
 1. Install WSL2 with a Linux distribution (Ubuntu recommended)
 2. Install FUSE libraries inside WSL2:
@@ -78,11 +78,11 @@ Since Windows does not have native FUSE support and the `fuser` crate used by th
    sudo apt-get update
    sudo apt-get install libfuse-dev
    ```
-3. Install rqbit and torrent-fuse within WSL2
+3. Install rqbit and rqbit-fuse within WSL2
 4. Mount the filesystem to a path inside WSL2:
    ```bash
    mkdir -p ~/torrents
-   torrent-fuse mount ~/torrents
+   rqbit-fuse mount ~/torrents
    ```
 5. Access the mount from Windows via `\\wsl$\Ubuntu\home\<user>\torrents`
 
@@ -96,15 +96,15 @@ Since Windows does not have native FUSE support and the `fuser` crate used by th
 ### From source:
 
 ```bash
-git clone https://github.com/yourusername/torrent-fuse
-cd torrent-fuse
+git clone https://github.com/yourusername/rqbit-fuse
+cd rqbit-fuse
 cargo install --path .
 ```
 
 ### From crates.io (once published):
 
 ```bash
-cargo install torrent-fuse
+cargo install rqbit-fuse
 ```
 
 ## Quick Start
@@ -134,7 +134,7 @@ Create a mount point and mount:
 
 ```bash
 mkdir -p ~/torrents
-torrent-fuse mount ~/torrents
+rqbit-fuse mount ~/torrents
 ```
 
 ### 4. Browse and Stream
@@ -162,13 +162,13 @@ cp ~/torrents/"Ubuntu 24.04 ISO"/ubuntu-24.04.iso ~/Downloads/
 ### 5. Check Status
 
 ```bash
-torrent-fuse status
+rqbit-fuse status
 ```
 
 ### 6. Unmount
 
 ```bash
-torrent-fuse umount ~/torrents
+rqbit-fuse umount ~/torrents
 ```
 
 Or use:
@@ -178,7 +178,7 @@ fusermount -u ~/torrents
 
 ## Configuration
 
-Create a configuration file at `~/.config/torrent-fuse/config.toml`:
+Create a configuration file at `~/.config/rqbit-fuse/config.toml`:
 
 ```toml
 [api]
@@ -238,7 +238,7 @@ All configuration options can be set via environment variables:
    ```bash
    rqbit add magnet:?xt=urn:btih:...
    # Wait for 5-10% completion
-   torrent-fuse mount ~/torrents
+   rqbit-fuse mount ~/torrents
    ```
 
 5. **Tune cache settings**: Increase cache size for better metadata caching if you have memory available:
@@ -266,7 +266,7 @@ All configuration options can be set via environment variables:
 ### Mount Command
 
 ```bash
-torrent-fuse mount <MOUNT_POINT> [OPTIONS]
+rqbit-fuse mount <MOUNT_POINT> [OPTIONS]
 ```
 
 Options:
@@ -281,7 +281,7 @@ Options:
 ### Umount Command
 
 ```bash
-torrent-fuse umount <MOUNT_POINT> [OPTIONS]
+rqbit-fuse umount <MOUNT_POINT> [OPTIONS]
 ```
 
 Options:
@@ -290,7 +290,7 @@ Options:
 ### Status Command
 
 ```bash
-torrent-fuse status [MOUNT_POINT] [OPTIONS]
+rqbit-fuse status [MOUNT_POINT] [OPTIONS]
 ```
 
 Options:
@@ -302,7 +302,7 @@ Options:
 
 ```bash
 # Mount the filesystem
-torrent-fuse mount ~/torrents
+rqbit-fuse mount ~/torrents
 
 # Play video (starts immediately, downloads on demand)
 mpv ~/torrents/"Big Buck Bunny"/bbb_sunflower_1080p_60fps_normal.mp4
@@ -329,7 +329,7 @@ getfattr -d ~/torrents/"Ubuntu 24.04 ISO"
 
 ### Run as a Systemd Service
 
-Create `~/.config/systemd/user/torrent-fuse.service`:
+Create `~/.config/systemd/user/rqbit-fuse.service`:
 
 ```ini
 [Unit]
@@ -338,8 +338,8 @@ After=network.target
 
 [Service]
 Type=forking
-ExecStart=/usr/local/bin/torrent-fuse mount /home/user/torrents --auto-unmount
-ExecStop=/usr/local/bin/torrent-fuse umount /home/user/torrents
+ExecStart=/usr/local/bin/rqbit-fuse mount /home/user/torrents --auto-unmount
+ExecStop=/usr/local/bin/rqbit-fuse umount /home/user/torrents
 Restart=on-failure
 
 [Install]
@@ -349,8 +349,8 @@ WantedBy=default.target
 Enable and start:
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable torrent-fuse
-systemctl --user start torrent-fuse
+systemctl --user enable rqbit-fuse
+systemctl --user start rqbit-fuse
 ```
 
 ## Architecture
@@ -365,7 +365,7 @@ systemctl --user start torrent-fuse
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  torrent-fuse FUSE Client                    │
+│                  rqbit-fuse FUSE Client                    │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
 │  │ FUSE Handler │  │ HTTP Client  │  │ Cache Mgr    │       │
 │  │ (fuser)      │  │ (reqwest)    │  │ (in-mem)     │       │
@@ -386,7 +386,7 @@ systemctl --user start torrent-fuse
 
 ### Component Details
 
-**FUSE Client (torrent-fuse)**
+**FUSE Client (rqbit-fuse)**
 - Handles FUSE callbacks (lookup, readdir, read, getattr)
 - Manages inode allocation and directory structure
 - Implements LRU cache with TTL for metadata and pieces
@@ -522,7 +522,7 @@ See [TASKS.md](TASKS.md) for the complete development roadmap.
 The FUSE filesystem crashed or was killed. Unmount and remount:
 ```bash
 fusermount -u ~/torrents
-torrent-fuse mount ~/torrents
+rqbit-fuse mount ~/torrents
 ```
 
 **"Connection refused" to API**
@@ -545,7 +545,7 @@ rm ~/torrents/somefile
 
 Run in foreground with debug logging:
 ```bash
-torrent-fuse mount ~/torrents --auto-unmount -vv
+rqbit-fuse mount ~/torrents --auto-unmount -vv
 ```
 
 ## Development
@@ -580,25 +580,25 @@ Since this is a FUSE-based project with platform-specific differences, you may n
 
 ```bash
 # Build the Docker image
-docker build -t torrent-fuse-dev .
+docker build -t rqbit-fuse-dev .
 
 # Run all tests
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev
+docker run --rm -v "$(pwd):/app" rqbit-fuse-dev
 
 # Run specific test
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo test <test_name>
+docker run --rm -v "$(pwd):/app" rqbit-fuse-dev cargo test <test_name>
 
 # Build release binary for Linux
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo build --release
+docker run --rm -v "$(pwd):/app" rqbit-fuse-dev cargo build --release
 
 # Run linter
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo clippy
+docker run --rm -v "$(pwd):/app" rqbit-fuse-dev cargo clippy
 
 # Format code
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo fmt
+docker run --rm -v "$(pwd):/app" rqbit-fuse-dev cargo fmt
 
 # Interactive shell
-docker run --rm -it -v "$(pwd):/app" torrent-fuse-dev bash
+docker run --rm -it -v "$(pwd):/app" rqbit-fuse-dev bash
 ```
 
 ## License

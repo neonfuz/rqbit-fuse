@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document specifies the comprehensive error handling strategy for torrent-fuse, addressing current issues and providing a typed, context-rich error system that properly maps to FUSE error codes.
+This document specifies the comprehensive error handling strategy for rqbit-fuse, addressing current issues and providing a typed, context-rich error system that properly maps to FUSE error codes.
 
 ## Current Error Handling Issues
 
@@ -135,7 +135,7 @@ let response = self
 ### Error Enum Hierarchy
 
 ```rust
-/// The top-level error type for torrent-fuse operations
+/// The top-level error type for rqbit-fuse operations
 #[derive(Error, Debug)]
 pub enum TorrentFuseError {
     /// Errors from the rqbit HTTP API

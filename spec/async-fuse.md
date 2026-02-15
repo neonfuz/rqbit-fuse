@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document addresses the critical issue of async-in-sync patterns in FUSE callbacks within the torrent-fuse project. FUSE callbacks are inherently synchronous (they must return immediately), but the project needs to perform async I/O operations (HTTP requests to rqbit). This document analyzes the current dangerous patterns and provides a comprehensive solution.
+This document addresses the critical issue of async-in-sync patterns in FUSE callbacks within the rqbit-fuse project. FUSE callbacks are inherently synchronous (they must return immediately), but the project needs to perform async I/O operations (HTTP requests to rqbit). This document analyzes the current dangerous patterns and provides a comprehensive solution.
 
 **Status**: Draft  
 **Related Issues**: FS-001, FS-002  

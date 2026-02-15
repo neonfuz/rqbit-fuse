@@ -89,7 +89,7 @@ jobs:
     - name: Package binary
       run: |
         cd target/${{ matrix.target }}/release
-        tar czvf ../../../torrent-fuse-${{ matrix.target }}.tar.gz torrent-fuse
+        tar czvf ../../../rqbit-fuse-${{ matrix.target }}.tar.gz rqbit-fuse
         cd ../../..
     
     - name: Upload Release Asset
@@ -98,8 +98,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./torrent-fuse-${{ matrix.target }}.tar.gz
-        asset_name: torrent-fuse-${{ matrix.target }}.tar.gz
+        asset_path: ./rqbit-fuse-${{ matrix.target }}.tar.gz
+        asset_name: rqbit-fuse-${{ matrix.target }}.tar.gz
         asset_content_type: application/gzip
 
   build-macos:
@@ -139,7 +139,7 @@ jobs:
     - name: Package binary
       run: |
         cd target/${{ matrix.target }}/release
-        tar czvf ../../../torrent-fuse-${{ matrix.target }}.tar.gz torrent-fuse
+        tar czvf ../../../rqbit-fuse-${{ matrix.target }}.tar.gz rqbit-fuse
         cd ../../..
     
     - name: Upload Release Asset
@@ -148,8 +148,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./torrent-fuse-${{ matrix.target }}.tar.gz
-        asset_name: torrent-fuse-${{ matrix.target }}.tar.gz
+        asset_path: ./rqbit-fuse-${{ matrix.target }}.tar.gz
+        asset_name: rqbit-fuse-${{ matrix.target }}.tar.gz
         asset_content_type: application/gzip
 
   publish-crates:

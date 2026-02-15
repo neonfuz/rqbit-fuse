@@ -1,4 +1,4 @@
-//! Performance and stress tests for torrent-fuse
+//! Performance and stress tests for rqbit-fuse
 //!
 //! These tests verify performance characteristics under load:
 //! - High-throughput cache operations
@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
 use dashmap::DashSet;
-use torrent_fuse::cache::Cache;
-use torrent_fuse::fs::inode::InodeManager;
-use torrent_fuse::types::inode::InodeEntry;
+use rqbit_fuse::cache::Cache;
+use rqbit_fuse::fs::inode::InodeManager;
+use rqbit_fuse::types::inode::InodeEntry;
 
 /// Test cache throughput with large number of entries
 #[tokio::test]

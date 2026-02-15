@@ -1,15 +1,15 @@
-# Testing Specification for torrent-fuse
+# Testing Specification for rqbit-fuse
 
 ## Overview
 
-This document outlines the comprehensive testing strategy for torrent-fuse, covering unit tests, integration tests, property-based tests, and performance benchmarks. The testing approach ensures correctness, reliability, and performance of the FUSE filesystem implementation.
+This document outlines the comprehensive testing strategy for rqbit-fuse, covering unit tests, integration tests, property-based tests, and performance benchmarks. The testing approach ensures correctness, reliability, and performance of the FUSE filesystem implementation.
 
 ## Current Test Structure
 
 ### Existing Test Files
 
 ```
-torrent-fuse/
+rqbit-fuse/
 ├── tests/
 │   ├── integration_tests.rs    # Integration tests with WireMock
 │   └── performance_tests.rs    # Performance and stress tests
@@ -126,13 +126,13 @@ CMD ["cargo", "test", "--test", "fuse_operations"]
 **Test Execution:**
 ```bash
 # Build test image
-docker build -f Dockerfile.test -t torrent-fuse-test .
+docker build -f Dockerfile.test -t rqbit-fuse-test .
 
 # Run with privileged mode for FUSE
 docker run --rm --privileged \
     --device /dev/fuse \
     -v $(pwd):/app \
-    torrent-fuse-test
+    rqbit-fuse-test
 ```
 
 **Benefits:**
@@ -489,7 +489,7 @@ use tempfile::TempDir;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
 
-use torrent_fuse::{Config, Metrics, TorrentFS};
+use rqbit_fuse::{Config, Metrics, TorrentFS};
 
 /// Test mount and unmount cycle
 #[tokio::test]
@@ -599,7 +599,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
-use torrent_fuse::cache::Cache;
+use rqbit_fuse::cache::Cache;
 
 /// Test TTL expiration with concurrent access
 #[tokio::test]
@@ -728,7 +728,7 @@ async fn test_concurrent_torrent_additions() {
     let metrics = Arc::new(Metrics::new());
     let fs = Arc::new(TorrentFS::new(config, metrics).unwrap());
     
-    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
     
     let num_threads = 10;
     let barrier = Arc::new(Barrier::new(num_threads));
@@ -805,7 +805,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
-use torrent_fuse::cache::Cache;
+use rqbit_fuse::cache::Cache;
 
 /// Test cache behavior under memory pressure
 #[tokio::test]
@@ -954,8 +954,8 @@ proptest = "1.4"
 //! Property-based tests for inode table invariants
 
 use proptest::prelude::*;
-use torrent_fuse::fs::inode::InodeManager;
-use torrent_fuse::types::inode::InodeEntry;
+use rqbit_fuse::fs::inode::InodeManager;
+use rqbit_fuse::types::inode::InodeEntry;
 
 proptest! {
     // Invariant: All inodes have unique numbers
@@ -1066,7 +1066,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use torrent_fuse::cache::Cache;
+use rqbit_fuse::cache::Cache;
 
 proptest! {
     // Invariant: Cache size never exceeds max capacity
@@ -1320,8 +1320,8 @@ pub async fn setup_mock_server_with_data() -> MockServer {
 }
 
 /// Helper to create test configuration
-pub fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> torrent_fuse::Config {
-    let mut config = torrent_fuse::Config::default();
+pub fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> rqbit_fuse::Config {
+    let mut config = rqbit_fuse::Config::default();
     config.api.url = mock_uri;
     config.mount.mount_point = mount_point;
     config.mount.allow_other = false;
@@ -1342,7 +1342,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-use torrent_fuse::{Config, Metrics, TorrentFS};
+use rqbit_fuse::{Config, Metrics, TorrentFS};
 
 /// Test filesystem wrapper that handles lifecycle
 pub struct TestFilesystem {
@@ -1415,7 +1415,7 @@ pub async fn wait_for_mount(mount_point: &Path, timeout_secs: u64) -> anyhow::Re
 ### 5.1 Proposed Test Structure
 
 ```
-torrent-fuse/
+rqbit-fuse/
 ├── tests/
 │   ├── common/                      # Shared test utilities
 │   │   ├── mod.rs
@@ -1480,8 +1480,8 @@ cargo tarpaulin --out html
 sudo cargo test --test fuse_operations
 
 # Run Docker-based tests
-docker build -f Dockerfile.test -t torrent-fuse-test .
-docker run --rm --privileged torrent-fuse-test
+docker build -f Dockerfile.test -t rqbit-fuse-test .
+docker run --rm --privileged rqbit-fuse-test
 ```
 
 ### 6.2 Test Environment Variables
@@ -1501,7 +1501,7 @@ TORRENT_FUSE_TEST_KEEP_MOUNTS=1   # Don't clean up mount points
 ```rust
 // tests/common/fixtures.rs
 
-use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
 
 /// Single file torrent fixture
 pub fn single_file_torrent() -> TorrentInfo {
@@ -1669,7 +1669,7 @@ All tests must be isolated:
 
 ## 10. Summary
 
-This testing specification provides a comprehensive approach to ensuring torrent-fuse correctness and reliability:
+This testing specification provides a comprehensive approach to ensuring rqbit-fuse correctness and reliability:
 
 1. **Multiple Testing Layers:** Unit, integration, property-based, and performance tests
 2. **FUSE-Specific Testing:** Mock, Docker, and real filesystem approaches

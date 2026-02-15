@@ -1,6 +1,6 @@
 # Agents.md - AI Agent Guidelines
 
-This file helps AI agents understand and navigate the torrent-fuse project.
+This file helps AI agents understand and navigate the rqbit-fuse project.
 
 ## Key Documents
 

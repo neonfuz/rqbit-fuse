@@ -31,7 +31,7 @@
    cargo install rqbit
    ```
 
-### Install torrent-fuse
+### Install rqbit-fuse
 
 ```bash
 cargo install --path .
@@ -39,7 +39,7 @@ cargo install --path .
 
 Or from crates.io (once published):
 ```bash
-cargo install torrent-fuse
+cargo install rqbit-fuse
 ```
 
 ## Usage
@@ -72,7 +72,7 @@ mkdir -p ~/torrents
 
 Mount:
 ```bash
-torrent-fuse mount -m ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 **Note:** The mount point is specified with `-m` or `--mount-point` flag, not as a positional argument.
@@ -107,22 +107,22 @@ mpv ~/torrents/"Movie Name"/movie.mkv
 ### 5. Check Status
 
 ```bash
-torrent-fuse status
+rqbit-fuse status
 ```
 
 Output:
 ```
-torrent-fuse Status
+rqbit-fuse Status
 ===================
 
 Configuration:
-  Config file:    ~/.config/torrent-fuse/config.toml
+  Config file:    ~/.config/rqbit-fuse/config.toml
   API URL:        http://127.0.0.1:3030
   Mount point:    ~/torrents
 
 Mount Status:
   Status:         MOUNTED
-  Filesystem:     fuse.torrent-fuse
+  Filesystem:     fuse.rqbit-fuse
   Size:           ...
   Used:           ...
   Available:      ...
@@ -130,7 +130,7 @@ Mount Status:
 
 For JSON output:
 ```bash
-torrent-fuse status --format json
+rqbit-fuse status --format json
 ```
 
 **Note:** The status output shows mount information, not torrent/cache/reads counts as previously documented.
@@ -138,12 +138,12 @@ torrent-fuse status --format json
 ### 6. Unmount
 
 ```bash
-torrent-fuse umount ~/torrents
+rqbit-fuse umount ~/torrents
 ```
 
 With force option:
 ```bash
-torrent-fuse umount ~/torrents --force
+rqbit-fuse umount ~/torrents --force
 ```
 
 Or use fusermount:
@@ -153,7 +153,7 @@ fusermount -u ~/torrents
 
 ## Configuration
 
-Create config file at `~/.config/torrent-fuse/config.toml`:
+Create config file at `~/.config/rqbit-fuse/config.toml`:
 
 ```toml
 [api]
@@ -191,9 +191,9 @@ metrics_interval_secs = 60
 ### Alternative Config Locations
 
 Config files are searched in this order:
-1. `~/.config/torrent-fuse/config.toml`
-2. `/etc/torrent-fuse/config.toml`
-3. `./torrent-fuse.toml`
+1. `~/.config/rqbit-fuse/config.toml`
+2. `/etc/rqbit-fuse/config.toml`
+3. `./rqbit-fuse.toml`
 
 ### Environment Variables
 
@@ -223,7 +223,7 @@ All config options can be overridden via environment variables:
 
 ### Mount
 ```bash
-torrent-fuse mount [OPTIONS]
+rqbit-fuse mount [OPTIONS]
 
 Options:
   -m, --mount-point <PATH>   Mount point [env: TORRENT_FUSE_MOUNT_POINT]
@@ -238,21 +238,21 @@ Options:
 **Examples:**
 ```bash
 # Basic mount
-torrent-fuse mount -m ~/torrents
+rqbit-fuse mount -m ~/torrents
 
 # With custom API URL
-torrent-fuse mount -m ~/torrents -u http://localhost:3030
+rqbit-fuse mount -m ~/torrents -u http://localhost:3030
 
 # With verbose logging
-torrent-fuse mount -m ~/torrents -v -v  # TRACE level
+rqbit-fuse mount -m ~/torrents -v -v  # TRACE level
 
 # With config file
-torrent-fuse mount -c ~/my-config.toml
+rqbit-fuse mount -c ~/my-config.toml
 ```
 
 ### Unmount
 ```bash
-torrent-fuse umount <PATH> [OPTIONS]
+rqbit-fuse umount <PATH> [OPTIONS]
 
 Options:
   -f, --force    Force unmount even if busy
@@ -262,16 +262,16 @@ Options:
 
 ### Status
 ```bash
-torrent-fuse status [OPTIONS]
+rqbit-fuse status [OPTIONS]
 
 Options:
       --format <FORMAT>  Output format [default: text] [possible values: text, json]
 ```
 
 **Not Implemented (documented but not available):**
-- `torrent-fuse list` - Not implemented
-- `torrent-fuse cache clear` - Not implemented
-- `torrent-fuse daemon` - Not implemented
+- `rqbit-fuse list` - Not implemented
+- `rqbit-fuse cache clear` - Not implemented
+- `rqbit-fuse daemon` - Not implemented
 
 ## Examples
 
@@ -279,7 +279,7 @@ Options:
 
 ```bash
 # Mount
-torrent-fuse mount -m ~/torrents
+rqbit-fuse mount -m ~/torrents
 
 # Play with mpv (starts immediately, downloads on demand)
 mpv ~/torrents/"Big Buck Bunny"/bbb_sunflower_1080p_60fps_normal.mp4
@@ -298,15 +298,15 @@ dd if=~/torrents/"Ubuntu ISO"/ubuntu.iso bs=1 skip=1048576 count=1024
 
 ```bash
 # Mount with debug logging in background
-torrent-fuse mount -m ~/torrents -v -v &
+rqbit-fuse mount -m ~/torrents -v -v &
 
 # Later, unmount
-torrent-fuse umount ~/torrents
+rqbit-fuse umount ~/torrents
 ```
 
 ### Systemd Service
 
-Create `~/.config/systemd/user/torrent-fuse.service`:
+Create `~/.config/systemd/user/rqbit-fuse.service`:
 
 ```ini
 [Unit]
@@ -315,8 +315,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/torrent-fuse mount -m /home/user/torrents
-ExecStop=/usr/local/bin/torrent-fuse umount /home/user/torrents
+ExecStart=/usr/local/bin/rqbit-fuse mount -m /home/user/torrents
+ExecStop=/usr/local/bin/rqbit-fuse umount /home/user/torrents
 Restart=on-failure
 
 [Install]
@@ -328,8 +328,8 @@ WantedBy=default.target
 Enable and start:
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable torrent-fuse
-systemctl --user start torrent-fuse
+systemctl --user enable rqbit-fuse
+systemctl --user start rqbit-fuse
 ```
 
 ## Troubleshooting
@@ -339,7 +339,7 @@ systemctl --user start torrent-fuse
 The FUSE filesystem crashed or was killed. Unmount and remount:
 ```bash
 fusermount -u ~/torrents
-torrent-fuse mount -m ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 ### "Connection refused" to API
@@ -359,7 +359,7 @@ This is normal - data is being downloaded. For better performance:
 
 ### Permission denied
 
-torrent-fuse creates read-only filesystem. Cannot write:
+rqbit-fuse creates read-only filesystem. Cannot write:
 ```bash
 # This will fail
 touch ~/torrents/newfile
@@ -370,16 +370,16 @@ touch ~/torrents/newfile
 Run with verbose logging:
 ```bash
 # Info level
-torrent-fuse mount -m ~/torrents -v
+rqbit-fuse mount -m ~/torrents -v
 
 # Debug level
-torrent-fuse mount -m ~/torrents -v -v
+rqbit-fuse mount -m ~/torrents -v -v
 
 # Trace level
-torrent-fuse mount -m ~/torrents -v -v -v
+rqbit-fuse mount -m ~/torrents -v -v -v
 
 # Or use quiet mode for errors only
-torrent-fuse mount -m ~/torrents -q
+rqbit-fuse mount -m ~/torrents -q
 ```
 
 **Note:** There are no `-f/--foreground` or `-d/--debug` flags. Use `-v/--verbose` for logging control.
@@ -388,10 +388,10 @@ torrent-fuse mount -m ~/torrents -q
 
 ```bash
 # View current configuration
-torrent-fuse status
+rqbit-fuse status
 
 # View with all settings
-torrent-fuse status --format json | jq
+rqbit-fuse status --format json | jq
 ```
 
 ## Performance Tips

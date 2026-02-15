@@ -1,4 +1,4 @@
-# torrent-fuse subdirectories not showing
+# rqbit-fuse subdirectories not showing
 
 **Session ID:** ses_3a1a3b954ffeh3jZdIBDkXUQ8a
 **Created:** 2/14/2026, 4:53:51 PM
@@ -21,7 +21,7 @@ dl2
 ├── Cosmos Laundromat
 └── ubuntu-25.10-desktop-amd64.iso 
 
-I have rqbit running with it's downloads folder at dl/. I have torrent-fuse running with it's virtual directory at dl2/. For some reason the subdirectories are not showing up.
+I have rqbit running with it's downloads folder at dl/. I have rqbit-fuse running with it's virtual directory at dl2/. For some reason the subdirectories are not showing up.
 
 ---
 
@@ -39,12 +39,12 @@ Can you find the api responsible for listing files and hit it, and then fix the 
 
 _Thinking:_
 
-The user is reporting that subdirectories are not showing up in their torrent-fuse virtual directory (dl2/). They have rqbit running with downloads at dl/ and torrent-fuse at dl2/. The issue is that while dl/ has a "Cosmos Laundromat" subdirectory with files inside it, dl2/ only shows the subdirectory name but not its contents.
+The user is reporting that subdirectories are not showing up in their rqbit-fuse virtual directory (dl2/). They have rqbit running with downloads at dl/ and rqbit-fuse at dl2/. The issue is that while dl/ has a "Cosmos Laundromat" subdirectory with files inside it, dl2/ only shows the subdirectory name but not its contents.
 
 Let me first understand the codebase structure and find the API responsible for listing files. I'll need to:
 
 1. First, understand the rqbit API for listing torrents/files
-2. Look at the torrent-fuse implementation to see how it handles directory listings
+2. Look at the rqbit-fuse implementation to see how it handles directory listings
 3. Find and fix the issue
 
 Let me start by exploring the codebase.
@@ -55,14 +55,14 @@ Let me start by exploring the codebase.
 ```json
 {
   "pattern": "list.*files|files.*list|readdir|ReadDir",
-  "path": "/Users/neonfuz/code/torrent-fuse"
+  "path": "/Users/neonfuz/code/rqbit-fuse"
 }
 ```
 
 **Output:**
 ```
 Found 27 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs:
   Line 1062:     fn readdir(
   Line 1070:         self.metrics.fuse.record_readdir();
   Line 1073:             debug!(fuse_op = "readdir", ino = ino, offset = offset);
@@ -70,41 +70,41 @@ Found 27 matches
   Line 1102:                     fuse_op = "readdir",
   Line 1807:     /// Gets the list of torrent IDs currently in the filesystem.
 
-/Users/neonfuz/code/torrent-fuse/spec/api.md:
+/Users/neonfuz/code/rqbit-fuse/spec/api.md:
   Line 200: Returns an M3U8 playlist containing all playable (video/audio) files from all torrents.
 
-/Users/neonfuz/code/torrent-fuse/spec/streaming-api.md:
+/Users/neonfuz/code/rqbit-fuse/spec/streaming-api.md:
   Line 89: Returns an M3U8 playlist containing all playable (video/audio) files from all torrents.
 
-/Users/neonfuz/code/torrent-fuse/README.md:
+/Users/neonfuz/code/rqbit-fuse/README.md:
   Line 390: - Handles FUSE callbacks (lookup, readdir, read, getattr)
   Line 456: - Directory operations (lookup, readdir, mkdir, rmdir)
 
-/Users/neonfuz/code/torrent-fuse/TASKS.md:
+/Users/neonfuz/code/rqbit-fuse/TASKS.md:
   Line 24:   - Implement `GET /torrents/{id}/files` - list files in torrent
   Line 54:   - Implement `readdir()` - list directory entries
   Line 134:   - Updated readdir() to properly handle symlinks (FileType::Symlink)
   Line 364:   - Implemented `readdir()` callback to list directory contents with `.` and `..` entries
   Line 429:   - Updated readdir() and build_file_attr() to handle symlinks properly
 
-/Users/neonfuz/code/torrent-fuse/src/metrics.rs:
+/Users/neonfuz/code/rqbit-fuse/src/metrics.rs:
   Line 15:     /// Total number of readdir operations
   Line 16:     pub readdir_count: AtomicU64,
   Line 51:     pub fn record_readdir(&self) {
   Line 52:         self.readdir_count.fetch_add(1, Ordering::Relaxed);
   Line 53:         trace!(fuse_op = "readdir");
 
-/Users/neonfuz/code/torrent-fuse/research/implementation_summary.md:
+/Users/neonfuz/code/rqbit-fuse/research/implementation_summary.md:
   Line 18: - ✅ Directory operations: lookup(), readdir(), mkdir(), rmdir()
 
-/Users/neonfuz/code/torrent-fuse/spec/roadmap.md:
+/Users/neonfuz/code/rqbit-fuse/spec/roadmap.md:
   Line 38:   - [ ] readdir - List directory contents
 
-/Users/neonfuz/code/torrent-fuse/spec/technical-design.md:
+/Users/neonfuz/code/rqbit-fuse/spec/technical-design.md:
   Line 235: ### readdir()
   Line 238: fn readdir(
 
-/Users/neonfuz/code/torrent-fuse/spec/architecture.md:
+/Users/neonfuz/code/rqbit-fuse/spec/architecture.md:
   Line 50: - Handle FUSE callbacks (lookup, readdir, read, getattr)
   Line 158: #### readdir(inode, offset)
   Line 337: - Directory listing (torrents as dirs, files)
@@ -116,7 +116,7 @@ Found 27 matches
 ```json
 {
   "pattern": "rqbit|api|http",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -124,11 +124,11 @@ Found 27 matches
 **Output:**
 ```
 Found 183 matches (showing first 100)
-/Users/neonfuz/code/torrent-fuse/src/api/streaming.rs:
+/Users/neonfuz/code/rqbit-fuse/src/api/streaming.rs:
   Line 1: use crate::api::types::ApiError;
   Line 87:         // Check if server returned 200 OK for a range request (rqbit bug workaround)
 
-/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs:
   Line 1: use crate::api::client::RqbitClient;
   Line 2: use crate::api::types::{TorrentState, TorrentStatus};
   Line 62: /// over the rqbit HTTP API.
@@ -192,7 +192,7 @@ Found 183 matches (showing first 100)
   Line 2180:         use crate::api::types::{FileInfo, TorrentInfo};
   Line 2219:         use crate::api::types::{FileInfo, TorrentInfo};
 
-/Users/neonfuz/code/torrent-fuse/src/api/client.rs:
+/Users/neonfuz/code/rqbit-fuse/src/api/client.rs:
   Line 1: use crate::api::streaming::PersistentStreamManager;
   Line 2: use crate::api::types::*;
   Line 111: /// HTTP client for interacting with rqbit server
@@ -239,11 +239,11 @@ Found 183 matches (showing first 100)
 
 _Thinking:_
 
-The user is saying that subdirectories aren't showing up in their torrent-fuse mount at dl2/. They have rqbit running with downloads at dl/ and the directory structure shows that dl/ has a subdirectory "Cosmos Laundromat" with files in it, but dl2/ just shows an empty "Cosmos Laundromat" directory.
+The user is saying that subdirectories aren't showing up in their rqbit-fuse mount at dl2/. They have rqbit running with downloads at dl/ and the directory structure shows that dl/ has a subdirectory "Cosmos Laundromat" with files in it, but dl2/ just shows an empty "Cosmos Laundromat" directory.
 
 Let me first understand the problem better by:
 1. Checking the rqbit API to see what it returns for torrent files
-2. Looking at how torrent-fuse handles directory listings (readdir)
+2. Looking at how rqbit-fuse handles directory listings (readdir)
 
 Let me start by reading the API types and client to understand how file listing works.
 
@@ -254,13 +254,13 @@ Let me investigate the API and the readdir implementation to understand the issu
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/api/types.rs"
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/api/types.rs"
 }
 ```
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/api/types.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/api/types.rs</path>
 <type>file</type>
 <content>1: use serde::{Deserialize, Serialize};
 2: use thiserror::Error;
@@ -664,13 +664,13 @@ Let me investigate the API and the readdir implementation to understand the issu
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/api/client.rs"
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/api/client.rs"
 }
 ```
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/api/client.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/api/client.rs</path>
 <type>file</type>
 <content>1: use crate::api::streaming::PersistentStreamManager;
 2: use crate::api::types::*;
@@ -2125,7 +2125,7 @@ Let me investigate the API and the readdir implementation to understand the issu
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "offset": 1060,
   "limit": 120
 }
@@ -2133,7 +2133,7 @@ Let me investigate the API and the readdir implementation to understand the issu
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1060:     /// Called when the kernel needs to list the contents of a directory.
 1061:     #[instrument(skip(self, reply), fields(ino))]
@@ -2280,7 +2280,7 @@ dl/
 └── ubuntu-25.10-desktop-amd64.iso
 ```
 
-But in `dl2/` (the torrent-fuse virtual directory), they see:
+But in `dl2/` (the rqbit-fuse virtual directory), they see:
 
 ```
 dl2/
@@ -2304,7 +2304,7 @@ Now I understand the issue. Let me check how torrent files are being added to th
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "limit": 120,
   "offset": 1620
 }
@@ -2312,7 +2312,7 @@ Now I understand the issue. Let me check how torrent files are being added to th
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1620:     /// Creates the filesystem directory structure for a torrent.
 1621:     /// For single-file torrents, the file is added directly to root.
@@ -2445,7 +2445,7 @@ Now I understand the issue. Let me check how torrent files are being added to th
 ```json
 {
   "pattern": "components",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -2453,7 +2453,7 @@ Now I understand the issue. Let me check how torrent files are being added to th
 **Output:**
 ```
 Found 43 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs:
   Line 1651:             let file_name = if file_info.components.is_empty() {
   Line 1652:                 // Use torrent name as filename if no components provided
   Line 1655:                 sanitize_filename(file_info.components.last().unwrap())
@@ -2472,17 +2472,17 @@ Found 43 matches
   Line 2236:                     components: vec!["file1.txt".to_string()],
   Line 2241:                     components: vec!["subdir".to_string(), "file2.txt".to_string()],
 
-/Users/neonfuz/code/torrent-fuse/src/api/client.rs:
+/Users/neonfuz/code/rqbit-fuse/src/api/client.rs:
   Line 1017:                         {"name": "file1.txt", "length": 1024, "components": ["file1.txt"]},
   Line 1018:                         {"name": "file2.txt", "length": 2048, "components": ["file2.txt"]}
   Line 1039:                 {"name": "file1.txt", "length": 1024, "components": ["file1.txt"]},
   Line 1040:                 {"name": "file2.txt", "length": 2048, "components": ["file2.txt"]}
   Line 1092:                 {"name": "test.txt", "length": 1024, "components": ["test.txt"]}
 
-/Users/neonfuz/code/torrent-fuse/src/api/types.rs:
+/Users/neonfuz/code/rqbit-fuse/src/api/types.rs:
   Line 190:     pub components: Vec<String>,
 
-/Users/neonfuz/code/torrent-fuse/tests/integration_tests.rs:
+/Users/neonfuz/code/rqbit-fuse/tests/integration_tests.rs:
   Line 82:                 {"name": "test.txt", "length": 1024, "components": ["test.txt"]}
   Line 104:             components: vec!["test.txt".to_string()],
   Line 151:                 components: vec!["readme.txt".to_string()],
@@ -2523,7 +2523,7 @@ Let me look at the `create_file_entry` function more closely to understand how i
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "offset": 1726,
   "limit": 80
 }
@@ -2531,7 +2531,7 @@ Let me look at the `create_file_entry` function more closely to understand how i
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1726:     /// Creates a file entry (and any necessary parent directories) for a torrent file.
 1727:     fn create_file_entry(
@@ -2770,7 +2770,7 @@ Since the components only have one element (just the filename), `components.len(
 ```json
 {
   "pattern": "fn allocate_file",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -2778,7 +2778,7 @@ Since the components only have one element (just the filename), `components.len(
 **Output:**
 ```
 Found 1 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs:
   Line 136:     pub fn allocate_file(
 ```
 
@@ -2795,7 +2795,7 @@ Let me check the inode.rs file to see the allocate_file implementation and how a
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "offset": 130,
   "limit": 100
 }
@@ -2803,7 +2803,7 @@ Let me check the inode.rs file to see the allocate_file implementation and how a
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs</path>
 <type>file</type>
 <content>130:         self.entries.insert(inode, entry);
 131: 
@@ -2924,7 +2924,7 @@ Let me check the `add_child` function to see if it's properly adding children to
 ```json
 {
   "pattern": "fn add_child",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -2932,7 +2932,7 @@ Let me check the `add_child` function to see if it's properly adding children to
 **Output:**
 ```
 Found 1 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs:
   Line 339:     pub fn add_child(&self, parent: u64, child: u64) {
 ```
 
@@ -2949,7 +2949,7 @@ Let me read the add_child function:
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "offset": 335,
   "limit": 50
 }
@@ -2957,7 +2957,7 @@ Let me read the add_child function:
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs</path>
 <type>file</type>
 <content>335:         }
 336:     }
@@ -3028,7 +3028,7 @@ The code looks correct so far. Let me check if there's an issue with how the fil
 ```json
 {
   "pattern": "fn allocate_torrent_directory",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -3036,7 +3036,7 @@ The code looks correct so far. Let me check if there's an issue with how the fil
 **Output:**
 ```
 Found 1 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs:
   Line 116:     pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
 ```
 
@@ -3053,7 +3053,7 @@ Let me read this function:
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "offset": 115,
   "limit": 30
 }
@@ -3061,7 +3061,7 @@ Let me read this function:
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs</path>
 <type>file</type>
 <content>115:     /// The torrent_id is tracked separately from the inode.
 116:     pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
@@ -3148,7 +3148,7 @@ The real problem is likely that `add_child` isn't persisting the changes. The fu
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "offset": 215,
   "limit": 40
 }
@@ -3156,7 +3156,7 @@ The real problem is likely that `add_child` isn't persisting the changes. The fu
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs</path>
 <type>file</type>
 <content>215:     /// Gets all children of a directory inode.
 216:     pub fn get_children(&self, parent_inode: u64) -> Vec<(u64, InodeEntry)> {
@@ -3296,7 +3296,7 @@ Tool execution aborted
 
 _Thinking:_
 
-Let me write a test script to see what's happening in the filesystem. First, let me check if torrent-fuse is running and then check the actual directory contents.
+Let me write a test script to see what's happening in the filesystem. First, let me check if rqbit-fuse is running and then check the actual directory contents.
 
 Actually, let me look at how the filesystem is populating the structure. I think the issue might be in how the `add_torrent_to_filesystem` or `create_torrent_structure` is being called. Let me check how torrents are being added:
 
@@ -3306,7 +3306,7 @@ Actually, let me look at how the filesystem is populating the structure. I think
 ```json
 {
   "pattern": "create_torrent_structure|add_torrent_to_filesystem",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -3314,7 +3314,7 @@ Actually, let me look at how the filesystem is populating the structure. I think
 **Output:**
 ```
 Found 16 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs:
   Line 1512:         match fs.create_torrent_structure(&torrent_info) {
   Line 1576:         self.create_torrent_structure(&torrent_info)
   Line 1614:         self.create_torrent_structure(&torrent_info)
@@ -3322,7 +3322,7 @@ Found 16 matches
   Line 2202:         fs.create_torrent_structure(&torrent_info).unwrap();
   Line 2248:         fs.create_torrent_structure(&torrent_info).unwrap();
 
-/Users/neonfuz/code/torrent-fuse/tests/integration_tests.rs:
+/Users/neonfuz/code/rqbit-fuse/tests/integration_tests.rs:
   Line 109:     fs.create_torrent_structure(&torrent_info).unwrap();
   Line 167:     fs.create_torrent_structure(&torrent_info).unwrap();
   Line 215:     fs.create_torrent_structure(&torrent_info).unwrap();
@@ -3348,7 +3348,7 @@ Let me look at how torrents are discovered during initialization to see if the t
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "offset": 1470,
   "limit": 80
 }
@@ -3356,7 +3356,7 @@ Let me look at how torrents are discovered during initialization to see if the t
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1470:     // Check connection to rqbit
 1471:     fs.connect_to_rqbit().await?;
@@ -3459,7 +3459,7 @@ check the allocate_file function
 
 _Thinking:_
 
-I found the bug! Looking at `allocate_file` in `/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs`, the function allocates a file inode and stores it, but **it doesn't add the file to its parent's children list**. 
+I found the bug! Looking at `allocate_file` in `/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs`, the function allocates a file inode and stores it, but **it doesn't add the file to its parent's children list**. 
 
 Compare this to `allocate_torrent_directory` which also doesn't add itself to the parent - that gets done separately via `add_child`.
 
@@ -3537,7 +3537,7 @@ The code suggests that even empty component paths should still trigger file crea
 
 The critical point seems to be how the parent inode and file inode are being linked, and whether the directory structure is correctly maintained during file creation. Something in the `add_child` or inode management process might be interrupting the expected file registration.
 
-I'll investigate the method calls and verify the actual implementation of `add_child` in the InodeManager, checking for any potential syntax or logic errors that could prevent proper file tracking. The file path location in `/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs` around line 339 seems like a promising place to start my examination.
+I'll investigate the method calls and verify the actual implementation of `add_child` in the InodeManager, checking for any potential syntax or logic errors that could prevent proper file tracking. The file path location in `/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs` around line 339 seems like a promising place to start my examination.
 
 I'm particularly interested in understanding how child inodes are being added and whether there's an unexpected early return or condition that's preventing complete file registration. The goal is to trace the exact mechanism of how files are associated with their parent directory.
 
@@ -3574,7 +3574,7 @@ The `add_child` call in `create_file_entry` adds the file to the directory, but 
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "offset": 1775,
   "limit": 30
 }
@@ -3582,7 +3582,7 @@ The `add_child` call in `create_file_entry` adds the file to the directory, but 
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1775:                 );
 1776:             }
@@ -3796,7 +3796,7 @@ Let me check if the torrent structures are being created and also verify the act
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "offset": 339,
   "limit": 20
 }
@@ -3804,7 +3804,7 @@ Let me check if the torrent structures are being created and also verify the act
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs</path>
 <type>file</type>
 <content>339:     pub fn add_child(&self, parent: u64, child: u64) {
 340:         if let Some(mut entry) = self.entries.get_mut(&parent) {
@@ -3884,7 +3884,7 @@ The API returns 6 files. Let me check if there's an issue with how the FUSE file
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "offset": 1430,
   "limit": 50
 }
@@ -3892,7 +3892,7 @@ The API returns 6 files. Let me check if there's an issue with how the FUSE file
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1430:                     return Err(libc::EIO);
 1431:                 }
@@ -3908,7 +3908,7 @@ The API returns 6 files. Let me check if there's an issue with how the FUSE file
 1441:         self.start_status_monitoring();
 1442: 
 1443:         self.initialized = true;
-1444:         info!("torrent-fuse filesystem initialized successfully");
+1444:         info!("rqbit-fuse filesystem initialized successfully");
 1445: 
 1446:         Ok(())
 1447:     }
@@ -3916,7 +3916,7 @@ The API returns 6 files. Let me check if there's an issue with how the FUSE file
 1449:     /// Clean up filesystem.
 1450:     /// Called on unmount.
 1451:     fn destroy(&mut self) {
-1452:         info!("Shutting down torrent-fuse filesystem");
+1452:         info!("Shutting down rqbit-fuse filesystem");
 1453:         self.initialized = false;
 1454:         // Stop the status monitoring task
 1455:         self.stop_status_monitoring();
@@ -3975,7 +3975,7 @@ Let me check the main.rs or wherever the filesystem is initialized to see the ac
 
 **Output:**
 ```
-/Users/neonfuz/code/torrent-fuse/src/main.rs
+/Users/neonfuz/code/rqbit-fuse/src/main.rs
 ```
 
 **Tool: grep**
@@ -3984,7 +3984,7 @@ Let me check the main.rs or wherever the filesystem is initialized to see the ac
 ```json
 {
   "pattern": "discover_existing_torrents",
-  "path": "/Users/neonfuz/code/torrent-fuse",
+  "path": "/Users/neonfuz/code/rqbit-fuse",
   "include": "*.rs"
 }
 ```
@@ -3992,10 +3992,10 @@ Let me check the main.rs or wherever the filesystem is initialized to see the ac
 **Output:**
 ```
 Found 2 matches
-/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs:
+/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs:
   Line 1478: pub async fn discover_existing_torrents(fs: &TorrentFS) -> Result<()> {
 
-/Users/neonfuz/code/torrent-fuse/src/lib.rs:
+/Users/neonfuz/code/rqbit-fuse/src/lib.rs:
   Line 28:     crate::fs::filesystem::discover_existing_torrents(&fs)
 ```
 
@@ -4012,13 +4012,13 @@ Found it! Let me check the lib.rs to see how the discovery is called:
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/lib.rs"
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/lib.rs"
 }
 ```
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/lib.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/lib.rs</path>
 <type>file</type>
 <content>1: pub mod api;
 2: pub mod cache;
@@ -4036,7 +4036,7 @@ Found it! Let me check the lib.rs to see how the discovery is called:
 14: use std::sync::Arc;
 15: 
 16: pub async fn run(config: Config) -> Result<()> {
-17:     tracing::info!(operation = "startup", message = "torrent-fuse starting");
+17:     tracing::info!(operation = "startup", message = "rqbit-fuse starting");
 18:     tracing::debug!(config = ?config, "Configuration loaded");
 19: 
 20:     // Create metrics
@@ -4122,7 +4122,7 @@ The loop iterates through each file, creating a file entry and adding it to the 
 
 Looking at the add_child function signature, I see it takes the parent inode as the first parameter and the child inode as the second. In the create_file_entry function, the order of arguments looks correct: current_dir_inode is passed as the parent, and file_inode as the child. This suggests the issue might lie elsewhere in the file creation process.
 
-I'll need to investigate further by checking the actual torrent-fuse logs to see if any errors or warnings are being generated during file creation.
+I'll need to investigate further by checking the actual rqbit-fuse logs to see if any errors or warnings are being generated during file creation.
 
 Let me check the logs to see what's happening during torrent discovery:
 
@@ -4131,7 +4131,7 @@ Let me check the logs to see what's happening during torrent discovery:
 **Input:**
 ```json
 {
-  "command": "ps aux | grep -E \"(rqbit|torrent-fuse)\" | grep -v grep",
+  "command": "ps aux | grep -E \"(rqbit|rqbit-fuse)\" | grep -v grep",
   "description": "Check if processes are running"
 }
 ```
@@ -4139,7 +4139,7 @@ Let me check the logs to see what's happening during torrent discovery:
 **Output:**
 ```
 neonfuz           1383   0.1  0.1 435387040  25152 s001  S+    9:19AM  50:30.93 rqbit server start dl
-neonfuz          24844   0.0  0.0 435349360   9808 s002  S+    4:59PM   0:00.07 ./target/release/torrent-fuse mount -m ./dl2
+neonfuz          24844   0.0  0.0 435349360   9808 s002  S+    4:59PM   0:00.07 ./target/release/rqbit-fuse mount -m ./dl2
 
 ```
 
@@ -4169,7 +4169,7 @@ dr-xr-xr-x@  8 root     wheel           0 Feb 14 17:06 Cosmos Laundromat
 
 _Thinking:_
 
-OK so torrent-fuse IS running and dl2 shows the Cosmos Laundromat directory and ubuntu iso. Let me check what's inside Cosmos Laundromat:
+OK so rqbit-fuse IS running and dl2 shows the Cosmos Laundromat directory and ubuntu iso. Let me check what's inside Cosmos Laundromat:
 
 **Tool: bash**
 
@@ -4246,7 +4246,7 @@ I can confirm the bug - the Cosmos Laundromat directory is empty. Let me add deb
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "offset": 1,
   "limit": 50
 }
@@ -4254,7 +4254,7 @@ I can confirm the bug - the Cosmos Laundromat directory is empty. Let me add deb
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs</path>
 <type>file</type>
 <content>1: use crate::types::inode::InodeEntry;
 2: use dashmap::DashMap;
@@ -4326,7 +4326,7 @@ Let me add debug logging to trace the issue:
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "oldString": "    /// Adds a child to a directory's children list.\n    pub fn add_child(&self, parent: u64, child: u64) {\n        if let Some(mut entry) = self.entries.get_mut(&parent) {\n            if let InodeEntry::Directory { children, .. } = &mut *entry {\n                if !children.contains(&child) {\n                    children.push(child);\n                }\n            }\n        }\n    }",
   "newString": "    /// Adds a child to a directory's children list.\n    pub fn add_child(&self, parent: u64, child: u64) {\n        tracing::debug!(parent = parent, child = child, \"add_child called\");\n        if let Some(mut entry) = self.entries.get_mut(&parent) {\n            if let InodeEntry::Directory { children, .. } = &mut *entry {\n                if !children.contains(&child) {\n                    children.push(child);\n                    tracing::debug!(parent = parent, child = child, children_count = children.len(), \"Added child to directory\");\n                } else {\n                    tracing::debug!(parent = parent, child = child, \"Child already exists in directory\");\n                }\n            } else {\n                tracing::warn!(parent = parent, \"Parent is not a directory\");\n            }\n        } else {\n            tracing::warn!(parent = parent, \"Parent inode not found\");\n        }\n    }"
 }
@@ -4350,7 +4350,7 @@ Now let me add debug logging to the get_children function to see what's happenin
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/inode.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/inode.rs",
   "oldString": "    /// Gets all children of a directory inode.\n    pub fn get_children(&self, parent_inode: u64) -> Vec<(u64, InodeEntry)> {\n        // First check if it's a directory and use its children list\n        if let Some(parent_entry) = self.entries.get(&parent_inode) {\n            if let InodeEntry::Directory { children, .. } = &*parent_entry {\n                // If children list is populated, use it\n                if !children.is_empty() {\n                    return children\n                        .iter()\n                        .filter_map(|&child_ino| {\n                            self.entries.get(&child_ino).map(|e| (child_ino, e.clone()))\n                        })\n                        .collect();\n                }\n            }\n        }\n\n        // Fallback: filter by parent field for entries not yet in children list\n        // This handles the case where DashMap writes haven't propagated yet\n        self.entries\n            .iter()\n            .filter(|entry| entry.parent() == parent_inode)\n            .map(|entry| (entry.ino(), entry.clone()))\n            .collect()\n    }",
   "newString": "    /// Gets all children of a directory inode.\n    pub fn get_children(&self, parent_inode: u64) -> Vec<(u64, InodeEntry)> {\n        // First check if it's a directory and use its children list\n        if let Some(parent_entry) = self.entries.get(&parent_inode) {\n            if let InodeEntry::Directory { children, .. } = &*parent_entry {\n                tracing::debug!(parent = parent_inode, children_count = children.len(), \"get_children: found directory\");\n                // If children list is populated, use it\n                if !children.is_empty() {\n                    let result: Vec<_> = children\n                        .iter()\n                        .filter_map(|&child_ino| {\n                            self.entries.get(&child_ino).map(|e| (child_ino, e.clone()))\n                        })\n                        .collect();\n                    tracing::debug!(parent = parent_inode, result_count = result.len(), \"get_children: returning children from list\");\n                    return result;\n                }\n            } else {\n                tracing::warn!(parent = parent_inode, \"get_children: not a directory\");\n            }\n        } else {\n            tracing::warn!(parent = parent_inode, \"get_children: parent not found\");\n        }\n\n        // Fallback: filter by parent field for entries not yet in children list\n        // This handles the case where DashMap writes haven't propagated yet\n        let result: Vec<_> = self.entries\n            .iter()\n            .filter(|entry| entry.parent() == parent_inode)\n            .map(|entry| (entry.ino(), entry.clone()))\n            .collect();\n        tracing::debug!(parent = parent_inode, result_count = result.len(), total_entries = self.entries.len(), \"get_children: using fallback scan\");\n        result\n    }"
 }
@@ -4374,7 +4374,7 @@ Now let me add logging to create_file_entry to see if it's being called correctl
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "offset": 1726,
   "limit": 80
 }
@@ -4382,7 +4382,7 @@ Now let me add logging to create_file_entry to see if it's being called correctl
 
 **Output:**
 ```
-<path>/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs</path>
+<path>/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs</path>
 <type>file</type>
 <content>1726:     /// Creates a file entry (and any necessary parent directories) for a torrent file.
 1727:     fn create_file_entry(
@@ -4482,7 +4482,7 @@ The code looks correct. Let me add some trace logging at the beginning of create
 **Input:**
 ```json
 {
-  "filePath": "/Users/neonfuz/code/torrent-fuse/src/fs/filesystem.rs",
+  "filePath": "/Users/neonfuz/code/rqbit-fuse/src/fs/filesystem.rs",
   "oldString": "    /// Creates a file entry (and any necessary parent directories) for a torrent file.\n    fn create_file_entry(\n        &self,\n        file_info: &crate::api::types::FileInfo,\n        file_idx: usize,\n        torrent_id: u64,\n        torrent_dir_inode: u64,\n        created_dirs: &mut std::collections::HashMap<String, u64>,\n    ) -> Result<()> {\n        let components = &file_info.components;\n\n        if components.is_empty() {\n            return Ok(());\n        }",
   "newString": "    /// Creates a file entry (and any necessary parent directories) for a torrent file.\n    fn create_file_entry(\n        &self,\n        file_info: &crate::api::types::FileInfo,\n        file_idx: usize,\n        torrent_id: u64,\n        torrent_dir_inode: u64,\n        created_dirs: &mut std::collections::HashMap<String, u64>,\n    ) -> Result<()> {\n        let components = &file_info.components;\n        \n        debug!(\n            torrent_id = torrent_id,\n            file_idx = file_idx,\n            components = ?components,\n            torrent_dir_inode = torrent_dir_inode,\n            \"create_file_entry called\"\n        );\n\n        if components.is_empty() {\n            debug!(torrent_id = torrent_id, file_idx = file_idx, \"create_file_entry: empty components, returning\");\n            return Ok(());\n        }"
 }
@@ -4499,7 +4499,7 @@ Edit applied successfully.
 
 _Thinking:_
 
-Now let me rebuild and restart torrent-fuse to see the debug output:
+Now let me rebuild and restart rqbit-fuse to see the debug output:
 
 Now let me rebuild and test:
 
@@ -4516,7 +4516,7 @@ Now let me rebuild and test:
 
 **Output:**
 ```
-   Compiling torrent-fuse v0.1.0 (/Users/neonfuz/code/torrent-fuse)
+   Compiling rqbit-fuse v0.1.0 (/Users/neonfuz/code/rqbit-fuse)
     Finished `release` profile [optimized] target(s) in 4.72s
 
 ```
@@ -4527,32 +4527,32 @@ Now let me rebuild and test:
 
 _Thinking:_
 
-Now I need to kill the existing torrent-fuse process and restart it to see the debug output. Let me do that:
+Now I need to kill the existing rqbit-fuse process and restart it to see the debug output. Let me do that:
 
 **Tool: bash**
 
 **Input:**
 ```json
 {
-  "command": "killall torrent-fuse 2>/dev/null; sleep 1; ./target/release/torrent-fuse mount -m ./dl2 2>&1 &\nsleep 2\nls -la dl2/Cosmos\\ Laundromat/",
-  "description": "Restart torrent-fuse with debug logging and test",
+  "command": "killall rqbit-fuse 2>/dev/null; sleep 1; ./target/release/rqbit-fuse mount -m ./dl2 2>&1 &\nsleep 2\nls -la dl2/Cosmos\\ Laundromat/",
+  "description": "Restart rqbit-fuse with debug logging and test",
   "timeout": 10000
 }
 ```
 
 **Output:**
 ```
-[2m2026-02-14T23:08:02.634915Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m torrent-fuse starting
-[2m2026-02-14T23:08:02.634959Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m Using rqbit API at: http://127.0.0.1:3030
-[2m2026-02-14T23:08:02.634962Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m Mount point: ./dl2
-[2m2026-02-14T23:08:02.634964Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m [3moperation[0m[2m=[0m"startup" torrent-fuse starting
-[2m2026-02-14T23:08:02.637499Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Discovering existing torrents from rqbit...
-[2m2026-02-14T23:08:02.638698Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Found 2 existing torrents, populating filesystem...
-[2m2026-02-14T23:08:02.638731Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 2 with 6 files
-[2m2026-02-14T23:08:02.638735Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 1 with 1 files
-[2m2026-02-14T23:08:02.638737Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Finished discovering torrents: 2 successful, 0 failed, 2 total
-[2m2026-02-14T23:08:02.638739Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Mounting torrent-fuse at: ./dl2
-mount_macfuse: mount point /Users/neonfuz/code/torrent-fuse/dl2 is itself on a macFUSE volume
+[2m2026-02-14T23:08:02.634915Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m rqbit-fuse starting
+[2m2026-02-14T23:08:02.634959Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m Using rqbit API at: http://127.0.0.1:3030
+[2m2026-02-14T23:08:02.634962Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m Mount point: ./dl2
+[2m2026-02-14T23:08:02.634964Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m [3moperation[0m[2m=[0m"startup" rqbit-fuse starting
+[2m2026-02-14T23:08:02.637499Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Discovering existing torrents from rqbit...
+[2m2026-02-14T23:08:02.638698Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Found 2 existing torrents, populating filesystem...
+[2m2026-02-14T23:08:02.638731Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 2 with 6 files
+[2m2026-02-14T23:08:02.638735Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 1 with 1 files
+[2m2026-02-14T23:08:02.638737Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Finished discovering torrents: 2 successful, 0 failed, 2 total
+[2m2026-02-14T23:08:02.638739Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Mounting rqbit-fuse at: ./dl2
+mount_macfuse: mount point /Users/neonfuz/code/rqbit-fuse/dl2 is itself on a macFUSE volume
 Error: Failed to mount filesystem
 
 Caused by:
@@ -4575,7 +4575,7 @@ Ah, the mount point is still mounted from the previous process. Let me unmount i
 **Input:**
 ```json
 {
-  "command": "umount dl2 2>/dev/null; sleep 1; killall torrent-fuse 2>/dev/null; sleep 1\n./target/release/torrent-fuse mount -m ./dl2 2>&1 &\nsleep 3\necho \"=== Checking dl2 root ===\"\nls -la dl2/\necho \"=== Checking Cosmos Laundromat ===\"\nls -la dl2/Cosmos\\ Laundromat/",
+  "command": "umount dl2 2>/dev/null; sleep 1; killall rqbit-fuse 2>/dev/null; sleep 1\n./target/release/rqbit-fuse mount -m ./dl2 2>&1 &\nsleep 3\necho \"=== Checking dl2 root ===\"\nls -la dl2/\necho \"=== Checking Cosmos Laundromat ===\"\nls -la dl2/Cosmos\\ Laundromat/",
   "description": "Unmount, restart and test with debug logging",
   "timeout": 15000
 }
@@ -4583,22 +4583,22 @@ Ah, the mount point is still mounted from the previous process. Let me unmount i
 
 **Output:**
 ```
-[2m2026-02-14T23:08:12.126161Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m torrent-fuse starting
-[2m2026-02-14T23:08:12.126197Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m Using rqbit API at: http://127.0.0.1:3030
-[2m2026-02-14T23:08:12.126203Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m Mount point: ./dl2
-[2m2026-02-14T23:08:12.126208Z[0m [32m INFO[0m [2mtorrent_fuse[0m[2m:[0m [3moperation[0m[2m=[0m"startup" torrent-fuse starting
-[2m2026-02-14T23:08:12.130260Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Discovering existing torrents from rqbit...
-[2m2026-02-14T23:08:12.131665Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Found 2 existing torrents, populating filesystem...
-[2m2026-02-14T23:08:12.131707Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 2 with 6 files
-[2m2026-02-14T23:08:12.131715Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 1 with 1 files
-[2m2026-02-14T23:08:12.131718Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Finished discovering torrents: 2 successful, 0 failed, 2 total
-[2m2026-02-14T23:08:12.131721Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Mounting torrent-fuse at: ./dl2
-[2m2026-02-14T23:08:12.471139Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Initializing torrent-fuse filesystem
-[2m2026-02-14T23:08:12.471191Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Mount point validated: ./dl2
-[2m2026-02-14T23:08:12.471224Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Started status monitoring with 5 second poll interval
-[2m2026-02-14T23:08:12.471226Z[0m [32m INFO[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m torrent-fuse filesystem initialized successfully
-[2m2026-02-14T23:08:12.472782Z[0m [33m WARN[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Failed to get stats for torrent 2: error decoding response body: missing field `snapshot` at line 1 column 645
-[2m2026-02-14T23:08:12.472978Z[0m [33m WARN[0m [2mtorrent_fuse::fs::filesystem[0m[2m:[0m Failed to get stats for torrent 1: error decoding response body: missing field `snapshot` at line 1 column 643
+[2m2026-02-14T23:08:12.126161Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m rqbit-fuse starting
+[2m2026-02-14T23:08:12.126197Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m Using rqbit API at: http://127.0.0.1:3030
+[2m2026-02-14T23:08:12.126203Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m Mount point: ./dl2
+[2m2026-02-14T23:08:12.126208Z[0m [32m INFO[0m [2mrqbit_fuse[0m[2m:[0m [3moperation[0m[2m=[0m"startup" rqbit-fuse starting
+[2m2026-02-14T23:08:12.130260Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Discovering existing torrents from rqbit...
+[2m2026-02-14T23:08:12.131665Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Found 2 existing torrents, populating filesystem...
+[2m2026-02-14T23:08:12.131707Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 2 with 6 files
+[2m2026-02-14T23:08:12.131715Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Created filesystem structure for torrent 1 with 1 files
+[2m2026-02-14T23:08:12.131718Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Finished discovering torrents: 2 successful, 0 failed, 2 total
+[2m2026-02-14T23:08:12.131721Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Mounting rqbit-fuse at: ./dl2
+[2m2026-02-14T23:08:12.471139Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Initializing rqbit-fuse filesystem
+[2m2026-02-14T23:08:12.471191Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Mount point validated: ./dl2
+[2m2026-02-14T23:08:12.471224Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Started status monitoring with 5 second poll interval
+[2m2026-02-14T23:08:12.471226Z[0m [32m INFO[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m rqbit-fuse filesystem initialized successfully
+[2m2026-02-14T23:08:12.472782Z[0m [33m WARN[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Failed to get stats for torrent 2: error decoding response body: missing field `snapshot` at line 1 column 645
+[2m2026-02-14T23:08:12.472978Z[0m [33m WARN[0m [2mrqbit_fuse::fs::filesystem[0m[2m:[0m Failed to get stats for torrent 1: error decoding response body: missing field `snapshot` at line 1 column 643
 === Checking dl2 root ===
 total 11137760
 dr-xr-xr-x@  4 root     wheel           0 Feb 14 17:08 .
@@ -4629,7 +4629,7 @@ The debug logs aren't showing because the log level is INFO. Let me change the l
 **Input:**
 ```json
 {
-  "command": "umount dl2 2>/dev/null; sleep 1; killall torrent-fuse 2>/dev/null; sleep 1\nRUST_LOG=debug ./target/release/torrent-fuse mount -m ./dl2 2>&1 | head -100 &\nsleep 3\necho \"=== Checking dl2 root ===\"\nls -la dl2/\necho \"=== Checking Cosmos Laundromat ===\"\nls -la dl2/Cosmos\\ Laundromat/",
+  "command": "umount dl2 2>/dev/null; sleep 1; killall rqbit-fuse 2>/dev/null; sleep 1\nRUST_LOG=debug ./target/release/rqbit-fuse mount -m ./dl2 2>&1 | head -100 &\nsleep 3\necho \"=== Checking dl2 root ===\"\nls -la dl2/\necho \"=== Checking Cosmos Laundromat ===\"\nls -la dl2/Cosmos\\ Laundromat/",
   "description": "Run with debug logging enabled",
   "timeout": 15000
 }
@@ -4656,7 +4656,7 @@ dr-xr-xr-x@ 4 root  wheel  0 Feb 14 17:08 ..
 
 _Thinking:_
 
-<|tool_calls_section_begin|><|tool_call_begin|>functions.bash:39<|tool_call_argument_begin|>{"command": "RUST_LOG=debug timeout 5 ./target/release/torrent-fuse mount -m ./dl2 2>&1 | grep -E \"(add_child|Created|inode)\"", "description": "Get debug logs for add_child", "timeout": 10000}<|tool_call_end|><|tool_calls_section_end|>
+<|tool_calls_section_begin|><|tool_call_begin|>functions.bash:39<|tool_call_argument_begin|>{"command": "RUST_LOG=debug timeout 5 ./target/release/rqbit-fuse mount -m ./dl2 2>&1 | grep -E \"(add_child|Created|inode)\"", "description": "Get debug logs for add_child", "timeout": 10000}<|tool_call_end|><|tool_calls_section_end|>
 
 ---
 

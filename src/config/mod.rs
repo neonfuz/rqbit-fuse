@@ -40,7 +40,7 @@ macro_rules! env_var {
     };
 }
 
-/// Main configuration container for torrent-fuse.
+/// Main configuration container for rqbit-fuse.
 ///
 /// Combines all configuration sections (API, cache, mount, performance, monitoring, logging)
 /// into a single struct that can be loaded from files, environment variables, or CLI arguments.
@@ -65,7 +65,7 @@ macro_rules! env_var {
 /// # Example
 ///
 /// ```rust
-/// use torrent_fuse::config::Config;
+/// use rqbit_fuse::config::Config;
 ///
 /// let config = Config::load().expect("Failed to load config");
 /// config.validate().expect("Invalid configuration");
@@ -74,8 +74,8 @@ macro_rules! env_var {
 /// ## Complete TOML Configuration Example
 ///
 /// ```toml
-/// # Basic configuration for torrent-fuse
-/// # Copy this to ~/.config/torrent-fuse/config.toml or /etc/torrent-fuse/config.toml
+/// # Basic configuration for rqbit-fuse
+/// # Copy this to ~/.config/rqbit-fuse/config.toml or /etc/rqbit-fuse/config.toml
 ///
 /// [api]
 /// url = "http://127.0.0.1:3030"
@@ -502,9 +502,9 @@ impl Config {
 
     pub fn from_default_locations() -> Result<Self, ConfigError> {
         let config_dirs = [
-            dirs::config_dir().map(|d| d.join("torrent-fuse/config.toml")),
-            Some(PathBuf::from("/etc/torrent-fuse/config.toml")),
-            Some(PathBuf::from("./torrent-fuse.toml")),
+            dirs::config_dir().map(|d| d.join("rqbit-fuse/config.toml")),
+            Some(PathBuf::from("/etc/rqbit-fuse/config.toml")),
+            Some(PathBuf::from("./rqbit-fuse.toml")),
         ];
 
         for path in config_dirs.iter().flatten() {

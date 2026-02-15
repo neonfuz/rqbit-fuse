@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the read-ahead (prefetching) strategy for torrent-fuse to optimize sequential file reads. The goal is to detect sequential access patterns and prefetch data ahead of time, reducing latency and improving throughput for streaming operations.
+This document describes the read-ahead (prefetching) strategy for rqbit-fuse to optimize sequential file reads. The goal is to detect sequential access patterns and prefetch data ahead of time, reducing latency and improving throughput for streaming operations.
 
 ## Current Prefetch Behavior (Issues)
 

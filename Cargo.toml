@@ -1,11 +1,11 @@
 [package]
-name = "torrent-fuse"
+name = "rqbit-fuse"
 version = "0.1.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "A FUSE filesystem for accessing torrents via rqbit"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/torrent-fuse"
+repository = "https://github.com/yourusername/rqbit-fuse"
 
 [dependencies]
 fuser = "0.14"
@@ -42,9 +42,9 @@ name = "performance"
 harness = false
 
 [[bin]]
-name = "torrent-fuse"
+name = "rqbit-fuse"
 path = "src/main.rs"
 
 [lib]
-name = "torrent_fuse"
+name = "rqbit_fuse"
 path = "src/lib.rs"

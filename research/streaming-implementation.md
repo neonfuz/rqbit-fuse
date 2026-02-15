@@ -125,7 +125,7 @@ _ => {
 
 After implementation:
 ```bash
-cargo build --release && umount dl2 && ./target/release/torrent-fuse mount -m ./dl2
+cargo build --release && umount dl2 && ./target/release/rqbit-fuse mount -m ./dl2
 time head -c 4096 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
 ```
 

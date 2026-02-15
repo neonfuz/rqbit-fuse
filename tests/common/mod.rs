@@ -1,4 +1,4 @@
-//! Common test utilities for torrent-fuse
+//! Common test utilities for rqbit-fuse
 //!
 //! This module provides shared testing infrastructure including:
 //! - Mock server setup for API testing
@@ -8,7 +8,7 @@
 //! # Usage
 //!
 //! ```rust
-//! use torrent_fuse_test::common::{mock_server, fuse_helpers};
+//! use rqbit_fuse_test::common::{mock_server, fuse_helpers};
 //! ```
 
 pub mod fixtures;

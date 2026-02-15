@@ -56,7 +56,7 @@
 - ❌ list (documented but not implemented)
 - ❌ cache clear (documented but not implemented)
 - ❌ daemon (documented but not implemented)
-- ✅ Configuration file support (~/.config/torrent-fuse/config.toml)
+- ✅ Configuration file support (~/.config/rqbit-fuse/config.toml)
 - ✅ Multiple config file locations (user, system, local)
 - ✅ Environment variable overrides
 - ✅ Command-line flags override config
@@ -96,7 +96,7 @@
 
 ### Actual Implementation
 ```
-torrent-fuse/
+rqbit-fuse/
 ├── Cargo.toml
 ├── Cargo.lock
 ├── README.md
@@ -211,9 +211,9 @@ dirs = "5.0"              # Config directory detection
 
 ### 1. CLI Commands Not Implemented
 The following commands are documented but not implemented:
-- `torrent-fuse list` - Shows torrent status
-- `torrent-fuse cache clear` - Clears metadata cache
-- `torrent-fuse daemon` - Daemon mode
+- `rqbit-fuse list` - Shows torrent status
+- `rqbit-fuse cache clear` - Clears metadata cache
+- `rqbit-fuse daemon` - Daemon mode
 
 ### 2. Spec vs Implementation Differences
 - `fuse/` directory is actually `fs/`

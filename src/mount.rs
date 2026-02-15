@@ -135,7 +135,7 @@ pub fn get_mount_info(path: &std::path::Path) -> Result<MountInfo> {
     }
 
     Ok(MountInfo {
-        filesystem: "fuse.torrent-fuse".to_string(),
+        filesystem: "fuse.rqbit-fuse".to_string(),
         size: "unknown".to_string(),
         used: "unknown".to_string(),
         available: "unknown".to_string(),

@@ -18,8 +18,8 @@ use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use torrent_fuse::api::types::{FileInfo, TorrentInfo};
-use torrent_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
+use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
+use rqbit_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
 
 /// Sets up a mock rqbit server with standard responses
 async fn setup_mock_server() -> MockServer {
@@ -47,7 +47,7 @@ fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> Conf
 /// Helper function to create a TorrentFS with an async worker for tests
 fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
     let api_client = Arc::new(
-        torrent_fuse::api::client::RqbitClient::new(
+        rqbit_fuse::api::client::RqbitClient::new(
             config.api.url.clone(),
             Arc::clone(&metrics.api),
         )

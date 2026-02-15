@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document compares cache design approaches for the torrent-fuse project. After analyzing the current implementation and available options, **Moka** is the recommended replacement for the custom cache implementation.
+This document compares cache design approaches for the rqbit-fuse project. After analyzing the current implementation and available options, **Moka** is the recommended replacement for the custom cache implementation.
 
 ## Current Implementation Analysis
 
@@ -304,7 +304,7 @@ If dependency size is a concern, consider `mini-moka`:
 
 ## Conclusion
 
-**Moka is the clear winner** for torrent-fuse's caching needs:
+**Moka is the clear winner** for rqbit-fuse's caching needs:
 
 1. Solves all identified issues with current implementation
 2. Provides advanced features (size-aware eviction, excellent hit ratio)

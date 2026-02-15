@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document specifies the public API design for `torrent-fuse`, addressing module visibility concerns and establishing clear boundaries between public and internal APIs.
+This document specifies the public API design for `rqbit-fuse`, addressing module visibility concerns and establishing clear boundaries between public and internal APIs.
 
 ## Current Issues
 
@@ -43,17 +43,17 @@ Users must navigate deep module hierarchies to access commonly used types, resul
 
 ```rust
 // Current: Verbose and inconsistent imports
-use torrent_fuse::fs::filesystem::TorrentFS;
-use torrent_fuse::api::client::RqbitClient;
-use torrent_fuse::api::types::TorrentInfo;
-use torrent_fuse::config::Config;
+use rqbit_fuse::fs::filesystem::TorrentFS;
+use rqbit_fuse::api::client::RqbitClient;
+use rqbit_fuse::api::types::TorrentInfo;
+use rqbit_fuse::config::Config;
 ```
 
 **Target Experience:**
 
 ```rust
 // Target: Clean, intuitive imports
-use torrent_fuse::{TorrentFS, Client, Config, TorrentInfo};
+use rqbit_fuse::{TorrentFS, Client, Config, TorrentInfo};
 ```
 
 ## Public API Design
@@ -234,7 +234,7 @@ pub struct CliArgs;  // Keep but document as CLI-only
 ### Target Structure
 
 ```
-torrent-fuse/
+rqbit-fuse/
 ├── lib.rs              # Crate root with selective re-exports
 ├── api/
 │   ├── mod.rs          # Re-exports: Client, types
@@ -263,26 +263,26 @@ torrent-fuse/
 
 **Before:**
 ```rust
-use torrent_fuse::fs::filesystem::TorrentFS;
-use torrent_fuse::api::client::RqbitClient;
-use torrent_fuse::api::types::{TorrentInfo, TorrentState};
-use torrent_fuse::config::Config;
-use torrent_fuse::cache::{Cache, CacheStats};
+use rqbit_fuse::fs::filesystem::TorrentFS;
+use rqbit_fuse::api::client::RqbitClient;
+use rqbit_fuse::api::types::{TorrentInfo, TorrentState};
+use rqbit_fuse::config::Config;
+use rqbit_fuse::cache::{Cache, CacheStats};
 ```
 
 **After:**
 ```rust
 // Option 1: Crate root imports (recommended)
-use torrent_fuse::{TorrentFS, Client, Config, TorrentInfo, TorrentState};
+use rqbit_fuse::{TorrentFS, Client, Config, TorrentInfo, TorrentState};
 
 // Option 2: Module-specific imports
-use torrent_fuse::fs::TorrentFS;
-use torrent_fuse::api::{Client, TorrentInfo};
-use torrent_fuse::config::Config;
-use torrent_fuse::cache::Cache;
+use rqbit_fuse::fs::TorrentFS;
+use rqbit_fuse::api::{Client, TorrentInfo};
+use rqbit_fuse::config::Config;
+use rqbit_fuse::cache::Cache;
 
 // Option 3: Full paths for clarity
-use torrent_fuse::api::types::{TorrentInfo, TorrentState};
+use rqbit_fuse::api::types::{TorrentInfo, TorrentState};
 ```
 
 ## Refactoring Plan
@@ -421,12 +421,12 @@ Every public item must have:
 /// # Example
 ///
 /// ```no_run
-/// use torrent_fuse::{TorrentFS, Config};
+/// use rqbit_fuse::{TorrentFS, Config};
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let config = Config::default();
-/// let metrics = Arc::new(torrent_fuse::Metrics::new());
+/// let metrics = Arc::new(rqbit_fuse::Metrics::new());
 /// let fs = TorrentFS::new(config, metrics)?;
 /// fs.mount().await?;
 /// # Ok(())
@@ -449,14 +449,14 @@ pub struct TorrentFS { /* ... */ }
 ### Crate-Level Documentation (lib.rs)
 
 ```rust
-//! # torrent-fuse
+//! # rqbit-fuse
 //!
 //! Mount torrents from an [rqbit](https://github.com/ikatson/rqbit) server as a FUSE filesystem.
 //!
 //! ## Quick Start
 //!
 //! ```no_run
-//! use torrent_fuse::{TorrentFS, Config};
+//! use rqbit_fuse::{TorrentFS, Config};
 //!
 //! # async fn quickstart() -> anyhow::Result<()> {
 //! let config = Config::default();
@@ -612,28 +612,28 @@ Current: No feature flags needed - all features are core functionality.
 This refactoring includes breaking changes requiring a minor version bump:
 
 ### Removed (Internal → Private)
-- `torrent_fuse::fs::inode` - Use fs module APIs instead
-- `torrent_fuse::api::client::CircuitBreaker` - Internal implementation
-- `torrent_fuse::api::client::CircuitState` - Internal implementation
-- `torrent_fuse::types::attr` - Internal helpers
-- `torrent_fuse::types::torrent` - Dead code
+- `rqbit_fuse::fs::inode` - Use fs module APIs instead
+- `rqbit_fuse::api::client::CircuitBreaker` - Internal implementation
+- `rqbit_fuse::api::client::CircuitState` - Internal implementation
+- `rqbit_fuse::types::attr` - Internal helpers
+- `rqbit_fuse::types::torrent` - Dead code
 
 ### Changed (Path Changes)
-- `torrent_fuse::fs::filesystem::TorrentFS` → `torrent_fuse::fs::TorrentFS` or `torrent_fuse::TorrentFS`
-- `torrent_fuse::api::client::RqbitClient` → `torrent_fuse::api::Client` or `torrent_fuse::Client`
+- `rqbit_fuse::fs::filesystem::TorrentFS` → `rqbit_fuse::fs::TorrentFS` or `rqbit_fuse::TorrentFS`
+- `rqbit_fuse::api::client::RqbitClient` → `rqbit_fuse::api::Client` or `rqbit_fuse::Client`
 
 ### Migration Guide
 
 ```rust
 // Before
-use torrent_fuse::fs::filesystem::TorrentFS;
-use torrent_fuse::api::client::RqbitClient;
+use rqbit_fuse::fs::filesystem::TorrentFS;
+use rqbit_fuse::api::client::RqbitClient;
 
 // After
-use torrent_fuse::{TorrentFS, Client};
+use rqbit_fuse::{TorrentFS, Client};
 // or
-use torrent_fuse::fs::TorrentFS;
-use torrent_fuse::api::Client;
+use rqbit_fuse::fs::TorrentFS;
+use rqbit_fuse::api::Client;
 ```
 
 ---

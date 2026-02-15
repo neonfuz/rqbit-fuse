@@ -1,4 +1,4 @@
-# Development Dockerfile for torrent-fuse
+# Development Dockerfile for rqbit-fuse
 # This allows building and testing the Linux version on macOS
 
 FROM rust:1.75-slim-bookworm

@@ -388,7 +388,7 @@ impl Metrics {
     /// Log a complete metrics summary
     pub fn log_full_summary(&self) {
         let elapsed = self.start_time.elapsed().as_secs_f64();
-        info!("=== torrent-fuse Metrics Summary ===");
+        info!("=== rqbit-fuse Metrics Summary ===");
         self.fuse.log_summary(elapsed);
         self.api.log_summary();
         self.cache.log_summary();
@@ -398,7 +398,7 @@ impl Metrics {
     /// Log periodic metrics summary (for background task)
     pub fn log_periodic(&self) {
         let elapsed = self.start_time.elapsed().as_secs_f64();
-        info!("--- torrent-fuse Metrics (periodic) ---");
+        info!("--- rqbit-fuse Metrics (periodic) ---");
         self.fuse.log_summary(elapsed);
         self.api.log_summary();
         self.cache.log_summary();

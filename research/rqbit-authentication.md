@@ -95,11 +95,11 @@ async fn simple_basic_auth(
   - Header: `WWW-Authenticate: Basic realm="API"`
 - **403 Forbidden:** Valid credentials but insufficient permissions (not currently used)
 
-## Implications for torrent-fuse
+## Implications for rqbit-fuse
 
 ### Client-Side Implementation Required
 
-To support authenticated rqbit servers, torrent-fuse needs:
+To support authenticated rqbit servers, rqbit-fuse needs:
 
 1. **Credential Configuration:**
    - Add `username` and `password` fields to client config
@@ -155,7 +155,7 @@ The only authentication mechanism available is HTTP Basic Auth.
 
 ## Recommendations
 
-1. **Implement Basic Auth Support:** Add username/password configuration to torrent-fuse
+1. **Implement Basic Auth Support:** Add username/password configuration to rqbit-fuse
 2. **Security Warning:** Document that Basic Auth credentials are sent with every request
 3. **HTTPS Enforcement:** Recommend/require HTTPS for production deployments
 4. **Future-Proofing:** Design auth configuration to allow for token-based auth if rqbit adds support

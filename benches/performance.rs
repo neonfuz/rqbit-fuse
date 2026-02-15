@@ -1,4 +1,4 @@
-//! Performance benchmarks for torrent-fuse
+//! Performance benchmarks for rqbit-fuse
 //!
 //! Run with: cargo bench
 //!
@@ -14,9 +14,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use torrent_fuse::cache::Cache;
-use torrent_fuse::fs::inode::InodeManager;
-use torrent_fuse::types::inode::InodeEntry;
+use rqbit_fuse::cache::Cache;
+use rqbit_fuse::fs::inode::InodeManager;
+use rqbit_fuse::types::inode::InodeEntry;
 
 /// Create a Tokio runtime for async benchmarks
 fn create_runtime() -> Runtime {

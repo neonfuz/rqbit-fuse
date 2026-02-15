@@ -5,7 +5,7 @@
 
 ## Summary
 
-This research documents the implementation of atomic inode table operations in the torrent-fuse filesystem. The work focused on ensuring consistency across the three DashMap structures (`entries`, `path_to_inode`, `torrent_to_inode`) during concurrent access.
+This research documents the implementation of atomic inode table operations in the rqbit-fuse filesystem. The work focused on ensuring consistency across the three DashMap structures (`entries`, `path_to_inode`, `torrent_to_inode`) during concurrent access.
 
 ## Problem Statement
 

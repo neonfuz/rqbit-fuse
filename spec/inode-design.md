@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the design for refactoring the inode management system in torrent-fuse to address critical issues with atomicity, encapsulation, and correctness.
+This document describes the design for refactoring the inode management system in rqbit-fuse to address critical issues with atomicity, encapsulation, and correctness.
 
 ## 1. Current Inode Table Issues
 
@@ -185,7 +185,7 @@ struct InodeState {
 **Performance Analysis:**
 - Read-heavy workloads: RwLock may outperform DashMap due to less overhead
 - Write-heavy workloads: DashMap wins due to fine-grained locking
-- torrent-fuse workload: Mostly reads (FUSE operations), occasional writes (torrent add/remove)
+- rqbit-fuse workload: Mostly reads (FUSE operations), occasional writes (torrent add/remove)
 
 **Verdict:** Good for correctness, may need optimization for high write loads.
 
@@ -233,7 +233,7 @@ impl<'a> InodeTransaction<'a> {
 **Selected Approach:** Single DashMap with Composite Keys + Entry API
 
 **Rationale:**
-1. torrent-fuse has read-heavy workload (FUSE file operations)
+1. rqbit-fuse has read-heavy workload (FUSE file operations)
 2. DashMap provides excellent concurrent read performance
 3. Entry API allows atomic check-and-set operations
 4. Can add RwLock wrapper later if atomic batches are needed
@@ -1367,7 +1367,7 @@ impl std::error::Error for InodeError {}
 
 ### Concurrent Access
 
-**Read-heavy workloads (torrent-fuse typical):**
+**Read-heavy workloads (rqbit-fuse typical):**
 - DashMap shines with sharded locks
 - New design maintains this benefit
 - Indices add minimal contention

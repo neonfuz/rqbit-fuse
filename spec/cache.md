@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The cache system in torrent-fuse provides efficient storage and retrieval of frequently-accessed data, primarily used for caching file chunks from torrent streams. This specification documents both the historical issues with the previous custom implementation and the current Moka-based solution.
+The cache system in rqbit-fuse provides efficient storage and retrieval of frequently-accessed data, primarily used for caching file chunks from torrent streams. This specification documents both the historical issues with the previous custom implementation and the current Moka-based solution.
 
 ## 2. Historical Issues (Resolved by Migration to Moka)
 

@@ -497,4 +497,4 @@ The `log_fuse_operations` config flag is still respected - the macros check it i
 
 ---
 
-*Created for torrent-fuse project - February 14, 2026*
+*Created for rqbit-fuse project - February 14, 2026*

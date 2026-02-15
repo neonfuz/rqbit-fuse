@@ -1,6 +1,6 @@
 # Torrent-Fuse Specification
 
-This directory contains the detailed technical specifications for the torrent-fuse project.
+This directory contains the detailed technical specifications for the rqbit-fuse project.
 
 ## Documents
 
@@ -21,7 +21,7 @@ High-level system architecture and design overview.
 ---
 
 ### 🔌 API Documentation (`api.md`)
-Detailed documentation of the rqbit HTTP API and how torrent-fuse interacts with it.
+Detailed documentation of the rqbit HTTP API and how rqbit-fuse interacts with it.
 
 **Contents:**
 - All rqbit API endpoints used
@@ -67,7 +67,7 @@ Development phases and timeline.
 ---
 
 ### 🚀 Quick Start (`quickstart.md`)
-User-facing documentation for installing and using torrent-fuse.
+User-facing documentation for installing and using rqbit-fuse.
 
 **Contents:**
 - Installation prerequisites
@@ -77,7 +77,7 @@ User-facing documentation for installing and using torrent-fuse.
 - Troubleshooting guide
 - Performance tips
 
-**Share this** with users who want to use torrent-fuse.
+**Share this** with users who want to use rqbit-fuse.
 
 ---
 

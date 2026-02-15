@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document specifies the signal handling and graceful shutdown mechanism for the torrent-fuse application. The system must handle external signals to ensure clean resource cleanup, prevent data corruption, and maintain system integrity during shutdown.
+This document specifies the signal handling and graceful shutdown mechanism for the rqbit-fuse application. The system must handle external signals to ensure clean resource cleanup, prevent data corruption, and maintain system integrity during shutdown.
 
 ## Requirements
 
@@ -764,7 +764,7 @@ async fn test_graceful_shutdown_sequence() {
 
 ```rust
 info!(
-    target: "torrent_fuse::shutdown",
+    target: "rqbit_fuse::shutdown",
     phase = "initiated",
     signal = "SIGTERM",
     active_operations = active_ops,
@@ -772,7 +772,7 @@ info!(
 );
 
 info!(
-    target: "torrent_fuse::shutdown",
+    target: "rqbit_fuse::shutdown",
     phase = "waiting_operations",
     count = active_ops,
     timeout_secs = 30,
@@ -780,7 +780,7 @@ info!(
 );
 
 info!(
-    target: "torrent_fuse::shutdown",
+    target: "rqbit_fuse::shutdown",
     phase = "complete",
     duration_ms = elapsed.as_millis(),
     "Graceful shutdown completed"

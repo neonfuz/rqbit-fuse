@@ -20,7 +20,7 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  torrent-fuse FUSE Client                    │
+│                  rqbit-fuse FUSE Client                    │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
 │  │ FUSE Handler │  │ HTTP Client  │  │ Cache Mgr    │       │
 │  │ (fuser)      │  │ (reqwest)    │  │ (in-mem)     │       │
@@ -45,7 +45,7 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 
 ## Components
 
-### 1. FUSE Client (torrent-fuse)
+### 1. FUSE Client (rqbit-fuse)
 
 **Language:** Rust
 
@@ -123,13 +123,13 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 **User Workflow:**
 1. User starts rqbit: `rqbit server start`
 2. User adds torrents via rqbit CLI or API
-3. User mounts torrents: `torrent-fuse mount -m /mnt/torrents`
+3. User mounts torrents: `rqbit-fuse mount -m /mnt/torrents`
 4. Files appear as virtual files in mount point
 
 ## File Structure
 
 ```
-torrent-fuse/
+rqbit-fuse/
 ├── Cargo.toml
 ├── src/
 │   ├── main.rs              # CLI entry point
@@ -327,9 +327,9 @@ pub struct CacheEntry<T> {
 ## Configuration
 
 ### Config File Locations (in order of priority)
-1. `~/.config/torrent-fuse/config.toml`
-2. `/etc/torrent-fuse/config.toml`
-3. `./torrent-fuse.toml`
+1. `~/.config/rqbit-fuse/config.toml`
+2. `/etc/rqbit-fuse/config.toml`
+3. `./rqbit-fuse.toml`
 
 ### Config File Example
 
@@ -395,16 +395,16 @@ All config options can be overridden via environment variables:
 
 ```bash
 # Start FUSE filesystem
-torrent-fuse mount -m /mnt/torrents
-torrent-fuse mount -m /mnt/torrents --api-url http://localhost:3030
+rqbit-fuse mount -m /mnt/torrents
+rqbit-fuse mount -m /mnt/torrents --api-url http://localhost:3030
 
 # Unmount
-torrent-fuse umount /mnt/torrents
-torrent-fuse umount /mnt/torrents --force
+rqbit-fuse umount /mnt/torrents
+rqbit-fuse umount /mnt/torrents --force
 
 # Show status
-torrent-fuse status
-torrent-fuse status --format json
+rqbit-fuse status
+rqbit-fuse status --format json
 ```
 
 ### Mount Options
