@@ -238,13 +238,6 @@ pub struct TorrentStats {
     pub live: Option<LiveStats>,
 }
 
-/// File statistics from API
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileStats {
-    pub length: u64,
-    pub included: bool,
-}
-
 /// Response from adding a torrent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddTorrentResponse {

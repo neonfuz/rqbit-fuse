@@ -369,24 +369,27 @@ Each item is designed to be completed independently. Research references are sto
 
 ### Type System
 
-- [ ] **TYPES-001**: Research torrent type consolidation
-  - Create `research/torrent-types.md` analyzing:
-    - `types/torrent.rs` (appears dead code)
-    - `api/types.rs::TorrentInfo`
-    - Any other torrent representations
-  - Document consolidation strategy
+- [x] **TYPES-001**: Research torrent type consolidation
+  - Created `research/torrent-types.md` analyzing:
+    - `types/torrent.rs` (dead code - confirmed)
+    - `api/types.rs::TorrentInfo` (active - used throughout)
+    - `api/types.rs::TorrentSummary` (actually used in client.rs)
+    - `api/types.rs::FileStats` (unused - confirmed)
+  - Documented consolidation strategy
+  - Found that types::torrent.rs is dead code, FileStats is unused, but TorrentSummary is actually used
 
-- [ ] **TYPES-002**: Consolidate torrent representations
+- [x] **TYPES-002**: Consolidate torrent representations
   - Depends on: `[research:torrent-types]`
-  - Remove or complete `types/torrent.rs`
-  - Use single canonical type throughout codebase
-  - Update all imports and conversions
+  - Removed `types/torrent.rs` (dead code - not imported anywhere)
+  - Removed `pub mod torrent;` from `src/types/mod.rs`
+  - `TorrentInfo` remains as the canonical type (used throughout codebase)
+  - All tests pass, clippy clean, code formatted
 
-- [ ] **TYPES-003**: Remove unused types
-  - Remove `TorrentSummary` (api/types.rs:151-161)
-  - Remove `FileStats` (api/types.rs:259-264)
-  - Verify no code references these types
-  - Check tests for usage
+- [x] **TYPES-003**: Remove unused types
+  - Removed `FileStats` from api/types.rs (was unused)
+  - Could NOT remove `TorrentSummary` - it's actually used in client.rs for the /torrents API endpoint
+  - This task was based on incorrect assumption that TorrentSummary was unused
+  - Note: Updated research file to reflect this finding
 
 - [ ] **TYPES-004**: Fix platform-dependent types
   - Change `file_index: usize` to `u64` (types/inode.rs:16)

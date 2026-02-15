@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Remove dead code from types module (TYPES-001, TYPES-002)
+  - Removed `types/torrent.rs` module (dead code - not imported anywhere)
+  - Removed `pub mod torrent;` from `src/types/mod.rs`
+  - Removed unused `FileStats` type from `api/types.rs`
+  - `TorrentInfo` remains as the canonical torrent type
+  - All tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 ### Added
 
 - Add HTTP Basic Authentication support to API client (API-002)
