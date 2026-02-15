@@ -640,3 +640,182 @@ async fn test_filesystem_metrics_collection() {
     // Just verifying these compile and are accessible
     assert!(true);
 }
+
+#[tokio::test]
+async fn test_nested_directory_path_resolution() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+
+    let torrent_info = TorrentInfo {
+        id: 10,
+        info_hash: "path_resolution".to_string(),
+        name: "Path Resolution Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "root.txt".to_string(),
+                length: 100,
+                components: vec!["root.txt".to_string()],
+            },
+            FileInfo {
+                name: "level1.txt".to_string(),
+                length: 200,
+                components: vec!["level1".to_string(), "level1.txt".to_string()],
+            },
+            FileInfo {
+                name: "deep.txt".to_string(),
+                length: 300,
+                components: vec![
+                    "level1".to_string(),
+                    "level2".to_string(),
+                    "deep.txt".to_string(),
+                ],
+            },
+        ],
+        piece_length: Some(262144),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test path resolution for torrent directory
+    let torrent_inode = inode_manager.lookup_torrent(10).unwrap();
+    assert_eq!(
+        inode_manager.get_path_for_inode(torrent_inode),
+        Some("/Path Resolution Test".to_string())
+    );
+
+    // Test path resolution for root file
+    let torrent_children = inode_manager.get_children(torrent_inode);
+    let root_file = torrent_children
+        .iter()
+        .find(|(_, e)| e.name() == "root.txt")
+        .unwrap();
+    assert_eq!(
+        inode_manager.get_path_for_inode(root_file.0),
+        Some("/Path Resolution Test/root.txt".to_string())
+    );
+
+    // Test path resolution for level1 directory
+    let level1_dir = torrent_children
+        .iter()
+        .find(|(_, e)| e.name() == "level1" && e.is_directory())
+        .unwrap();
+    assert_eq!(
+        inode_manager.get_path_for_inode(level1_dir.0),
+        Some("/Path Resolution Test/level1".to_string())
+    );
+
+    // Test path resolution for level1 file
+    let level1_children = inode_manager.get_children(level1_dir.0);
+    let level1_file = level1_children
+        .iter()
+        .find(|(_, e)| e.name() == "level1.txt")
+        .unwrap();
+    assert_eq!(
+        inode_manager.get_path_for_inode(level1_file.0),
+        Some("/Path Resolution Test/level1/level1.txt".to_string())
+    );
+
+    // Test path resolution for level2 directory
+    let level2_dir = level1_children
+        .iter()
+        .find(|(_, e)| e.name() == "level2" && e.is_directory())
+        .unwrap();
+    assert_eq!(
+        inode_manager.get_path_for_inode(level2_dir.0),
+        Some("/Path Resolution Test/level1/level2".to_string())
+    );
+
+    // Test path resolution for deeply nested file
+    let level2_children = inode_manager.get_children(level2_dir.0);
+    let deep_file = level2_children
+        .iter()
+        .find(|(_, e)| e.name() == "deep.txt")
+        .unwrap();
+    assert_eq!(
+        inode_manager.get_path_for_inode(deep_file.0),
+        Some("/Path Resolution Test/level1/level2/deep.txt".to_string())
+    );
+
+    // Test path lookup for nested paths
+    assert!(inode_manager
+        .lookup_by_path("/Path Resolution Test/level1")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Path Resolution Test/level1/level1.txt")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Path Resolution Test/level1/level2")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Path Resolution Test/level1/level2/deep.txt")
+        .is_some());
+}
+
+// Debug test to see actual structure
+#[tokio::test]
+async fn debug_nested_structure() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    use torrent_fuse::api::types::{FileInfo, TorrentInfo};
+
+    let torrent_info = TorrentInfo {
+        id: 99,
+        info_hash: "debug".to_string(),
+        name: "Debug Structure".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "root.txt".to_string(),
+                length: 100,
+                components: vec!["root.txt".to_string()],
+            },
+            FileInfo {
+                name: "level1.txt".to_string(),
+                length: 200,
+                components: vec!["level1".to_string(), "level1.txt".to_string()],
+            },
+        ],
+        piece_length: Some(262144),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    
+    // Debug: Print all entries
+    println!("All entries:");
+    for entry in inode_manager.entries().iter() {
+        println!("  inode {}: {:?}", entry.key(), entry.value());
+    }
+    
+    // Debug: Print all paths
+    println!("All paths:");
+    for path in inode_manager.path_to_inode().iter() {
+        println!("  {} -> inode {}", path.key(), path.value());
+    }
+    
+    let torrent_inode = inode_manager.lookup_torrent(99).unwrap();
+    println!("Torrent inode: {}", torrent_inode);
+    
+    let torrent_children = inode_manager.get_children(torrent_inode);
+    println!("Torrent children count: {}", torrent_children.len());
+    for (ino, entry) in &torrent_children {
+        println!("  Child: inode {} -> {}", ino, entry.name());
+    }
+}

@@ -121,6 +121,13 @@ impl InodeManager {
         self.torrent_to_inode.get(&torrent_id).map(|i| *i)
     }
 
+    /// Gets the full path for an inode.
+    /// Builds the path by traversing parent links up to root.
+    pub fn get_path_for_inode(&self, inode: u64) -> Option<String> {
+        let entry = self.entries.get(&inode)?;
+        Some(self.build_path(&entry))
+    }
+
     /// Gets all entries in the inode manager.
     pub fn entries(&self) -> &DashMap<u64, InodeEntry> {
         &self.entries

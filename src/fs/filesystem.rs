@@ -1065,8 +1065,18 @@ impl Filesystem for TorrentFS {
         let path = if parent == 1 {
             format!("/{}", name_str)
         } else {
-            let parent_name = parent_entry.name();
-            format!("{}/{}", parent_name, name_str)
+            match self.inode_manager.get_path_for_inode(parent) {
+                Some(parent_path) => format!("{}/{}", parent_path, name_str),
+                None => {
+                    error!(
+                        fuse_op = "lookup",
+                        parent = parent,
+                        "Failed to build path for parent inode"
+                    );
+                    reply.error(libc::EIO);
+                    return;
+                }
+            }
         };
 
         // Look up the inode by path
