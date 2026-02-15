@@ -1516,18 +1516,24 @@ impl Filesystem for TorrentFS {
         // Get the status
         match self.torrent_statuses.get(&torrent_id) {
             Some(status) => {
-                let json = status.to_json();
-                let data = json.as_bytes();
+                match status.to_json() {
+                    Ok(json) => {
+                        let data = json.as_bytes();
 
-                if size == 0 {
-                    // Return the size needed
-                    reply.size(data.len() as u32);
-                } else if data.len() <= size as usize {
-                    // Return the data
-                    reply.data(data);
-                } else {
-                    // Buffer too small
-                    reply.error(libc::ERANGE);
+                        if size == 0 {
+                            // Return the size needed
+                            reply.size(data.len() as u32);
+                        } else if data.len() <= size as usize {
+                            // Return the data
+                            reply.data(data);
+                        } else {
+                            // Buffer too small
+                            reply.error(libc::ERANGE);
+                        }
+                    }
+                    Err(_) => {
+                        reply.error(libc::EIO);
+                    }
                 }
             }
             None => {

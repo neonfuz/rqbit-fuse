@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified API types module (SIMPLIFY-009)
+  - Merged `DownloadSpeed` and `UploadSpeed` into unified `Speed` struct
+  - Added `strum::Display` derive to `TorrentState`, removed 12-line manual Display impl
+  - Derived `Serialize` for `TorrentStatus`, replaced manual `to_json()` with `serde_json::to_string()`
+  - Simplified `to_fuse_error()` error mappings by consolidating HTTP status codes (~30 → ~15 lines)
+  - Reduced `src/api/types.rs` from 427 to 377 lines (~50 line reduction)
+  - Updated `src/fs/filesystem.rs` to handle new `Result` return type from `to_json()`
+  - All compilation checks pass, clippy clean, code formatted
+
 - Simplify inode allocation logic (SIMPLIFY-007)
   - Added `with_ino()` method to `InodeEntry` in `src/types/inode.rs`
   - Created generic `allocate_entry()` helper to consolidate allocation logic

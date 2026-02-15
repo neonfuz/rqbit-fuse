@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use strum::Display;
 use thiserror::Error;
 
 /// Errors that can occur when interacting with the rqbit API
@@ -72,47 +73,24 @@ impl ApiError {
     /// Map API errors to FUSE error codes
     pub fn to_fuse_error(&self) -> libc::c_int {
         match self {
-            // Not found errors
             ApiError::TorrentNotFound(_) | ApiError::FileNotFound { .. } => libc::ENOENT,
-
-            // API HTTP status errors
             ApiError::ApiError { status, .. } => match status {
-                400 => libc::EINVAL, // Bad request
-                401 => libc::EACCES, // Unauthorized
-                403 => libc::EACCES, // Forbidden
-                404 => libc::ENOENT, // Not found
-                408 => libc::EAGAIN, // Request timeout
-                409 => libc::EEXIST, // Conflict
-                413 => libc::EFBIG,  // Payload too large
-                416 => libc::EINVAL, // Range not satisfiable
-                423 => libc::EAGAIN, // Locked
-                429 => libc::EAGAIN, // Too many requests
-                500 => libc::EIO,    // Internal server error
-                502 => libc::EIO,    // Bad gateway
-                503 => libc::EAGAIN, // Service unavailable
-                504 => libc::EAGAIN, // Gateway timeout
+                400 | 416 => libc::EINVAL,
+                401 | 403 => libc::EACCES,
+                404 => libc::ENOENT,
+                408 | 423 | 429 | 503 | 504 => libc::EAGAIN,
+                409 => libc::EEXIST,
+                413 => libc::EFBIG,
+                500 | 502 => libc::EIO,
                 _ => libc::EIO,
             },
-
-            // Invalid input errors
-            ApiError::InvalidRange(_) => libc::EINVAL,
-            ApiError::SerializationError(_) => libc::EIO,
-
-            // Timeout errors - return EAGAIN to suggest retry
+            ApiError::InvalidRange(_) | ApiError::SerializationError(_) => libc::EINVAL,
             ApiError::ConnectionTimeout | ApiError::ReadTimeout => libc::EAGAIN,
-
-            // Server/Network errors
             ApiError::ServerDisconnected => libc::ENOTCONN,
             ApiError::NetworkError(_) => libc::ENETUNREACH,
-            ApiError::ServiceUnavailable(_) => libc::EAGAIN,
-
-            // Circuit breaker - service temporarily unavailable
-            ApiError::CircuitBreakerOpen => libc::EAGAIN,
-
-            // Retry limit exceeded
-            ApiError::RetryLimitExceeded => libc::EAGAIN,
-
-            // Generic HTTP errors
+            ApiError::ServiceUnavailable(_)
+            | ApiError::CircuitBreakerOpen
+            | ApiError::RetryLimitExceeded => libc::EAGAIN,
             ApiError::HttpError(_) => libc::EIO,
         }
     }
@@ -190,17 +168,9 @@ pub struct FileInfo {
     pub components: Vec<String>,
 }
 
-/// Download speed information from stats endpoint
+/// Speed information from stats endpoint (used for both download and upload)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct DownloadSpeed {
-    pub mbps: f64,
-    #[serde(rename = "human_readable")]
-    pub human_readable: String,
-}
-
-/// Upload speed information from stats endpoint
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct UploadSpeed {
+pub struct Speed {
     pub mbps: f64,
     #[serde(rename = "human_readable")]
     pub human_readable: String,
@@ -232,9 +202,9 @@ pub struct LiveStats {
     #[serde(rename = "average_piece_download_time")]
     pub average_piece_download_time: Option<serde_json::Value>,
     #[serde(rename = "download_speed")]
-    pub download_speed: DownloadSpeed,
+    pub download_speed: Speed,
     #[serde(rename = "upload_speed")]
-    pub upload_speed: UploadSpeed,
+    pub upload_speed: Speed,
     #[serde(rename = "time_remaining")]
     pub time_remaining: Option<serde_json::Value>,
 }
@@ -319,7 +289,8 @@ impl PieceBitfield {
 }
 
 /// Status of a torrent for monitoring
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize)]
+#[strum(serialize_all = "snake_case")]
 pub enum TorrentState {
     /// Torrent is downloading
     Downloading,
@@ -335,21 +306,8 @@ pub enum TorrentState {
     Unknown,
 }
 
-impl std::fmt::Display for TorrentState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TorrentState::Downloading => write!(f, "downloading"),
-            TorrentState::Seeding => write!(f, "seeding"),
-            TorrentState::Paused => write!(f, "paused"),
-            TorrentState::Stalled => write!(f, "stalled"),
-            TorrentState::Error => write!(f, "error"),
-            TorrentState::Unknown => write!(f, "unknown"),
-        }
-    }
-}
-
 /// Comprehensive torrent status information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TorrentStatus {
     pub torrent_id: u64,
     pub state: TorrentState,
@@ -358,6 +316,7 @@ pub struct TorrentStatus {
     pub total_bytes: u64,
     pub downloaded_pieces: usize,
     pub total_pieces: usize,
+    #[serde(skip)]
     pub last_updated: std::time::Instant,
 }
 
@@ -411,16 +370,7 @@ impl TorrentStatus {
     }
 
     /// Get status as a JSON string for xattr
-    pub fn to_json(&self) -> String {
-        format!(
-            r#"{{"torrent_id":{},"state":"{}","progress_pct":{:.2},"progress_bytes":{},"total_bytes":{},"downloaded_pieces":{},"total_pieces":{}}}"#,
-            self.torrent_id,
-            self.state,
-            self.progress_pct,
-            self.progress_bytes,
-            self.total_bytes,
-            self.downloaded_pieces,
-            self.total_pieces
-        )
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
     }
 }

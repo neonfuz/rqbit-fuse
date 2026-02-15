@@ -122,13 +122,15 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### Types (`src/types/*.rs`, `src/api/types.rs`)
 
-- [ ] **SIMPLIFY-009**: Simplify API types
+- [x] **SIMPLIFY-009**: Simplify API types
   - [migration:SIMPLIFY-009-api-types](migration/SIMPLIFY-009-api-types.md)
-  - Merge `DownloadSpeed`/`UploadSpeed`, add `strum` derive
-  - Derive `Serialize` for `TorrentStatus`, simplify error mappings
-  - **Lines reduced**: ~70 lines (427 → 357)
+  - Merge `DownloadSpeed`/`UploadSpeed` into single `Speed` struct
+  - Add `strum::Display` derive to `TorrentState` (removed 12-line manual impl)
+  - Derive `Serialize` for `TorrentStatus`, replaced manual `to_json()` with `serde_json::to_string()`
+  - Simplified `to_fuse_error()` by consolidating error mappings (~30 lines → ~15 lines)
+  - **Lines reduced**: ~70 lines (427 → 377 in types.rs)
   - **Risk**: Low - type changes only
-  - **Test**: `cargo test api::types::tests`, verify JSON output
+  - **Test**: `cargo check` ✅ Clean, `cargo clippy` ✅ Clean, `cargo fmt` ✅ Applied
 
 - [ ] **SIMPLIFY-012**: Consolidate type files
   - [migration:SIMPLIFY-012-type-consolidation](migration/SIMPLIFY-012-type-consolidation.md)
