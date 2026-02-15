@@ -243,6 +243,7 @@ fn test_inode_allocation_performance() {
             size: 1024,
             torrent_id: i as u64,
             file_index: 0,
+            canonical_path: format!("/file_{}.txt", i),
         };
         let _ = manager.allocate(entry);
     }
@@ -277,6 +278,7 @@ fn test_inode_lookup_performance() {
             size: 1024,
             torrent_id: i as u64,
             file_index: 0,
+            canonical_path: format!("/file_{}.txt", i),
         };
         let inode = manager.allocate(entry);
         inodes.push(inode);
@@ -327,6 +329,7 @@ fn test_concurrent_inode_operations() {
                     size: 1024,
                     torrent_id: (thread_id * inodes_per_thread + i) as u64,
                     file_index: 0,
+                    canonical_path: format!("/thread{}_file_{}.txt", thread_id, i),
                 };
                 let inode = manager_clone.allocate(entry);
                 allocated.push(inode);
@@ -378,6 +381,7 @@ fn test_large_inode_tree_memory() {
             name: format!("dir_{}", dir_idx),
             parent: root,
             children: Vec::new(),
+            canonical_path: format!("/dir_{}", dir_idx),
         });
         manager.add_child(root, dir);
 
@@ -389,6 +393,7 @@ fn test_large_inode_tree_memory() {
                 size: 1024 * 1024, // 1MB
                 torrent_id: dir_idx as u64,
                 file_index: file_idx,
+                canonical_path: format!("/dir_{}/file_{}.txt", dir_idx, file_idx),
             });
             manager.add_child(dir, file);
         }

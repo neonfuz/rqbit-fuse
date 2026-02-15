@@ -440,6 +440,12 @@ impl TorrentFS {
         let mut current_dir_inode = torrent_dir_inode;
         let mut current_path = String::new();
 
+        // Get the torrent directory's canonical path to build full paths
+        let torrent_dir_path = inode_manager
+            .get(torrent_dir_inode)
+            .map(|e| e.canonical_path().to_string())
+            .unwrap_or_else(|| "/".to_string());
+
         for dir_component in components.iter().take(components.len().saturating_sub(1)) {
             if !current_path.is_empty() {
                 current_path.push('/');
@@ -450,11 +456,14 @@ impl TorrentFS {
                 current_dir_inode = inode;
             } else {
                 let dir_name = sanitize_filename(dir_component);
+                // Build full canonical path including torrent directory
+                let full_path = format!("{}/{}", torrent_dir_path, current_path);
                 let new_dir_inode = inode_manager.allocate(InodeEntry::Directory {
                     ino: 0,
                     name: dir_name.clone(),
                     parent: current_dir_inode,
                     children: Vec::new(),
+                    canonical_path: full_path,
                 });
 
                 inode_manager.add_child(current_dir_inode, new_dir_inode);
@@ -1900,6 +1909,7 @@ impl TorrentFS {
                     torrent_id,
                     torrent_dir_inode,
                     &mut created_dirs,
+                    &torrent_name,
                 )?;
             }
             info!(torrent_id = torrent_id, "Finished processing all files");
@@ -1935,17 +1945,9 @@ impl TorrentFS {
         torrent_id: u64,
         torrent_dir_inode: u64,
         created_dirs: &mut std::collections::HashMap<String, u64>,
+        _torrent_name: &str,
     ) -> Result<()> {
         let components = &file_info.components;
-
-        info!(
-            torrent_id = torrent_id,
-            file_idx = file_idx,
-            components = ?components,
-            file_name = %file_info.name,
-            torrent_dir_inode = torrent_dir_inode,
-            "create_file_entry called"
-        );
 
         if components.is_empty() {
             debug!(
@@ -1974,6 +1976,56 @@ impl TorrentFS {
             return Ok(());
         }
 
+        // Get torrent directory's canonical path for building full paths
+        let torrent_dir_path = self
+            .inode_manager
+            .get_path_for_inode(torrent_dir_inode)
+            .unwrap_or_else(|| "/".to_string());
+
+        // Build parent directories
+        let mut current_dir_inode = torrent_dir_inode;
+        let mut current_path = String::new();
+
+        // Process all components except the last one (which is the filename)
+        for dir_component in components.iter().take(components.len().saturating_sub(1)) {
+            if !current_path.is_empty() {
+                current_path.push('/');
+            }
+            current_path.push_str(dir_component);
+
+            // Check if this directory already exists
+            if let Some(&inode) = created_dirs.get(&current_path) {
+                current_dir_inode = inode;
+            } else {
+                // Create new directory with full canonical path
+                let dir_name = sanitize_filename(dir_component);
+                let full_canonical_path = if torrent_dir_path == "/" {
+                    format!("/{}", current_path)
+                } else {
+                    format!("{}/{}", torrent_dir_path, current_path)
+                };
+                let new_dir_inode = self.inode_manager.allocate(InodeEntry::Directory {
+                    ino: 0, // Will be assigned
+                    name: dir_name.clone(),
+                    parent: current_dir_inode,
+                    children: Vec::new(),
+                    canonical_path: full_canonical_path,
+                });
+
+                // Add to parent
+                self.inode_manager
+                    .add_child(current_dir_inode, new_dir_inode);
+
+                created_dirs.insert(current_path.clone(), new_dir_inode);
+                current_dir_inode = new_dir_inode;
+
+                debug!(
+                    "Created directory {} at inode {}",
+                    current_path, new_dir_inode
+                );
+            }
+        }
+
         // Build parent directories
         let mut current_dir_inode = torrent_dir_inode;
         let mut current_path = String::new();
@@ -1996,6 +2048,7 @@ impl TorrentFS {
                     name: dir_name.clone(),
                     parent: current_dir_inode,
                     children: Vec::new(),
+                    canonical_path: format!("/{}", current_path),
                 });
 
                 // Add to parent

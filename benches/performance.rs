@@ -111,6 +111,7 @@ fn bench_inode_management(c: &mut Criterion) {
                     size: 1024,
                     torrent_id: i as u64,
                     file_index: 0,
+                    canonical_path: format!("/file_{}.txt", i),
                 };
                 let _ = manager.allocate(entry);
             }
@@ -132,6 +133,7 @@ fn bench_inode_management(c: &mut Criterion) {
                 size: 1024,
                 torrent_id: i as u64,
                 file_index: 0,
+                canonical_path: format!("/file_{}.txt", i),
             };
             let inode = manager.allocate(entry);
             inodes.push(inode);
@@ -155,12 +157,14 @@ fn bench_inode_management(c: &mut Criterion) {
             name: "dir1".to_string(),
             parent: root,
             children: Vec::new(),
+            canonical_path: "/dir1".to_string(),
         });
         let dir2 = manager.allocate(InodeEntry::Directory {
             ino: 0, // Will be assigned
             name: "dir2".to_string(),
             parent: root,
             children: Vec::new(),
+            canonical_path: "/dir2".to_string(),
         });
 
         manager.add_child(root, dir1);

@@ -35,6 +35,7 @@ impl InodeManager {
             name: String::new(), // Root has no name
             parent: 1,           // Root is its own parent
             children: Vec::new(),
+            canonical_path: "/".to_string(),
         };
 
         entries.insert(1, root);
@@ -56,7 +57,7 @@ impl InodeManager {
     fn allocate_entry(&self, entry: InodeEntry, torrent_id: Option<u64>) -> u64 {
         let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
         let entry = entry.with_ino(inode);
-        let path = self.build_path(&entry);
+        let path = entry.canonical_path().to_string();
 
         // Use entry API for atomic insertion into primary storage
         // This ensures we never have an index pointing to a non-existent entry
@@ -87,11 +88,24 @@ impl InodeManager {
 
     /// Allocates a directory inode for a torrent.
     pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
+        // Build canonical path from parent
+        let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
+            let parent_path = parent_entry.canonical_path();
+            if parent_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", parent_path, name)
+            }
+        } else {
+            format!("/{}", name)
+        };
+
         let entry = InodeEntry::Directory {
             ino: 0, // Will be assigned
             name,
             parent,
             children: Vec::new(),
+            canonical_path,
         };
         self.allocate_entry(entry, Some(torrent_id))
     }
@@ -105,6 +119,18 @@ impl InodeManager {
         file_index: usize,
         size: u64,
     ) -> u64 {
+        // Build canonical path from parent
+        let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
+            let parent_path = parent_entry.canonical_path();
+            if parent_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", parent_path, name)
+            }
+        } else {
+            format!("/{}", name)
+        };
+
         let entry = InodeEntry::File {
             ino: 0, // Will be assigned
             name,
@@ -112,17 +138,31 @@ impl InodeManager {
             torrent_id,
             file_index,
             size,
+            canonical_path,
         };
         self.allocate_entry(entry, None)
     }
 
     /// Allocates a symbolic link inode.
     pub fn allocate_symlink(&self, name: String, parent: u64, target: String) -> u64 {
+        // Build canonical path from parent
+        let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
+            let parent_path = parent_entry.canonical_path();
+            if parent_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", parent_path, name)
+            }
+        } else {
+            format!("/{}", name)
+        };
+
         let entry = InodeEntry::Symlink {
             ino: 0, // Will be assigned
             name,
             parent,
             target,
+            canonical_path,
         };
         self.allocate_entry(entry, None)
     }
@@ -433,6 +473,7 @@ mod tests {
             name: "test_dir".to_string(),
             parent: 1,
             children: vec![],
+            canonical_path: "/test_dir".to_string(),
         };
 
         let inode = manager.allocate(entry);
@@ -718,6 +759,18 @@ mod tests {
                 name: format!("level{}", i),
                 parent: current,
                 children: Vec::new(),
+                canonical_path: if i == 0 {
+                    "/level0".to_string()
+                } else {
+                    format!(
+                        "/level0{}",
+                        (0..=i)
+                            .map(|j| format!("/level{}", j))
+                            .collect::<String>()
+                            .strip_prefix("/level0")
+                            .unwrap_or_default()
+                    )
+                },
             });
             manager.add_child(current, new_dir);
             current = new_dir;

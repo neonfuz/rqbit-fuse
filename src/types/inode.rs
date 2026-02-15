@@ -7,6 +7,7 @@ pub enum InodeEntry {
         name: String,
         parent: u64,
         children: Vec<u64>,
+        canonical_path: String,
     },
     File {
         ino: u64,
@@ -15,12 +16,14 @@ pub enum InodeEntry {
         torrent_id: u64,
         file_index: usize,
         size: u64,
+        canonical_path: String,
     },
     Symlink {
         ino: u64,
         name: String,
         parent: u64,
         target: String,
+        canonical_path: String,
     },
 }
 
@@ -45,6 +48,19 @@ impl InodeEntry {
         *match_fields!(self, Directory => parent, File => parent, Symlink => parent)
     }
 
+    /// Returns the stored canonical path
+    pub fn canonical_path(&self) -> &str {
+        match_fields!(self, Directory => canonical_path, File => canonical_path, Symlink => canonical_path)
+    }
+
+    /// Returns the torrent_id if this is a file
+    pub fn torrent_id(&self) -> Option<u64> {
+        match self {
+            InodeEntry::File { torrent_id, .. } => Some(*torrent_id),
+            _ => None,
+        }
+    }
+
     pub fn is_directory(&self) -> bool {
         matches!(self, InodeEntry::Directory { .. })
     }
@@ -64,12 +80,14 @@ impl InodeEntry {
                 name,
                 parent,
                 children,
+                canonical_path,
                 ..
             } => InodeEntry::Directory {
                 ino,
                 name: name.clone(),
                 parent: *parent,
                 children: children.clone(),
+                canonical_path: canonical_path.clone(),
             },
             InodeEntry::File {
                 name,
@@ -77,6 +95,7 @@ impl InodeEntry {
                 torrent_id,
                 file_index,
                 size,
+                canonical_path,
                 ..
             } => InodeEntry::File {
                 ino,
@@ -85,17 +104,20 @@ impl InodeEntry {
                 torrent_id: *torrent_id,
                 file_index: *file_index,
                 size: *size,
+                canonical_path: canonical_path.clone(),
             },
             InodeEntry::Symlink {
                 name,
                 parent,
                 target,
+                canonical_path,
                 ..
             } => InodeEntry::Symlink {
                 ino,
                 name: name.clone(),
                 parent: *parent,
                 target: target.clone(),
+                canonical_path: canonical_path.clone(),
             },
         }
     }
