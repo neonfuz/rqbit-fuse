@@ -116,6 +116,7 @@ impl ToFuseError for crate::api::types::ApiError {
             ApiError::InvalidRange(_) => libc::EINVAL,
             ApiError::ReadTimeout => libc::ETIMEDOUT,
             ApiError::ConnectionTimeout => libc::ETIMEDOUT,
+            ApiError::AuthenticationError(_) => libc::EACCES,
             _ => libc::EIO,
         }
     }

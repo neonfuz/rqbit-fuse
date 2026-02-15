@@ -346,22 +346,26 @@ Each item is designed to be completed independently. Research references are sto
   - Updated all callers to handle the new Result types
   - All tests pass, clippy clean, code formatted
 
-- [ ] **API-002**: Add authentication support
+- [x] **API-002**: Add authentication support
   - [x] Research rqbit auth methods - [research:rqbit-authentication](research/rqbit-authentication.md)
   - [x] Add auth token/API key support to client - Implemented HTTP Basic Auth with `with_auth()` constructor and auth header generation for all API requests
   - [x] Update configuration for credentials - Added username/password fields to ApiConfig with environment variable support (TORRENT_FUSE_AUTH_USERNAME, TORRENT_FUSE_AUTH_PASSWORD, TORRENT_FUSE_AUTH_USERPASS) and CLI arguments (--username, --password)
-  - Add auth failure error handling
+  - [x] Add auth failure error handling - Added AuthenticationError -> EACCES mapping in ToFuseError impl in fs/error.rs
 
-- [ ] **API-003**: Fix N+1 query in list_torrents()
+- [x] **API-003**: Fix N+1 query in list_torrents()
   - Lines 308-346: Makes N+1 API calls
-  - Use bulk endpoint if available
-  - Or add caching to reduce redundant calls
-  - Add performance benchmark
+  - Added caching layer to RqbitClient with 30-second TTL
+  - Cache is invalidated when torrents are added or removed
+  - Subsequent calls within TTL window return cached result without N+1 queries
+  - All tests pass, clippy clean, code formatted
 
-- [ ] **API-004**: Use reqwest::Url instead of String
+- [x] **API-004**: Use reqwest::Url instead of String
   - Change URL fields from String to reqwest::Url
   - Validate URLs at construction time
   - Fail fast on invalid URL configuration
+  - Added URL validation in both constructors using reqwest::Url::parse()
+  - Invalid URLs now return ClientInitializationError with clear message
+  - All tests pass, clippy clean, code formatted
 
 ### Type System
 

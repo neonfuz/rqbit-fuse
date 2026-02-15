@@ -112,6 +112,7 @@ impl CircuitBreaker {
 /// HTTP client for interacting with rqbit server
 pub struct RqbitClient {
     client: Client,
+    /// Base URL for the rqbit API server (validated at construction)
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
@@ -123,6 +124,10 @@ pub struct RqbitClient {
     stream_manager: PersistentStreamManager,
     /// Optional authentication credentials for HTTP Basic Auth
     auth_credentials: Option<(String, String)>,
+    /// Cache for list_torrents results to avoid N+1 queries
+    list_torrents_cache: Arc<RwLock<Option<(Instant, ListTorrentsResult)>>>,
+    /// TTL for list_torrents cache
+    list_torrents_cache_ttl: Duration,
 }
 
 impl RqbitClient {
@@ -155,6 +160,10 @@ impl RqbitClient {
         auth_credentials: Option<(String, String)>,
         metrics: Arc<ApiMetrics>,
     ) -> Result<Self> {
+        // Validate URL at construction time (fail fast on invalid URL)
+        let _ = reqwest::Url::parse(&base_url)
+            .map_err(|e| ApiError::ClientInitializationError(format!("Invalid URL: {}", e)))?;
+
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
@@ -176,6 +185,8 @@ impl RqbitClient {
             metrics,
             stream_manager,
             auth_credentials,
+            list_torrents_cache: Arc::new(RwLock::new(None)),
+            list_torrents_cache_ttl: Duration::from_secs(30),
         })
     }
 
@@ -189,6 +200,10 @@ impl RqbitClient {
         auth_credentials: Option<(String, String)>,
         metrics: Arc<ApiMetrics>,
     ) -> Result<Self> {
+        // Validate URL at construction time (fail fast on invalid URL)
+        let _ = reqwest::Url::parse(&base_url)
+            .map_err(|e| ApiError::ClientInitializationError(format!("Invalid URL: {}", e)))?;
+
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
@@ -210,6 +225,8 @@ impl RqbitClient {
             metrics,
             stream_manager,
             auth_credentials,
+            list_torrents_cache: Arc::new(RwLock::new(None)),
+            list_torrents_cache_ttl: Duration::from_secs(30),
         })
     }
 
@@ -225,6 +242,16 @@ impl RqbitClient {
             let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
             format!("Basic {}", encoded)
         })
+    }
+
+    /// Invalidate the list_torrents cache
+    /// Should be called when torrents are added or removed
+    async fn invalidate_list_torrents_cache(&self) {
+        let mut cache = self.list_torrents_cache.write().await;
+        if cache.is_some() {
+            debug!("list_torrents: cache invalidated");
+            *cache = None;
+        }
     }
 
     /// Helper method to execute a request with retry logic and circuit breaker
@@ -408,11 +435,26 @@ impl RqbitClient {
     /// and any errors that occurred. Callers should check `is_partial()` to detect
     /// if some torrents failed to load.
     ///
+    /// Uses caching to avoid N+1 queries on repeated calls within the TTL window.
+    ///
     /// # Errors
     /// Returns an error only if the initial list request fails. Individual torrent
     /// fetch failures are collected in the result's `errors` field.
     #[instrument(skip(self), fields(api_op = "list_torrents"))]
     pub async fn list_torrents(&self) -> Result<ListTorrentsResult> {
+        // Check cache first
+        {
+            let cache = self.list_torrents_cache.read().await;
+            if let Some((cached_at, cached_result)) = cache.as_ref() {
+                if cached_at.elapsed() < self.list_torrents_cache_ttl {
+                    debug!("list_torrents: cache hit");
+                    return Ok(cached_result.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch fresh data
+        debug!("list_torrents: cache miss or expired, fetching fresh data");
         let url = format!("{}/torrents", self.base_url);
 
         let response = self
@@ -470,6 +512,12 @@ impl RqbitClient {
             );
         }
 
+        // Cache the result
+        {
+            let mut cache = self.list_torrents_cache.write().await;
+            *cache = Some((Instant::now(), result.clone()));
+        }
+
         Ok(result)
     }
 
@@ -512,6 +560,7 @@ impl RqbitClient {
             .post_json::<_, AddTorrentResponse>("/torrents", &url, &request)
             .await?;
         debug!(api_op = "add_torrent_magnet", id = result.id, info_hash = %result.info_hash);
+        self.invalidate_list_torrents_cache().await;
         Ok(result)
     }
 
@@ -529,6 +578,7 @@ impl RqbitClient {
             .post_json::<_, AddTorrentResponse>("/torrents", &url, &request)
             .await?;
         debug!(api_op = "add_torrent_url", id = result.id, info_hash = %result.info_hash);
+        self.invalidate_list_torrents_cache().await;
         Ok(result)
     }
 
@@ -840,6 +890,10 @@ impl RqbitClient {
                     action = action,
                     "Success"
                 );
+                // Invalidate cache for forget and delete actions
+                if action == "forget" || action == "delete" {
+                    self.invalidate_list_torrents_cache().await;
+                }
                 Ok(())
             }
         }
@@ -993,6 +1047,7 @@ mod tests {
         use crate::metrics::ApiMetrics;
         let metrics = Arc::new(ApiMetrics::new());
         let client = RqbitClient::new("http://localhost:3030".to_string(), metrics).unwrap();
+        // URL is stored as-is (validated but not modified)
         assert_eq!(client.base_url, "http://localhost:3030");
         assert_eq!(client.max_retries, 3);
     }

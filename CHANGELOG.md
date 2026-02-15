@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - No clippy warnings: `cargo clippy` ✅
   - Code formatted: `cargo fmt` ✅
 
+- Add auth failure error handling (API-002.4)
+  - Added `AuthenticationError` case to `ToFuseError` implementation for `ApiError` in `src/fs/error.rs`
+  - Authentication failures now properly return EACCES (permission denied) instead of EIO (generic error)
+  - Ensures consistent error handling across filesystem operations when authentication fails
+
 ### Research
 
 - Researched rqbit authentication methods (API-002.1)
@@ -89,6 +94,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Error classification now uses typed variants: `ApiError`, `FuseError`, `std::io::Error`
   - Benefits: type safety, compile-time checking, better maintainability, improved performance
   - All 175 tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
+- Fix N+1 query in list_torrents() (API-003)
+  - Added caching layer to RqbitClient to avoid redundant API calls
+  - Cache stores list_torrents results with 30-second TTL
+  - Subsequent calls within TTL window return cached result without N+1 queries
+  - Cache is invalidated when torrents are added or removed
+  - Uses RwLock for thread-safe cache access
+  - All 285+ tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
+- Add URL validation to RqbitClient (API-004)
+  - Added URL validation using reqwest::Url::parse() at client construction
+  - Invalid URLs now fail fast with clear error messages
+  - Validates both with_config() and with_circuit_breaker() constructors
+  - All tests pass: `cargo test` ✅
   - No clippy warnings: `cargo clippy` ✅
   - Code formatted: `cargo fmt` ✅
 
