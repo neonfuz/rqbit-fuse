@@ -1,0 +1,399 @@
+use crate::api::client::RqbitClient;
+use crate::fs::error::{FuseError, FuseResult};
+use crate::metrics::Metrics;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{mpsc, oneshot};
+use tracing::{error, info, trace, warn};
+
+/// Request sent from FUSE callback to async worker.
+/// Contains all necessary information to execute an async operation
+/// and a channel to send the response back.
+#[derive(Debug)]
+pub enum FuseRequest {
+    /// Read file data from a torrent
+    ReadFile {
+        /// Torrent ID
+        torrent_id: u64,
+        /// File index within the torrent
+        file_index: usize,
+        /// Offset to start reading from
+        offset: u64,
+        /// Number of bytes to read
+        size: usize,
+        /// Timeout for the operation
+        timeout: Duration,
+        /// Channel to send the response
+        response_tx: std::sync::mpsc::Sender<FuseResponse>,
+    },
+    /// Remove/forget a torrent from rqbit
+    ForgetTorrent {
+        /// Torrent ID to remove
+        torrent_id: u64,
+        /// Channel to send the response
+        response_tx: std::sync::mpsc::Sender<FuseResponse>,
+    },
+}
+
+/// Response from async worker to FUSE callback.
+/// Represents the result of an async operation.
+#[derive(Debug, Clone)]
+pub enum FuseResponse {
+    /// File read was successful
+    ReadSuccess { data: Vec<u8> },
+    /// File read failed
+    ReadError { error_code: i32, message: String },
+    /// Torrent was successfully forgotten
+    ForgetSuccess,
+    /// Failed to forget torrent
+    ForgetError { error_code: i32, message: String },
+}
+
+/// Async worker that handles FUSE requests in an async context.
+/// Provides a bridge between synchronous FUSE callbacks and async I/O operations.
+pub struct AsyncFuseWorker {
+    /// Channel sender for submitting requests
+    request_tx: mpsc::Sender<FuseRequest>,
+    /// Handle to the worker task for cleanup
+    #[allow(dead_code)]
+    worker_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Shutdown signal sender
+    shutdown_tx: Option<oneshot::Sender<()>>,
+}
+
+impl AsyncFuseWorker {
+    /// Create a new async worker with the given API client and metrics.
+    ///
+    /// # Arguments
+    /// * `api_client` - The HTTP client for rqbit API calls
+    /// * `metrics` - Metrics collection for monitoring
+    /// * `channel_capacity` - Maximum number of pending requests
+    ///
+    /// # Returns
+    /// A new AsyncFuseWorker instance
+    pub fn new(
+        api_client: Arc<RqbitClient>,
+        metrics: Arc<Metrics>,
+        channel_capacity: usize,
+    ) -> Self {
+        let (request_tx, mut request_rx) = mpsc::channel::<FuseRequest>(channel_capacity);
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+
+        let worker_handle = tokio::spawn(async move {
+            info!("AsyncFuseWorker started");
+
+            loop {
+                tokio::select! {
+                    biased;
+
+                    // Handle shutdown signal first
+                    _ = &mut shutdown_rx => {
+                        info!("AsyncFuseWorker received shutdown signal");
+                        break;
+                    }
+
+                    // Handle incoming requests
+                    Some(request) = request_rx.recv() => {
+                        let api_client = Arc::clone(&api_client);
+                        let metrics = Arc::clone(&metrics);
+
+                        // Spawn a task for each request to allow concurrent processing
+                        tokio::spawn(async move {
+                            Self::handle_request(&api_client, &metrics, request).await;
+                        });
+                    }
+                }
+            }
+
+            info!("AsyncFuseWorker shut down");
+        });
+
+        Self {
+            request_tx,
+            worker_handle: Some(worker_handle),
+            shutdown_tx: Some(shutdown_tx),
+        }
+    }
+
+    /// Create a new async worker for testing purposes.
+    /// This creates a minimal worker without spawning a background task.
+    /// It should only be used in unit tests where async operations aren't needed.
+    #[cfg(test)]
+    pub fn new_for_test(_api_client: Arc<RqbitClient>, _metrics: Arc<Metrics>) -> Self {
+        // Create a channel but don't spawn the worker task
+        // The channel will just buffer requests but they won't be processed
+        let (request_tx, _request_rx) = mpsc::channel::<FuseRequest>(1);
+        let (shutdown_tx, _) = oneshot::channel();
+
+        Self {
+            request_tx,
+            worker_handle: None,
+            shutdown_tx: Some(shutdown_tx),
+        }
+    }
+
+    /// Handle a single FUSE request.
+    async fn handle_request(
+        api_client: &Arc<RqbitClient>,
+        metrics: &Arc<Metrics>,
+        request: FuseRequest,
+    ) {
+        match request {
+            FuseRequest::ReadFile {
+                torrent_id,
+                file_index,
+                offset,
+                size,
+                timeout,
+                response_tx,
+            } => {
+                trace!(
+                    torrent_id = torrent_id,
+                    file_index = file_index,
+                    offset = offset,
+                    size = size,
+                    "Handling ReadFile request"
+                );
+
+                let start = std::time::Instant::now();
+
+                let result = tokio::time::timeout(
+                    timeout,
+                    api_client.read_file_streaming(torrent_id, file_index, offset, size),
+                )
+                .await;
+
+                let latency = start.elapsed();
+
+                let response = match result {
+                    Ok(Ok(data)) => {
+                        metrics.fuse.record_read(data.len() as u64, latency);
+                        FuseResponse::ReadSuccess {
+                            data: data.to_vec(),
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        metrics.fuse.record_error();
+                        let error_code = if e.to_string().contains("not found") {
+                            libc::ENOENT
+                        } else if e.to_string().contains("range") {
+                            libc::EINVAL
+                        } else {
+                            libc::EIO
+                        };
+                        FuseResponse::ReadError {
+                            error_code,
+                            message: e.to_string(),
+                        }
+                    }
+                    Err(_) => {
+                        metrics.fuse.record_error();
+                        FuseResponse::ReadError {
+                            error_code: libc::ETIMEDOUT,
+                            message: "Operation timed out".to_string(),
+                        }
+                    }
+                };
+
+                // Ignore send failure (receiver dropped = FUSE timeout or cancelled)
+                let _ = response_tx.send(response);
+            }
+
+            FuseRequest::ForgetTorrent {
+                torrent_id,
+                response_tx,
+            } => {
+                trace!(torrent_id = torrent_id, "Handling ForgetTorrent request");
+
+                let result = api_client.forget_torrent(torrent_id).await;
+
+                let response = match result {
+                    Ok(_) => FuseResponse::ForgetSuccess,
+                    Err(e) => {
+                        let error_code = if e.to_string().contains("not found") {
+                            libc::ENOENT
+                        } else {
+                            libc::EIO
+                        };
+                        FuseResponse::ForgetError {
+                            error_code,
+                            message: e.to_string(),
+                        }
+                    }
+                };
+
+                // Ignore send failure
+                let _ = response_tx.send(response);
+            }
+        }
+    }
+
+    /// Send a request to the async worker and wait for a response.
+    /// This is a synchronous method that can be called from FUSE callbacks.
+    ///
+    /// # Arguments
+    /// * `request_builder` - A closure that builds the request with a response channel
+    /// * `timeout` - Maximum time to wait for a response
+    ///
+    /// # Returns
+    /// * `Ok(FuseResponse)` if successful
+    /// * `Err(FuseError)` if the channel is full, worker disconnected, or timed out
+    pub fn send_request<F>(&self, request_builder: F, timeout: Duration) -> FuseResult<FuseResponse>
+    where
+        F: FnOnce(std::sync::mpsc::Sender<FuseResponse>) -> FuseRequest,
+    {
+        // Use std::sync::mpsc for the response channel to get recv_timeout support
+        let (tx, rx) = std::sync::mpsc::channel();
+        let request = request_builder(tx);
+
+        // Try to send the request without blocking
+        match self.request_tx.try_send(request) {
+            Ok(_) => {
+                // Wait for response with timeout
+                match rx.recv_timeout(timeout) {
+                    Ok(response) => Ok(response),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        warn!("FUSE request timed out waiting for response");
+                        Err(FuseError::TimedOut)
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        error!("Async worker disconnected while waiting for response");
+                        Err(FuseError::WorkerDisconnected)
+                    }
+                }
+            }
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                warn!("FUSE request channel is full");
+                Err(FuseError::ChannelFull)
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                error!("Async worker channel is closed");
+                Err(FuseError::WorkerDisconnected)
+            }
+        }
+    }
+
+    /// Convenience method to read a file from a torrent.
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent
+    /// * `file_index` - Index of the file within the torrent
+    /// * `offset` - Offset to start reading from
+    /// * `size` - Number of bytes to read
+    /// * `timeout` - Maximum time to wait for the operation
+    ///
+    /// # Returns
+    /// * `Ok(Vec<u8>)` with the file data
+    /// * `Err(FuseError)` if the operation failed
+    pub fn read_file(
+        &self,
+        torrent_id: u64,
+        file_index: usize,
+        offset: u64,
+        size: usize,
+        timeout: Duration,
+    ) -> FuseResult<Vec<u8>> {
+        let response = self.send_request(
+            |tx| FuseRequest::ReadFile {
+                torrent_id,
+                file_index,
+                offset,
+                size,
+                timeout,
+                response_tx: tx,
+            },
+            timeout + Duration::from_secs(5), // Add buffer for channel overhead
+        )?;
+
+        match response {
+            FuseResponse::ReadSuccess { data } => Ok(data),
+            FuseResponse::ReadError {
+                error_code,
+                message,
+            } => Err(FuseError::IoError(format!(
+                "Read failed (code {}): {}",
+                error_code, message
+            ))),
+            _ => Err(FuseError::IoError("Unexpected response type".to_string())),
+        }
+    }
+
+    /// Convenience method to forget/remove a torrent.
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent to forget
+    /// * `timeout` - Maximum time to wait for the operation
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err(FuseError)` if the operation failed
+    pub fn forget_torrent(&self, torrent_id: u64, timeout: Duration) -> FuseResult<()> {
+        let response = self.send_request(
+            |tx| FuseRequest::ForgetTorrent {
+                torrent_id,
+                response_tx: tx,
+            },
+            timeout,
+        )?;
+
+        match response {
+            FuseResponse::ForgetSuccess => Ok(()),
+            FuseResponse::ForgetError {
+                error_code,
+                message,
+            } => Err(FuseError::IoError(format!(
+                "Forget failed (code {}): {}",
+                error_code, message
+            ))),
+            _ => Err(FuseError::IoError("Unexpected response type".to_string())),
+        }
+    }
+
+    /// Shut down the async worker gracefully.
+    pub fn shutdown(&mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            info!("Sending shutdown signal to AsyncFuseWorker");
+            let _ = tx.send(());
+        }
+    }
+}
+
+impl Drop for AsyncFuseWorker {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fuse_request_debug() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let request = FuseRequest::ReadFile {
+            torrent_id: 1,
+            file_index: 0,
+            offset: 0,
+            size: 1024,
+            timeout: Duration::from_secs(5),
+            response_tx: tx,
+        };
+        let debug_str = format!("{:?}", request);
+        assert!(debug_str.contains("ReadFile"));
+        assert!(debug_str.contains("torrent_id: 1"));
+    }
+
+    #[test]
+    fn test_fuse_response_debug() {
+        let response = FuseResponse::ReadSuccess {
+            data: vec![1, 2, 3],
+        };
+        let debug_str = format!("{:?}", response);
+        assert!(debug_str.contains("ReadSuccess"));
+
+        let response = FuseResponse::ForgetSuccess;
+        let debug_str = format!("{:?}", response);
+        assert!(debug_str.contains("ForgetSuccess"));
+    }
+}

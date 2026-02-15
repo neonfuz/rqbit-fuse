@@ -7,6 +7,7 @@ pub mod types;
 
 pub use cache::{Cache, CacheStats};
 pub use config::{CliArgs, Config};
+pub use fs::async_bridge::AsyncFuseWorker;
 pub use fs::filesystem::TorrentFS;
 pub use metrics::Metrics;
 
@@ -20,8 +21,18 @@ pub async fn run(config: Config) -> Result<()> {
     // Create metrics
     let metrics = Arc::new(Metrics::new());
 
-    // Create the filesystem
-    let fs = TorrentFS::new(config, Arc::clone(&metrics))
+    // Create API client for the async worker
+    let api_client = Arc::new(api::client::RqbitClient::new(
+        config.api.url.clone(),
+        Arc::clone(&metrics.api),
+    ));
+
+    // Create async worker for FUSE callbacks
+    // Channel capacity of 1000 allows for good concurrency without excessive memory use
+    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, Arc::clone(&metrics), 1000));
+
+    // Create the filesystem with async worker
+    let fs = TorrentFS::new(config, Arc::clone(&metrics), async_worker)
         .context("Failed to create torrent filesystem")?;
 
     // Discover existing torrents before mounting

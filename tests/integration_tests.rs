@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use torrent_fuse::{Config, Metrics, TorrentFS};
+use torrent_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
 
 /// Sets up a mock rqbit server with standard responses
 async fn setup_mock_server() -> MockServer {
@@ -36,6 +36,16 @@ fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> Conf
     config
 }
 
+/// Helper function to create a TorrentFS with an async worker for tests
+fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
+    let api_client = Arc::new(torrent_fuse::api::client::RqbitClient::new(
+        config.api.url.clone(),
+        Arc::clone(&metrics.api),
+    ));
+    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
+    TorrentFS::new(config, metrics, async_worker).unwrap()
+}
+
 #[tokio::test]
 async fn test_filesystem_creation_and_initialization() {
     let mock_server = setup_mock_server().await;
@@ -43,7 +53,7 @@ async fn test_filesystem_creation_and_initialization() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     // Verify filesystem was created but not initialized
     assert!(!fs.is_initialized());
@@ -87,7 +97,7 @@ async fn test_torrent_addition_from_magnet() {
         .await;
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     // In a real scenario, we would add the torrent through the filesystem
     // For integration test, we verify the structure can be created
@@ -134,7 +144,7 @@ async fn test_multi_file_torrent_structure() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
@@ -193,7 +203,7 @@ async fn test_duplicate_torrent_detection() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::TorrentInfo;
 
@@ -241,7 +251,7 @@ async fn test_error_scenario_api_unavailable() {
     config.mount.mount_point = temp_dir.path().to_path_buf();
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     // Verify filesystem can be created even if server is unavailable
     // (connection validation happens at mount time, not creation)
@@ -255,7 +265,7 @@ async fn test_file_attribute_generation() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
@@ -334,7 +344,7 @@ async fn test_torrent_removal_with_cleanup() {
         .await;
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
@@ -384,7 +394,7 @@ async fn test_deeply_nested_directory_structure() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
@@ -457,7 +467,7 @@ async fn test_unicode_and_special_characters() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
@@ -513,7 +523,7 @@ async fn test_empty_torrent_handling() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
@@ -555,7 +565,7 @@ async fn test_concurrent_torrent_additions() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = create_test_fs(config, metrics);
 
     use std::thread;
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
@@ -621,7 +631,7 @@ async fn test_filesystem_metrics_collection() {
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     let metrics = Arc::new(Metrics::new());
-    let _fs = TorrentFS::new(config, metrics.clone()).unwrap();
+    let _fs = create_test_fs(config, metrics.clone());
 
     // Verify metrics were initialized by loading the public fields
     use std::sync::atomic::Ordering;
