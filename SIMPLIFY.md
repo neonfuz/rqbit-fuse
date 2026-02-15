@@ -87,14 +87,14 @@ Each item is designed to be completed independently. Migration guides are stored
   - **Depends on**: SIMPLIFY-004 (after logging macros done)
   - **Test**: `cargo check` ✅ Clean, `cargo clippy` ✅ Clean, `cargo fmt` ✅ Applied
 
-- [ ] **SIMPLIFY-006**: Unify torrent discovery
+- [x] **SIMPLIFY-006**: Unify torrent discovery
   - [migration:SIMPLIFY-006-torrent-discovery](migration/SIMPLIFY-006-torrent-discovery.md)
   - Create single `discover_torrents()` async method
   - Replace 3 duplicated discovery implementations
   - **Lines reduced**: ~80 lines
   - **Risk**: Medium - async code consolidation
   - **Depends on**: None (can do in parallel)
-  - **Test**: `cargo test`, test discovery with multiple torrents
+  - **Test**: `cargo test` ✅ All tests pass, `cargo clippy` ✅ Clean
 
 ---
 

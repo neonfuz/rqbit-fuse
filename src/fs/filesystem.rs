@@ -163,7 +163,7 @@ impl TorrentFS {
         let api_client = Arc::clone(&self.api_client);
         let inode_manager = Arc::clone(&self.inode_manager);
         let last_discovery = Arc::clone(&self.last_discovery);
-        let poll_interval = Duration::from_secs(30); // Check every 30 seconds
+        let poll_interval = Duration::from_secs(30);
 
         let handle = tokio::spawn(async move {
             let mut ticker = interval(poll_interval);
@@ -171,38 +171,8 @@ impl TorrentFS {
             loop {
                 ticker.tick().await;
 
-                // Get list of torrents from rqbit
-                match api_client.list_torrents().await {
-                    Ok(torrents) => {
-                        let mut new_count = 0;
-
-                        for torrent_info in torrents {
-                            // Check if we already have this torrent
-                            if inode_manager.lookup_torrent(torrent_info.id).is_none() {
-                                // New torrent found - create filesystem structure
-                                if let Err(e) = Self::create_torrent_structure_static(
-                                    &inode_manager,
-                                    &torrent_info,
-                                ) {
-                                    warn!(
-                                        "Failed to create structure for torrent {}: {}",
-                                        torrent_info.id, e
-                                    );
-                                } else {
-                                    new_count += 1;
-                                    info!(
-                                        "Discovered new torrent {}: {}",
-                                        torrent_info.id, torrent_info.name
-                                    );
-                                }
-                            }
-                        }
-
-                        if new_count > 0 {
-                            info!("Background discovery found {} new torrents", new_count);
-                        }
-
-                        // Update last discovery time
+                match Self::discover_torrents(&api_client, &inode_manager).await {
+                    Ok(_) => {
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -210,7 +180,7 @@ impl TorrentFS {
                         last_discovery.store(now_ms, Ordering::SeqCst);
                     }
                     Err(e) => {
-                        warn!("Failed to discover torrents in background task: {}", e);
+                        warn!("Background torrent discovery failed: {}", e);
                     }
                 }
             }
@@ -219,10 +189,7 @@ impl TorrentFS {
         let mut h = tokio::runtime::Handle::current().block_on(self.discovery_handle.lock());
         *h = Some(handle);
 
-        info!(
-            "Started background torrent discovery with {} second interval",
-            30
-        );
+        info!("Started background torrent discovery with 30 second interval");
     }
 
     /// Stop the torrent discovery task
@@ -233,6 +200,56 @@ impl TorrentFS {
                 info!("Stopped torrent discovery");
             }
         }
+    }
+
+    /// Discover new torrents from rqbit and create filesystem structures.
+    ///
+    /// This is the core discovery logic used by:
+    /// - `start_torrent_discovery()` - background polling
+    /// - `refresh_torrents()` - explicit refresh
+    /// - `readdir()` - on-demand discovery when listing root
+    ///
+    /// # Arguments
+    /// * `api_client` - Reference to the API client for listing torrents
+    /// * `inode_manager` - Reference to the inode manager for structure creation
+    ///
+    /// # Returns
+    /// * `Result<u64, anyhow::Error>` - Number of new torrents discovered, or error
+    async fn discover_torrents(
+        api_client: &Arc<RqbitClient>,
+        inode_manager: &Arc<InodeManager>,
+    ) -> Result<u64> {
+        let torrents = api_client.list_torrents().await?;
+        let mut new_count: u64 = 0;
+
+        for torrent_info in torrents {
+            // Check if we already have this torrent
+            if inode_manager.lookup_torrent(torrent_info.id).is_none() {
+                // New torrent found - create filesystem structure
+                if let Err(e) =
+                    Self::create_torrent_structure_static(inode_manager, &torrent_info)
+                {
+                    warn!(
+                        "Failed to create structure for torrent {}: {}",
+                        torrent_info.id, e
+                    );
+                } else {
+                    new_count += 1;
+                    info!(
+                        "Discovered new torrent {}: {}",
+                        torrent_info.id, torrent_info.name
+                    );
+                }
+            }
+        }
+
+        if new_count > 0 {
+            info!("Discovered {} new torrent(s)", new_count);
+        } else {
+            trace!("No new torrents found");
+        }
+
+        Ok(new_count)
     }
 
     /// Start the background file handle cleanup task
@@ -302,9 +319,9 @@ impl TorrentFS {
     /// # Returns
     /// * `bool` - True if refresh was performed, false if skipped
     pub async fn refresh_torrents(&self, force: bool) -> bool {
-        const COOLDOWN_MS: u64 = 5000; // 5 seconds in milliseconds
+        const COOLDOWN_MS: u64 = 5000;
 
-        // Check cooldown using atomic compare-and-swap to prevent race conditions
+        // Check cooldown unless forced
         if !force {
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -312,8 +329,6 @@ impl TorrentFS {
                 .as_millis() as u64;
             let last_ms = self.last_discovery.load(Ordering::SeqCst);
 
-            // If last_discovery is 0, discovery has never happened (allow it)
-            // Otherwise check if cooldown has elapsed
             if last_ms != 0 && now_ms.saturating_sub(last_ms) < COOLDOWN_MS {
                 let remaining_secs = (COOLDOWN_MS - (now_ms - last_ms)) / 1000;
                 trace!(
@@ -325,42 +340,13 @@ impl TorrentFS {
         }
 
         // Perform discovery
-        match self.api_client.list_torrents().await {
-            Ok(torrents) => {
-                let mut new_count = 0;
-
-                for torrent_info in torrents {
-                    // Check if we already have this torrent
-                    if self.inode_manager.lookup_torrent(torrent_info.id).is_none() {
-                        // New torrent found - create filesystem structure
-                        if let Err(e) = self.create_torrent_structure(&torrent_info) {
-                            warn!(
-                                "Failed to create structure for torrent {}: {}",
-                                torrent_info.id, e
-                            );
-                        } else {
-                            new_count += 1;
-                            info!(
-                                "Discovered new torrent {}: {}",
-                                torrent_info.id, torrent_info.name
-                            );
-                        }
-                    }
-                }
-
-                if new_count > 0 {
-                    info!("Discovered {} new torrent(s)", new_count);
-                } else {
-                    trace!("No new torrents found");
-                }
-
-                // Update last discovery time
+        match Self::discover_torrents(&self.api_client, &self.inode_manager).await {
+            Ok(_) => {
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
                 self.last_discovery.store(now_ms, Ordering::SeqCst);
-
                 true
             }
             Err(e) => {
@@ -1252,21 +1238,18 @@ impl Filesystem for TorrentFS {
             let last_discovery = Arc::clone(&self.last_discovery);
 
             tokio::spawn(async move {
-                const COOLDOWN_MS: u64 = 5000; // 5 seconds in milliseconds
+                const COOLDOWN_MS: u64 = 5000;
 
-                // Atomically check cooldown and claim discovery slot
+                // Atomically check and claim discovery slot
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
                 let last_ms = last_discovery.load(Ordering::SeqCst);
 
-                // Check if cooldown has elapsed (last_ms == 0 means never discovered)
                 let should_run = last_ms == 0 || now_ms.saturating_sub(last_ms) >= COOLDOWN_MS;
 
                 if should_run {
-                    // Try to claim the discovery slot with compare_exchange
-                    // This ensures only one task proceeds even with concurrent calls
                     let claim_result = last_discovery.compare_exchange(
                         last_ms,
                         now_ms,
@@ -1275,39 +1258,9 @@ impl Filesystem for TorrentFS {
                     );
 
                     if claim_result.is_ok() {
-                        // We won the race - proceed with discovery
-                        if let Ok(torrents) = api_client.list_torrents().await {
-                            let mut new_count = 0;
-
-                            for torrent_info in torrents {
-                                if inode_manager.lookup_torrent(torrent_info.id).is_none() {
-                                    if let Err(e) = Self::create_torrent_structure_static(
-                                        &inode_manager,
-                                        &torrent_info,
-                                    ) {
-                                        warn!(
-                                            "Failed to create structure for torrent {}: {}",
-                                            torrent_info.id, e
-                                        );
-                                    } else {
-                                        new_count += 1;
-                                        info!(
-                                            "Discovered new torrent {}: {}",
-                                            torrent_info.id, torrent_info.name
-                                        );
-                                    }
-                                }
-                            }
-
-                            if new_count > 0 {
-                                info!(
-                                    "Found {} new torrent(s) during directory listing",
-                                    new_count
-                                );
-                            }
+                        if let Err(e) = Self::discover_torrents(&api_client, &inode_manager).await {
+                            warn!("On-demand torrent discovery failed: {}", e);
                         }
-                    } else {
-                        trace!("Lost race for discovery slot - another task is already running");
                     }
                 }
             });

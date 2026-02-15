@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Simplified `run_mount()`, `run_umount()`, `run_status()` to use helpers
   - All 90 tests pass, clippy clean
 
+- Unify torrent discovery logic (SIMPLIFY-006)
+  - Created unified `discover_torrents()` async method in `src/fs/filesystem.rs`
+  - Consolidated 3 duplicated discovery implementations:
+    - Background task in `start_torrent_discovery()` (~25 lines saved)
+    - Explicit refresh in `refresh_torrents()` (~40 lines saved)
+    - On-demand discovery in `readdir()` FUSE callback (~50 lines saved)
+  - Reduced ~80 lines of duplicated discovery code
+  - Consistent error handling via `Result<>` propagation
+  - Consistent logging messages across all discovery paths
+  - All 18 filesystem tests pass, clippy clean
+
 - Create unified request helpers in API client (SIMPLIFY-014)
   - Added generic `get_json<T>()` helper for GET requests that deserialize JSON responses
   - Added generic `post_json<B, T>()` helper for POST requests with JSON body and response
