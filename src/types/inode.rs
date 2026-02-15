@@ -14,7 +14,7 @@ pub enum InodeEntry {
         name: String,
         parent: u64,
         torrent_id: u64,
-        file_index: usize,
+        file_index: u64,
         size: u64,
         canonical_path: String,
     },

@@ -116,7 +116,7 @@ impl InodeManager {
         name: String,
         parent: u64,
         torrent_id: u64,
-        file_index: usize,
+        file_index: u64,
         size: u64,
     ) -> u64 {
         // Build canonical path from parent

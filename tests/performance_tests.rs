@@ -392,7 +392,7 @@ fn test_large_inode_tree_memory() {
                 parent: dir,
                 size: 1024 * 1024, // 1MB
                 torrent_id: dir_idx as u64,
-                file_index: file_idx,
+                file_index: file_idx as u64,
                 canonical_path: format!("/dir_{}/file_{}.txt", dir_idx, file_idx),
             });
             manager.add_child(dir, file);

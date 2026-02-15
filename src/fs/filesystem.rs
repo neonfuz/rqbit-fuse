@@ -498,7 +498,7 @@ impl TorrentFS {
             sanitized_name,
             current_dir_inode,
             torrent_id,
-            file_idx,
+            file_idx as u64,
             file_info.length,
         );
 
@@ -674,7 +674,7 @@ impl TorrentFS {
         size: u32,
         file_size: u64,
         torrent_id: u64,
-        file_index: usize,
+        file_index: u64,
     ) {
         // Update file handle state and check for sequential reads
         self.file_handles.update_state(fh, offset, size);
@@ -708,7 +708,11 @@ impl TorrentFS {
                             std::cmp::min(next_offset + readahead_size - 1, file_size - 1);
 
                         match api_client
-                            .read_file(torrent_id, file_index, Some((next_offset, prefetch_end)))
+                            .read_file(
+                                torrent_id,
+                                file_index as usize,
+                                Some((next_offset, prefetch_end)),
+                            )
                             .await
                         {
                             Ok(_data) => {
@@ -1988,7 +1992,7 @@ impl TorrentFS {
                 file_name.clone(),
                 torrent_dir_inode,
                 torrent_id,
-                file_idx,
+                file_idx as u64,
                 file_info.length,
             );
             self.inode_manager.add_child(torrent_dir_inode, file_inode);
@@ -2099,7 +2103,7 @@ impl TorrentFS {
             sanitized_name,
             current_dir_inode,
             torrent_id,
-            file_idx,
+            file_idx as u64,
             file_info.length,
         );
 

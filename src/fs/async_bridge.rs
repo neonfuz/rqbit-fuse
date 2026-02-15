@@ -16,7 +16,7 @@ pub enum FuseRequest {
         /// Torrent ID
         torrent_id: u64,
         /// File index within the torrent
-        file_index: usize,
+        file_index: u64,
         /// Offset to start reading from
         offset: u64,
         /// Number of bytes to read
@@ -171,7 +171,7 @@ impl AsyncFuseWorker {
 
                 let result = tokio::time::timeout(
                     timeout,
-                    api_client.read_file_streaming(torrent_id, file_index, offset, size),
+                    api_client.read_file_streaming(torrent_id, file_index as usize, offset, size),
                 )
                 .await;
 
@@ -290,7 +290,7 @@ impl AsyncFuseWorker {
     pub fn read_file(
         &self,
         torrent_id: u64,
-        file_index: usize,
+        file_index: u64,
         offset: u64,
         size: usize,
         timeout: Duration,

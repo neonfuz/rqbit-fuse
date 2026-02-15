@@ -391,10 +391,12 @@ Each item is designed to be completed independently. Research references are sto
   - This task was based on incorrect assumption that TorrentSummary was unused
   - Note: Updated research file to reflect this finding
 
-- [ ] **TYPES-004**: Fix platform-dependent types
+- [x] **TYPES-004**: Fix platform-dependent types
   - Change `file_index: usize` to `u64` (types/inode.rs:16)
-  - Audit for other usize vs u64 issues
-  - Ensure 32-bit and 64-bit compatibility
+  - Audited for other usize vs u64 issues
+  - Updated all internal usages in filesystem.rs, async_bridge.rs, and inode.rs
+  - Added explicit casts at API boundaries where rqbit expects usize
+  - All tests pass, clippy clean, code formatted
 
 - [ ] **TYPES-005**: Improve InodeEntry children lookup
   - `children: Vec<u64>` has O(n) lookup
