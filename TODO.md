@@ -676,10 +676,14 @@ Each item is designed to be completed independently. Research references are sto
   - No clippy warnings: cargo clippy ✅
   - Code formatted: cargo fmt ✅
 
-- [ ] **PERF-003**: Implement statfs operation
+- [x] **PERF-003**: Implement statfs operation
   - Add FUSE statfs callback
   - Return filesystem statistics
   - Required for some applications
+  - Fixed method signature: changed `&self` to `&mut self` for fuser trait compatibility
+  - Fixed argument count: updated `reply.statfs()` to use correct 8 arguments (removed extra inode_count args)
+  - Returns: blocks=0, bfree=0, bavail=0, files=inode_count, ffree=inode_count, bsize=4096, namelen=255, frsize=4096
+  - All tests pass, clippy clean, code formatted
 
 - [ ] **PERF-004**: Implement access operation
   - Add FUSE access callback

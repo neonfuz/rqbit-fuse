@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fix statfs FUSE operation (PERF-003)
+  - Fixed method signature from `&self` to `&mut self` for fuser trait compatibility
+  - Fixed `reply.statfs()` to use correct 8 arguments (removed extra arguments)
+  - Returns filesystem statistics: blocks=0, files=inode_count, bsize=4096, namelen=255, frsize=4096
+  - All tests pass, clippy clean, code formatted
+
 - Add child process cleanup (RES-003)
   - Added 10-second timeout for graceful shutdown in signal handler
   - Added force unmount fallback (fusermount -uz) if graceful unmount fails

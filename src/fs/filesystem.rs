@@ -1761,26 +1761,10 @@ impl Filesystem for TorrentFS {
 
     /// Get filesystem statistics.
     /// Returns information about the filesystem such as total space, free space, etc.
-    fn statfs(&self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {
-        // For torrent filesystems, we can't know the actual total size
-        // since torrents can grow and we don't track all files upfront.
-        // We return reasonable defaults that applications can work with.
-        
-        // Use inode count as an estimate of number of files
+    fn statfs(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {
         let inode_count = self.inode_manager.len() as u64;
-        
-        // Return statfs with reasonable values for a torrent filesystem
-        reply.statfs(
-            0,                      // blocks total (unknown for torrents)
-            0,                      // blocks free (unknown)
-            0,                      // blocks available (unknown)
-            inode_count,            // files (inodes) - actual count
-            inode_count,            // files free (approximation)
-            inode_count,            // files available (approximation)
-            4096,                   // block size (4KB standard)
-            4096,                   // fragment size
-            0,                      // max filename length (no limit)
-        );
+
+        reply.statfs(0, 0, 0, inode_count, inode_count, 4096, 255, 4096);
     }
 }
 
