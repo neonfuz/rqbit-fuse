@@ -4,60 +4,16 @@ use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeManager;
 use crate::metrics::Metrics;
+use crate::types::handle::FileHandleManager;
 use crate::types::inode::InodeEntry;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use fuser::Filesystem;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::time::interval;
 use tracing::{debug, error, info, instrument, trace, warn};
-
-/// Tracks read state for a file handle to detect sequential access patterns
-#[derive(Debug, Clone)]
-struct ReadState {
-    /// Last read offset
-    last_offset: u64,
-    /// Last read size
-    last_size: u32,
-    /// Number of consecutive sequential reads
-    sequential_count: u32,
-    /// Last access time
-    last_access: Instant,
-    /// Whether this file is being prefetched
-    is_prefetching: bool,
-}
-
-impl ReadState {
-    fn new(offset: u64, size: u32) -> Self {
-        Self {
-            last_offset: offset,
-            last_size: size,
-            sequential_count: 1,
-            last_access: Instant::now(),
-            is_prefetching: false,
-        }
-    }
-
-    /// Check if the current read is sequential (immediately follows previous read)
-    fn is_sequential(&self, offset: u64) -> bool {
-        offset == self.last_offset + self.last_size as u64
-    }
-
-    /// Update state after a read
-    fn update(&mut self, offset: u64, size: u32) {
-        if self.is_sequential(offset) {
-            self.sequential_count += 1;
-        } else {
-            self.sequential_count = 1;
-        }
-        self.last_offset = offset;
-        self.last_size = size;
-        self.last_access = Instant::now();
-    }
-}
 
 /// The main FUSE filesystem implementation for torrent-fuse.
 /// Implements the fuser::Filesystem trait to provide a FUSE interface
@@ -71,8 +27,8 @@ pub struct TorrentFS {
     inode_manager: Arc<InodeManager>,
     /// Tracks whether the filesystem has been initialized
     initialized: bool,
-    /// Tracks read patterns per file handle for read-ahead
-    read_states: Arc<Mutex<HashMap<u64, ReadState>>>,
+    /// File handle manager for tracking open files
+    file_handles: Arc<FileHandleManager>,
     /// Cache of torrent statuses for monitoring
     torrent_statuses: Arc<DashMap<u64, TorrentStatus>>,
     /// Handle to the status monitoring task
@@ -115,7 +71,7 @@ impl TorrentFS {
             api_client,
             inode_manager,
             initialized: false,
-            read_states: Arc::new(Mutex::new(HashMap::new())),
+            file_handles: Arc::new(FileHandleManager::new()),
             torrent_statuses: Arc::new(DashMap::new()),
             monitor_handle: Arc::new(Mutex::new(None)),
             discovery_handle: Arc::new(Mutex::new(None)),
@@ -637,26 +593,23 @@ impl TorrentFS {
     /// Track read patterns and trigger prefetch for sequential reads.
     fn track_and_prefetch(
         &self,
-        ino: u64,
+        fh: u64,
         offset: u64,
         size: u32,
         file_size: u64,
         torrent_id: u64,
         file_index: usize,
     ) {
-        let mut read_states = self.read_states.lock().unwrap();
+        // Update file handle state and check for sequential reads
+        self.file_handles.update_state(fh, offset, size);
 
-        // Get or create read state for this file
-        let state = read_states
-            .entry(ino)
-            .or_insert_with(|| ReadState::new(offset, size));
-
-        // Check if this is a sequential read
-        let is_sequential = state.is_sequential(offset);
-        state.update(offset, size);
+        let handle = match self.file_handles.get(fh) {
+            Some(h) => h,
+            None => return, // Handle was removed
+        };
 
         // Trigger prefetch after 2 consecutive sequential reads and not already prefetching
-        if is_sequential && state.sequential_count >= 2 && !state.is_prefetching {
+        if handle.sequential_count() >= 2 && !handle.is_prefetching() {
             let next_offset = offset + size as u64;
 
             // Only prefetch if we're not at EOF
@@ -667,11 +620,10 @@ impl TorrentFS {
                 ) as usize;
 
                 if prefetch_size > 0 {
-                    state.is_prefetching = true;
-                    drop(read_states); // Release lock before async operation
+                    self.file_handles.set_prefetching(fh, true);
 
                     let api_client = Arc::clone(&self.api_client);
-                    let read_states = Arc::clone(&self.read_states);
+                    let file_handles = Arc::clone(&self.file_handles);
                     let readahead_size = self.config.performance.readahead_size;
 
                     // Spawn prefetch in background
@@ -684,18 +636,13 @@ impl TorrentFS {
                             .await
                         {
                             Ok(_data) => {
-
                                 // Could store in cache here
                             }
                             Err(_e) => {}
                         }
 
                         // Mark prefetch as complete
-                        if let Ok(mut states) = read_states.lock() {
-                            if let Some(s) = states.get_mut(&ino) {
-                                s.is_prefetching = false;
-                            }
-                        }
+                        file_handles.set_prefetching(fh, false);
                     });
                 }
             }
@@ -798,12 +745,12 @@ impl Filesystem for TorrentFS {
     /// Read file contents.
     /// Called when the kernel needs to read data from a file.
     /// Translates FUSE read requests to HTTP Range requests to rqbit.
-    #[instrument(skip(self, reply), fields(ino))]
+    #[instrument(skip(self, reply), fields(fh))]
     fn read(
         &mut self,
         _req: &fuser::Request<'_>,
-        ino: u64,
-        _fh: u64,
+        _ino: u64,
+        fh: u64,
         offset: i64,
         size: u32,
         _flags: i32,
@@ -816,7 +763,7 @@ impl Filesystem for TorrentFS {
         let size = std::cmp::min(size, Self::FUSE_MAX_READ);
 
         if self.config.logging.log_fuse_operations {
-            debug!(fuse_op = "read", ino = ino, offset = offset, size = size);
+            debug!(fuse_op = "read", fh = fh, offset = offset, size = size);
         }
 
         // Validate offset is non-negative
@@ -826,7 +773,7 @@ impl Filesystem for TorrentFS {
             if self.config.logging.log_fuse_operations {
                 debug!(
                     fuse_op = "read",
-                    ino = ino,
+                    fh = fh,
                     result = "error",
                     error = "EINVAL",
                     reason = "negative_offset"
@@ -838,6 +785,27 @@ impl Filesystem for TorrentFS {
         }
 
         let offset = offset as u64;
+
+        // Look up the inode from the file handle
+        let ino = match self.file_handles.get_inode(fh) {
+            Some(inode) => inode,
+            None => {
+                self.metrics.fuse.record_error();
+
+                if self.config.logging.log_fuse_operations {
+                    debug!(
+                        fuse_op = "read",
+                        fh = fh,
+                        result = "error",
+                        error = "EBADF",
+                        reason = "invalid_file_handle"
+                    );
+                }
+
+                reply.error(libc::EBADF);
+                return;
+            }
+        };
 
         // Get the file entry
         let (torrent_id, file_index, file_size) = match self.inode_manager.get(ino) {
@@ -854,6 +822,7 @@ impl Filesystem for TorrentFS {
                     if self.config.logging.log_fuse_operations {
                         debug!(
                             fuse_op = "read",
+                            fh = fh,
                             ino = ino,
                             result = "error",
                             error = "EISDIR"
@@ -870,6 +839,7 @@ impl Filesystem for TorrentFS {
                 if self.config.logging.log_fuse_operations {
                     debug!(
                         fuse_op = "read",
+                        fh = fh,
                         ino = ino,
                         result = "error",
                         error = "ENOENT"
@@ -886,6 +856,7 @@ impl Filesystem for TorrentFS {
             if self.config.logging.log_fuse_operations {
                 debug!(
                     fuse_op = "read",
+                    fh = fh,
                     ino = ino,
                     result = "success",
                     bytes_read = 0,
@@ -904,6 +875,7 @@ impl Filesystem for TorrentFS {
         if self.config.logging.log_fuse_operations {
             debug!(
                 fuse_op = "read",
+                fh = fh,
                 ino = ino,
                 torrent_id = torrent_id,
                 file_index = file_index,
@@ -922,6 +894,7 @@ impl Filesystem for TorrentFS {
                     if self.config.logging.log_fuse_operations {
                         debug!(
                             fuse_op = "read",
+                            fh = fh,
                             ino = ino,
                             torrent_id = torrent_id,
                             result = "error",
@@ -938,6 +911,7 @@ impl Filesystem for TorrentFS {
                 if self.config.logging.log_fuse_operations {
                     debug!(
                         fuse_op = "read",
+                        fh = fh,
                         ino = ino,
                         torrent_id = torrent_id,
                         result = "error",
@@ -973,6 +947,7 @@ impl Filesystem for TorrentFS {
                 if latency > std::time::Duration::from_secs(1) {
                     debug!(
                         fuse_op = "read",
+                        fh = fh,
                         ino = ino,
                         torrent_id = torrent_id,
                         latency_ms = latency.as_millis() as u64,
@@ -983,6 +958,7 @@ impl Filesystem for TorrentFS {
                 if self.config.logging.log_fuse_operations {
                     debug!(
                         fuse_op = "read",
+                        fh = fh,
                         ino = ino,
                         result = "success",
                         bytes_read = bytes_read,
@@ -991,13 +967,14 @@ impl Filesystem for TorrentFS {
                 }
 
                 // Track read pattern and trigger prefetch if sequential
-                self.track_and_prefetch(ino, offset, size, file_size, torrent_id, file_index);
+                self.track_and_prefetch(fh, offset, size, file_size, torrent_id, file_index);
 
                 // Truncate data to requested size to prevent "Too much data" FUSE panic
                 // The API might return more data than requested (e.g., entire piece)
                 let data_slice = if data.len() > size as usize {
                     warn!(
                         fuse_op = "read",
+                        fh = fh,
                         ino = ino,
                         api_response_bytes = data.len(),
                         requested_size = size,
@@ -1018,6 +995,7 @@ impl Filesystem for TorrentFS {
 
                 error!(
                     fuse_op = "read",
+                    fh = fh,
                     ino = ino,
                     torrent_id = torrent_id,
                     file_index = file_index,
@@ -1031,13 +1009,13 @@ impl Filesystem for TorrentFS {
     }
 
     /// Release an open file.
-    /// Called when a file is closed. No special cleanup needed since we read on-demand.
-    #[instrument(skip(self, reply), fields(ino))]
+    /// Called when a file is closed. Cleans up file handle state.
+    #[instrument(skip(self, reply), fields(fh))]
     fn release(
         &mut self,
         _req: &fuser::Request<'_>,
         _ino: u64,
-        _fh: u64,
+        fh: u64,
         _flags: i32,
         _lock_owner: Option<u64>,
         _flush: bool,
@@ -1045,8 +1023,23 @@ impl Filesystem for TorrentFS {
     ) {
         self.metrics.fuse.record_release();
 
-        if self.config.logging.log_fuse_operations {
-            debug!(fuse_op = "release", ino = _ino);
+        // Clean up the file handle
+        if let Some(handle) = self.file_handles.remove(fh) {
+            if self.config.logging.log_fuse_operations {
+                debug!(
+                    fuse_op = "release",
+                    fh = fh,
+                    ino = handle.inode,
+                    result = "success"
+                );
+            }
+        } else {
+            warn!(
+                fuse_op = "release",
+                fh = fh,
+                result = "warning",
+                reason = "handle_not_found"
+            );
         }
 
         reply.ok();
@@ -1578,19 +1571,22 @@ impl Filesystem for TorrentFS {
 
         // Check for open file handles in this torrent
         let has_open_handles = {
-            let read_states = self.read_states.lock().unwrap();
-            // Check if any file in this torrent has read state
+            // Get all file inodes in this torrent directory
             let file_inodes: Vec<u64> = self
                 .inode_manager
                 .get_children(ino)
                 .iter()
                 .filter(|(_, entry)| entry.is_file())
-                .map(|(ino, _)| *ino)
+                .map(|(inode, _)| *inode)
                 .collect();
 
-            file_inodes
-                .iter()
-                .any(|file_ino| read_states.contains_key(file_ino))
+            // Check if any file handle points to these inodes
+            file_inodes.iter().any(|file_inode| {
+                !self
+                    .file_handles
+                    .get_handles_for_inode(*file_inode)
+                    .is_empty()
+            })
         };
 
         if has_open_handles {

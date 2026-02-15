@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Implemented unique file handle allocation (FS-003)
+  - Created FileHandleManager for proper FUSE file handle semantics
+  - File handles are now unique per open() call (not inode reuse)
+  - Each handle tracks (inode, flags, read state) independently
+  - Supports multiple concurrent opens of the same file with independent state
+  - Proper cleanup of handles in release() callback
+  - Updated all file operations to use handles instead of inodes directly
+
 ### Performance
 
 - Optimized cache statistics collection with sharded atomic counters

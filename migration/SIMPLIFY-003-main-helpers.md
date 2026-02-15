@@ -1,23 +1,27 @@
-# SIMPLIFY-003: Extract Main.rs Helper Functions
+# SIMPLIFY-003: Extract Helper Functions from main.rs
 
 ## Task ID
-
 **SIMPLIFY-003**
 
 ## Scope
-
-- **Primary File**: `src/main.rs` (438 lines → ~362 lines, -76 lines)
-- **New Module**: `src/main_helpers.rs` (create new file)
-- **Update**: `src/lib.rs` to export new helpers
+- **Primary File**: `src/main.rs`
+- **Lines Affected**: 145-151, 194-200, 225-231 (config loading), 363-399 (unmount fallback)
+- **New Helper Location**: `src/main.rs` (internal helpers)
 
 ## Current State
 
-### 1. Duplicated Config Loading (3 locations)
+Three code patterns are duplicated across command handlers:
 
-Used in `run_mount()`, `run_umount()`, and `run_status()`:
+### 1. Config Loading (duplicated 3 times)
 
+**Location 1**: `run_mount()` lines 139-151
 ```rust
-// Lines 145-151 in run_mount()
+let cli_args = CliArgs {
+    api_url,
+    mount_point,
+    config_file,
+};
+
 let mut config = if let Some(ref config_path) = cli_args.config_file {
     Config::from_file(config_path)?
         .merge_from_env()?
@@ -25,17 +29,16 @@ let mut config = if let Some(ref config_path) = cli_args.config_file {
 } else {
     Config::load_with_cli(&cli_args)?
 };
+```
 
-// Lines 194-200 in run_umount() - IDENTICAL
-let config = if let Some(ref config_path) = cli_args.config_file {
-    Config::from_file(config_path)?
-        .merge_from_env()?
-        .merge_from_cli(&cli_args)
-} else {
-    Config::load_with_cli(&cli_args)?
+**Location 2**: `run_umount()` lines 188-200
+```rust
+let cli_args = CliArgs {
+    api_url: None,
+    mount_point: mount_point.clone(),
+    config_file,
 };
 
-// Lines 225-231 in run_status() - IDENTICAL
 let config = if let Some(ref config_path) = cli_args.config_file {
     Config::from_file(config_path)?
         .merge_from_env()?
@@ -45,42 +48,35 @@ let config = if let Some(ref config_path) = cli_args.config_file {
 };
 ```
 
-**Lines duplicated**: 7 lines × 3 locations = 21 lines
-
-### 2. Shell Command Execution Pattern (3 locations)
-
-Pattern used in `is_mount_point()`, `unmount_filesystem()`, `get_mount_info()`:
-
+**Location 3**: `run_status()` lines 219-231
 ```rust
-// Lines 324-330 in is_mount_point()
-let output = Command::new("mount")
-    .output()
-    .with_context(|| "Failed to run mount command")?;
+let cli_args = CliArgs {
+    api_url: None,
+    mount_point: None,
+    config_file,
+};
 
-if !output.status.success() {
-    anyhow::bail!("mount command failed");
-}
-
-// Lines 371-373 in unmount_filesystem() - similar pattern
-let output = cmd
-    .output()
-    .with_context(|| "Failed to run fusermount3 command")?;
-
-if !output.status.success() {
-    // ... error handling
-}
-
-// Lines 408-411 in get_mount_info() - similar pattern
-let output = Command::new("df")
-    .args(["-h", &path.to_string_lossy()])
-    .output()
-    .with_context(|| "Failed to run df command")?;
+let config = if let Some(ref config_path) = cli_args.config_file {
+    Config::from_file(config_path)?
+        .merge_from_env()?
+        .merge_from_cli(&cli_args)
+} else {
+    Config::load_with_cli(&cli_args)?
+};
 ```
 
-### 3. Fusermount Fallback Logic (1 location, complex)
+### 2. Fusermount Fallback Logic (duplicated command execution pattern)
 
+**Location**: `unmount_filesystem()` lines 363-399
 ```rust
-// Lines 371-398 in unmount_filesystem()
+let mut cmd = Command::new("fusermount3");
+if force {
+    cmd.arg("-zu");
+} else {
+    cmd.arg("-u");
+}
+cmd.arg(path);
+
 let output = cmd
     .output()
     .with_context(|| "Failed to run fusermount3 command")?;
@@ -112,342 +108,295 @@ if !output.status.success() {
 }
 ```
 
-**Lines**: 28 lines of complex fallback logic
+### 3. Shell Command Execution Pattern (3 locations)
 
----
+**Location 1**: `is_mount_point()` lines 324-330
+```rust
+let output = Command::new("mount")
+    .output()
+    .with_context(|| "Failed to run mount command")?;
+
+if !output.status.success() {
+    anyhow::bail!("mount command failed");
+}
+```
+
+**Location 2**: `get_mount_info()` lines 408-413
+```rust
+let output = Command::new("df")
+    .args(["-h", &path.to_string_lossy()])
+    .output()
+    .with_context(|| "Failed to run df command")?;
+```
 
 ## Target State
 
-### New File: `src/main_helpers.rs`
+### Extracted Helper 1: `load_config()`
 
 ```rust
-use anyhow::{Context, Result};
-use std::path::Path;
-use std::process::Command;
-use torrent_fuse::config::{CliArgs, Config};
-
-/// Load configuration from file or CLI arguments
+/// Load configuration from CLI arguments
 /// 
-/// Checks if a config file is specified in CLI args, and if so,
-/// loads from file with env/cli merging. Otherwise loads defaults
-/// with CLI overrides.
-pub fn load_config(cli_args: &CliArgs) -> Result<Config> {
+/// Handles the config file -> env -> CLI merge order
+fn load_config(
+    config_file: Option<PathBuf>,
+    mount_point: Option<PathBuf>,
+    api_url: Option<String>,
+) -> Result<Config> {
+    let cli_args = CliArgs {
+        api_url,
+        mount_point,
+        config_file,
+    };
+
     if let Some(ref config_path) = cli_args.config_file {
         Config::from_file(config_path)?
             .merge_from_env()?
-            .merge_from_cli(cli_args)
+            .merge_from_cli(&cli_args)
     } else {
-        Config::load_with_cli(cli_args)
+        Config::load_with_cli(&cli_args)
     }
 }
+```
 
-/// Run a shell command and return output if successful
+**Usage in `run_mount()`**:
+```rust
+let mut config = load_config(config_file, mount_point, api_url)?;
+```
+
+**Usage in `run_umount()`**:
+```rust
+let config = load_config(config_file, mount_point.clone(), None)?;
+```
+
+**Usage in `run_status()`**:
+```rust
+let config = load_config(config_file, None, None)?;
+```
+
+### Extracted Helper 2: `run_command()` / `try_run_command()`
+
+```rust
+/// Run a shell command and return output on success
 /// 
 /// # Arguments
-/// * `program` - The command to execute
-/// * `args` - Arguments to pass to the command
-/// * `context` - Error context message
+/// * `program` - The program to execute
+/// * `args` - Arguments to pass to the program
+/// * `context` - Context message for error reporting
 /// 
 /// # Returns
 /// * `Ok(Output)` if command succeeds
-/// * `Err` if command fails to execute or returns non-zero exit
-pub fn run_command<I, S>(program: &str, args: I, context: &str) -> Result<std::process::Output>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-{
-    let output = Command::new(program)
+/// * `Err` if command fails to run or returns non-zero exit code
+fn run_command<S: AsRef<std::ffi::OsStr>>(
+    program: &str,
+    args: &[S],
+    context: &str,
+) -> Result<std::process::Output> {
+    let output = std::process::Command::new(program)
         .args(args)
         .output()
-        .with_context(|| format!("Failed to execute {}", program))?;
+        .with_context(|| format!("Failed to run {}", context))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{}: {}", context, stderr);
+        anyhow::bail!("{} failed: {}", context, stderr);
     }
 
     Ok(output)
 }
 
-/// Try to run a command, returning true on success without error on failure
+/// Try to run a command, returning true on success, false on failure
 /// 
-/// Useful when you want to try a command but handle failure gracefully
-pub fn try_run_command<I, S>(program: &str, args: I) -> Option<std::process::Output>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-{
-    Command::new(program).args(args).output().ok()
+/// Does not return an error - useful when checking optional commands
+fn try_run_command<S: AsRef<std::ffi::OsStr>>(
+    program: &str,
+    args: &[S],
+) -> bool {
+    std::process::Command::new(program)
+        .args(args)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+```
+
+**Usage in `is_mount_point()`**:
+```rust
+// Before:
+let output = Command::new("mount")
+    .output()
+    .with_context(|| "Failed to run mount command")?;
+
+if !output.status.success() {
+    anyhow::bail!("mount command failed");
 }
 
-/// Attempt to unmount a FUSE filesystem with fallback support
-/// 
-/// Tries fusermount3 first, then falls back to fusermount for older systems.
-/// Supports force unmount with the -z flag when force=true.
+// After:
+let output = run_command("mount", &[] as &[&str], "mount command")?;
+```
+
+### Extracted Helper 3: `try_unmount()`
+
+```rust
+/// Unmount a FUSE filesystem, trying fusermount3 then fusermount
 /// 
 /// # Arguments
-/// * `path` - Mount point path to unmount
-/// * `force` - If true, use lazy unmount (-z flag)
+/// * `path` - Mount point to unmount
+/// * `force` - Whether to force unmount even if busy
 /// 
 /// # Returns
 /// * `Ok(())` on successful unmount
-/// * `Err` with detailed error message on failure
-pub fn try_unmount(path: &Path, force: bool) -> Result<()> {
-    // Build fusermount3 command
-    let mut args = vec!["-u"];
-    if force {
-        args.push("-z");
-    }
-    
-    let output = Command::new("fusermount3")
-        .args(&args)
-        .arg(path)
-        .output()
-        .with_context(|| "Failed to execute fusermount3")?;
+/// * `Err` if both fusermount3 and fusermount fail
+fn try_unmount(path: &PathBuf, force: bool) -> Result<()> {
+    let args = if force {
+        vec!["-zu", &path.to_string_lossy()]
+    } else {
+        vec!["-u", &path.to_string_lossy()]
+    };
 
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Check if fusermount3 is not available
-    if stderr.contains("command not found") || stderr.contains("No such file") {
-        // Try fusermount as fallback
-        let output = Command::new("fusermount")
-            .args(&args)
-            .arg(path)
-            .output()
-            .with_context(|| "Failed to execute fusermount (fallback)")?;
-
-        if output.status.success() {
-            return Ok(());
+    // Try fusermount3 first (modern systems)
+    match run_command("fusermount3", &args, "fusermount3") {
+        Ok(_) => return Ok(()),
+        Err(e) => {
+            let err_str = e.to_string();
+            // Only try fallback if command not found
+            if !err_str.contains("command not found") && !err_str.contains("No such file") {
+                return Err(e);
+            }
         }
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to unmount (tried fusermount3 and fusermount): {}", stderr);
     }
 
-    anyhow::bail!("Failed to unmount: {}", stderr)
+    // Fallback to fusermount (older systems)
+    run_command("fusermount", &args, "fusermount")
+        .map(|_| ())
 }
 ```
 
-### Updated `src/lib.rs`
-
-Add module export:
-
+**Usage in `unmount_filesystem()`**:
 ```rust
-// At module level, add:
-pub mod main_helpers;
+// Before: 37 lines of inline code
+// After:
+try_unmount(&mount_point, force)?;
 ```
-
-### Updated `src/main.rs`
-
-Replace 3 config loading blocks with:
-
-```rust
-use torrent_fuse::main_helpers::{load_config, run_command, try_unmount};
-
-// In run_mount(), run_umount(), run_status():
-let mut config = load_config(&cli_args)?;
-```
-
-Replace unmount logic in `unmount_filesystem()`:
-
-```rust
-fn unmount_filesystem(path: &PathBuf, force: bool) -> Result<()> {
-    try_unmount(path, force)
-}
-```
-
-Replace mount command execution in `is_mount_point()`:
-
-```rust
-fn is_mount_point(path: &PathBuf) -> Result<bool> {
-    let output = run_command("mount", Vec::<&str>::new(), "mount command failed")?;
-    // ... rest of implementation
-}
-```
-
-Replace df command in `get_mount_info()`:
-
-```rust
-fn get_mount_info(path: &std::path::Path) -> Result<MountInfo> {
-    let output = run_command(
-        "df",
-        &["-h", &path.to_string_lossy()],
-        "df command failed"
-    )?;
-    // ... rest of implementation
-}
-```
-
----
 
 ## Implementation Steps
 
-### Step 1: Create `src/main_helpers.rs`
-1. Create new file at `src/main_helpers.rs`
-2. Copy the target state code above
-3. Add proper module documentation
-4. Verify imports compile with `cargo check`
+1. **Add `load_config()` helper**
+   - Insert after `setup_logging()` function (around line 130)
+   - Copy signature and implementation from Target State
+   - Mark as `#[allow(dead_code)]` temporarily
 
-### Step 2: Update `src/lib.rs`
-1. Add `pub mod main_helpers;` to the module declarations
-2. Ensure it's placed in a logical location with other module exports
+2. **Replace config loading in `run_mount()`**
+   - Lines 139-151: Replace with `load_config(config_file, mount_point, api_url)?`
+   - Add `mut` if config needs modification: `let mut config = load_config(...)?`
+   - Remove unused `cli_args` binding
 
-### Step 3: Refactor `src/main.rs` - Config Loading
-1. In `run_mount()` (line 145): Replace 7-line config block with `load_config(&cli_args)?`
-2. In `run_umount()` (line 194): Replace 7-line config block with `load_config(&cli_args)?`
-3. In `run_status()` (line 225): Replace 7-line config block with `load_config(&cli_args)?`
-4. Add import: `use torrent_fuse::main_helpers::load_config;`
+3. **Replace config loading in `run_umount()`**
+   - Lines 188-200: Replace with `load_config(config_file, mount_point.clone(), None)?`
+   - Remove unused `cli_args` binding
 
-### Step 4: Refactor `src/main.rs` - Shell Commands
-1. Update `is_mount_point()` (line 321): Use `run_command()` helper
-2. Update `get_mount_info()` (line 404): Use `run_command()` helper
-3. Update `unmount_filesystem()` (line 360): Use `try_unmount()` helper
-4. Add import: `use torrent_fuse::main_helpers::{run_command, try_unmount};`
+4. **Replace config loading in `run_status()`**
+   - Lines 219-231: Replace with `load_config(config_file, None, None)?`
+   - Remove unused `cli_args` binding
 
-### Step 5: Update Imports in `src/main.rs`
-1. Remove unused imports (verify with `cargo check`)
-2. Consolidate imports from new helper module
-3. Ensure no unused import warnings
+5. **Remove `#[allow(dead_code)]` from `load_config()`**
+   - Now that all call sites use it
 
-### Step 6: Run Verification
-1. `cargo check` - ensure no compilation errors
-2. `cargo clippy` - check for warnings
-3. `cargo test` - run all tests
-4. `cargo fmt` - format code
+6. **Add `run_command()` helper**
+   - Insert after `load_config()` function
+   - Implement as shown in Target State
 
----
+7. **Add `try_unmount()` helper**
+   - Insert after `run_command()` function
+   - Implement as shown in Target State
+   - Uses `run_command()` internally
+
+8. **Replace unmount logic in `unmount_filesystem()`**
+   - Lines 363-399: Replace entire block with `try_unmount(path, force)?`
+   - Keep function as thin wrapper for any additional logic
+
+9. **Verify all helpers are used**
+   - Remove any `#[allow(dead_code)]` attributes
+   - Run `cargo check` to ensure no warnings
+
+10. **Format and lint**
+    - Run `cargo fmt`
+    - Run `cargo clippy`
+    - Fix any issues
 
 ## Testing
 
-### Unit Tests (Add to `src/main_helpers.rs`)
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_try_run_command_success() {
-        // Test with 'echo' which should exist on all Unix systems
-        let output = try_run_command("echo", &["hello"]);
-        assert!(output.is_some());
-        assert!(output.unwrap().status.success());
-    }
-
-    #[test]
-    fn test_try_run_command_failure() {
-        // Test with non-existent command
-        let output = try_run_command("nonexistent_command_xyz", &[] as &[&str]);
-        assert!(output.is_none());
-    }
-
-    #[test]
-    fn test_run_command_success() {
-        let result = run_command("echo", &["test"], "echo failed");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_run_command_failure() {
-        let result = run_command("false", &[] as &[&str], "command failed");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_load_config_with_file() {
-        // Create temp config file
-        let temp_dir = std::env::temp_dir();
-        let config_path = temp_dir.join("test_config.toml");
-        std::fs::write(&config_path, "[api]\nurl = 'http://localhost:3030'").unwrap();
-
-        let cli_args = CliArgs {
-            api_url: None,
-            mount_point: None,
-            config_file: Some(config_path),
-        };
-
-        let result = load_config(&cli_args);
-        assert!(result.is_ok());
-        
-        // Cleanup
-        std::fs::remove_file(&config_path).ok();
-    }
-}
+### Build Verification
+```bash
+cargo build
 ```
 
-### Integration Testing
+### Test All Commands Still Work
+```bash
+# Test mount command (dry run - just check args parsing)
+cargo run -- mount --help
 
-1. **Manual CLI Test**:
-   ```bash
-   cargo build --release
-   ./target/release/torrent-fuse mount --help
-   ./target/release/torrent-fuse status --help
-   ```
+# Test umount command
+cargo run -- umount --help
 
-2. **Test mount/unmount cycle**:
-   ```bash
-   mkdir -p /tmp/torrent-test-mount
-   ./target/release/torrent-fuse mount -m /tmp/torrent-test-mount
-   ./target/release/torrent-fuse status
-   ./target/release/torrent-fuse umount -m /tmp/torrent-test-mount
-   ```
+# Test status command
+cargo run -- status --help
+```
 
-3. **Verify helper function usage**:
-   ```bash
-   # Check that functions are being called
-   cargo test --lib main_helpers::tests -- --nocapture
-   ```
+### Test Config Loading
+```bash
+# Create a test config
+cat > /tmp/test-config.toml << 'EOF'
+[api]
+url = "http://localhost:3030"
 
----
+[mount]
+mount_point = "/tmp/test-mount"
+EOF
+
+# Test that config loads correctly
+cargo run -- status --config /tmp/test-config.toml
+```
+
+### Verify No Regression
+```bash
+cargo test
+cargo clippy -- -D warnings
+```
 
 ## Expected Reduction
 
-| Change | Lines Before | Lines After | Delta |
-|--------|-------------|-------------|-------|
-| Config loading (3×) | 21 | 3 | -18 |
-| Shell command exec (3×) | 12 | 3 | -9 |
-| Fusermount fallback | 28 | 1 | -27 |
-| Helper module creation | 0 | +61 | +61 |
-| Import statements | 6 | 4 | -2 |
-| **Total** | **67** | **72** | **-76** |
+**Lines removed**: ~76 lines
 
-**Net reduction**: ~76 lines in `src/main.rs`
+| Location | Before | After | Reduction |
+|----------|--------|-------|-----------|
+| Config loading (3x) | 39 lines | 3 lines | -36 lines |
+| `unmount_filesystem()` | 42 lines | 4 lines | -38 lines |
+| Helper functions added | 0 lines | +45 lines | +45 lines |
+| **Net change** | 81 lines | 52 lines | **-29 lines** |
 
----
-
-## Risks & Mitigations
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Config loading behavior change | High | Write unit tests for all config loading paths |
-| Shell command error messages change | Medium | Verify error messages match expected format |
-| Fusermount fallback edge cases | Medium | Test on systems with only fusermount (no fusermount3) |
-| Import conflicts | Low | Use `cargo check` immediately after each change |
-
----
-
-## Success Criteria
-
-- [ ] `src/main_helpers.rs` created with all 4 functions
-- [ ] All 3 config loading sites use `load_config()`
-- [ ] All shell commands use `run_command()` or `try_run_command()`
-- [ ] `unmount_filesystem()` delegates to `try_unmount()`
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
-- [ ] `cargo fmt` makes no changes
-- [ ] Line count in main.rs reduced by ~76 lines
-- [ ] Integration tests pass for mount/umount/status commands
-
----
+Note: While the raw line count reduction is ~29 lines, the actual code duplication eliminated is ~76 lines (3x config loading at ~13 lines each = 39 lines, plus unmount logic ~37 lines).
 
 ## Related Tasks
 
-- **ARCH-003**: Extract mount operations (related to this work)
-- **ERROR-002**: Replace string matching with typed errors (may affect error handling in helpers)
+- None (this is a standalone refactoring)
 
-*Created: February 14, 2026*
+## Dependencies
+
+- None - this is a pure refactoring with no functional changes
+
+## Notes
+
+- The `run_command()` helper could be extended later to support:
+  - Timeout handling
+  - Environment variable injection
+  - Working directory changes
+  - Stdin input
+  
+- Consider moving helpers to a separate module if `main.rs` grows beyond 300 lines
+
+- The `try_unmount()` pattern (try modern tool, fallback to legacy) could be generalized into a `try_commands!()` macro if more commands need similar fallback behavior
+
+---
+
+*Migration guide created: February 14, 2026*
+*Task Type: Refactoring / Code Simplification*

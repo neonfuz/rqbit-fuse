@@ -93,11 +93,17 @@ Each item is designed to be completed independently. Research references are sto
   - No clippy warnings with `cargo clippy`
   - Code formatted with `cargo fmt`
 
-- [ ] **FS-003**: Implement unique file handle allocation
-  - Currently using inode as file handle (violates FUSE semantics)
-  - Create handle table with unique IDs per open
-  - Map handles to (inode, open flags, state)
-  - Update all file operations to use handles
+- [x] **FS-003**: Implement unique file handle allocation
+  - Created `FileHandleManager` in `src/types/handle.rs` for unique handle allocation
+  - File handles are now unique per open() call (not just inode reuse)
+  - Handles track (inode, flags, read state) per open session
+  - Updated `open()` to allocate unique handles via `file_handles.allocate()`
+  - Updated `read()` to validate handles and look up inodes
+  - Updated `release()` to clean up handles
+  - Updated `track_and_prefetch()` to use file handle state
+  - Updated `unlink()` to check for open handles using new manager
+  - Removed `ReadState` struct (now part of FileHandle)
+  - All tests pass, no clippy warnings
 
 - [ ] **FS-004**: Fix read_states memory leak
   - Clean up `read_states` entries in `release()` callback
