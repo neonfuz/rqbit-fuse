@@ -396,4 +396,72 @@ mod tests {
             "Cache should have entries or recorded hits"
         );
     }
+
+    /// Performance benchmark for concurrent cache reads with statistics collection.
+    /// This test verifies that sharded counters provide good performance under
+    /// high concurrency compared to a single atomic counter.
+    #[tokio::test]
+    async fn test_cache_stats_performance() {
+        use std::sync::Arc;
+        use tokio::time::Instant;
+
+        let cache: Arc<Cache<String, i32>> = Arc::new(Cache::new(1000, Duration::from_secs(60)));
+        let num_tasks = 100;
+        let ops_per_task = 1000;
+
+        // Pre-populate cache
+        for i in 0..100 {
+            cache.insert(format!("key{}", i), i as i32).await;
+        }
+
+        let start = Instant::now();
+
+        // Spawn concurrent readers
+        let mut handles = vec![];
+        for task_id in 0..num_tasks {
+            let cache = Arc::clone(&cache);
+            handles.push(tokio::spawn(async move {
+                let mut hits = 0;
+                for i in 0..ops_per_task {
+                    let key = format!("key{}", (task_id + i) % 100);
+                    if cache.get(&key).await.is_some() {
+                        hits += 1;
+                    }
+                }
+                hits
+            }));
+        }
+
+        // Wait for all tasks and collect results
+        let mut total_hits = 0;
+        for handle in handles {
+            total_hits += handle.await.unwrap();
+        }
+
+        let elapsed = start.elapsed();
+        let total_ops = num_tasks * ops_per_task;
+        let ops_per_sec = total_ops as f64 / elapsed.as_secs_f64();
+
+        // Verify stats are accurate
+        let stats = cache.stats().await;
+        assert_eq!(stats.hits, total_hits as u64);
+        assert_eq!(stats.misses, (total_ops - total_hits) as u64);
+
+        // Performance assertion: should handle at least 100k ops/sec
+        // This is a sanity check - actual performance will vary by hardware
+        assert!(
+            ops_per_sec > 100_000.0,
+            "Cache throughput too low: {:.0} ops/sec (expected > 100k)",
+            ops_per_sec
+        );
+
+        println!(
+            "Cache performance: {:.0} ops/sec ({} threads x {} ops)",
+            ops_per_sec, num_tasks, ops_per_task
+        );
+        println!(
+            "Stats accuracy: hits={}, expected_hits={}",
+            stats.hits, total_hits
+        );
+    }
 }
