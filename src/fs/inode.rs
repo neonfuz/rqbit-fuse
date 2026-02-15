@@ -446,6 +446,7 @@ impl Default for InodeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_inode_manager_creation() {
@@ -1064,5 +1065,101 @@ mod tests {
             100,
             "Should have exactly 100 unique inodes"
         );
+    }
+
+    // Property-based tests using proptest
+    proptest! {
+        #[test]
+        fn test_inode_allocation_never_returns_zero(attempts in 1..100u32) {
+            let manager = InodeManager::new();
+            for i in 0..attempts {
+                let inode = manager.allocate_file(
+                    format!("file{}.txt", i),
+                    1,
+                    1,
+                    i as u64,
+                    100,
+                );
+                prop_assert!(inode != 0, "Inode should never be zero");
+            }
+        }
+
+        #[test]
+        fn test_parent_inode_exists_for_all_entries(num_dirs in 1..20u32) {
+            let manager = InodeManager::new();
+
+            // Create directories
+            for i in 0..num_dirs {
+                let dir = manager.allocate_torrent_directory(i as u64, format!("dir{}", i), 1);
+                manager.add_child(1, dir);
+            }
+
+            // Verify every entry has a valid parent
+            for entry_ref in manager.iter_entries() {
+                let entry = &entry_ref.entry;
+                let parent = entry.parent();
+                prop_assert!(
+                    manager.get(parent).is_some(),
+                    "Entry {} has invalid parent {}",
+                    entry.ino(),
+                    parent
+                );
+            }
+        }
+
+        #[test]
+        fn test_inode_uniqueness(num_files in 1..50u32) {
+            let manager = InodeManager::new();
+            let mut inodes = Vec::new();
+
+            for i in 0..num_files {
+                let inode = manager.allocate_file(
+                    format!("file{}.txt", i),
+                    1,
+                    1,
+                    i as u64,
+                    100,
+                );
+                inodes.push(inode);
+            }
+
+            // All inodes should be unique
+            let unique_count = inodes.len();
+            inodes.sort();
+            inodes.dedup();
+            prop_assert_eq!(
+                inodes.len(),
+                unique_count,
+                "All allocated inodes should be unique"
+            );
+        }
+
+        #[test]
+        fn test_children_relationship_consistency(num_children in 1..30u32) {
+            let manager = InodeManager::new();
+
+            // Create a directory
+            let parent = manager.allocate_torrent_directory(1, "parent".to_string(), 1);
+
+            // Add children
+            for i in 0..num_children {
+                let child = manager.allocate_file(
+                    format!("child{}.txt", i),
+                    parent,
+                    1,
+                    i as u64,
+                    100,
+                );
+                manager.add_child(parent, child);
+            }
+
+            // Verify get_children returns same count
+            let children = manager.get_children(parent);
+            prop_assert_eq!(
+                children.len() as u32,
+                num_children,
+                "Children count should match"
+            );
+        }
     }
 }

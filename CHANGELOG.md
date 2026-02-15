@@ -9,6 +9,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add property-based tests (TEST-007)
+  - Added proptest to dev-dependencies in Cargo.toml
+  - Added 4 property-based tests in src/fs/inode.rs:
+    - test_inode_allocation_never_returns_zero: Tests inode allocation never returns zero
+    - test_parent_inode_exists_for_all_entries: Tests parent inode validity invariant
+    - test_inode_uniqueness: Tests all allocated inodes are unique
+    - test_children_relationship_consistency: Tests parent-children relationship consistency
+  - All tests pass, clippy clean, code formatted
+
+- Add mock verification to tests (TEST-005)
+  - Added WireMock verification to API client tests
+  - Added `mock_server.verify().await` to test_list_torrents_success
+  - Added `mock_server.verify().await` to test_list_torrents_empty
+  - Pattern can be extended to other tests as needed
+  - All tests pass, clippy clean, code formatted
+
+- Cache integration tests (TEST-004)
+  - All required tests already exist in src/cache.rs
+  - TTL expiration: test_cache_ttl
+  - LRU eviction: test_cache_lru_eviction
+  - Concurrent cache access: test_concurrent_cache_access
+  - Cache statistics accuracy: test_cache_stats_performance
+  - Additional tests: test_cache_basic_operations, test_cache_remove, test_cache_clear, test_cache_custom_ttl
+
+- Fix misleading concurrent test (TEST-003)
+  - Rewrote `test_concurrent_torrent_additions` to actually test concurrent behavior
+  - Uses `std::sync::Barrier` for proper synchronization
+  - All threads now add torrents concurrently (not sequentially after)
+  - Verifies all torrents exist after concurrent additions complete
+  - All tests pass, clippy clean, code formatted
+
+- Document security considerations (DOCS-006)
+  - Added "Security Considerations" section to crate-level docs
+  - Documented read-only filesystem design
+  - Documented path traversal prevention (sanitization, symlink validation)
+  - Documented resource limits (cache size, file handles, concurrent reads)
+  - Documented error information leakage prevention
+  - Documented TOCTOU vulnerability mitigation (atomic operations)
+  - All tests pass, clippy clean, code formatted
+
+- Add troubleshooting guide (DOCS-005)
+  - Added "Troubleshooting" section to crate-level docs
+  - Common issues (FUSE connection, API connection, permissions)
+  - Performance tuning tips (media player buffering, sequential reads, cache tuning)
+  - Debugging techniques (verbose logging, metrics logging)
+  - All tests pass, clippy clean, code formatted
+
+- Document public API (DOCS-004)
+  - Added doc comments to all public re-exports (Cache, CacheStats, CliArgs, Config, AsyncFuseWorker, TorrentFS, Metrics, ShardedCounter)
+  - Added comprehensive doc comment to `run()` function with Arguments, Returns, Example, and Note sections
+  - All tests pass, clippy clean, code formatted
+
+- Document blocking behavior (DOCS-003)
+  - Added "Blocking Behavior" section to crate-level documentation
+  - Documented which operations may block (file reads, torrent discovery, stream creation)
+  - Added warnings about deadlock risks (don't call blocking ops while holding async mutex)
+  - Documented thread safety approach (DashMap, Tokio mutexes, moka cache)
+  - All tests pass, clippy clean, code formatted
+
+- Add crate-level documentation (DOCS-002)
+  - Added comprehensive doc comments to lib.rs
+  - Documented crate purpose, key features, and architecture
+  - Included ASCII architecture diagram
+  - Documented modules overview and error handling approach
+  - Added usage example and blocking behavior notes
+  - All tests pass, clippy clean, code formatted
+
 - Research documentation standards (DOCS-001)
   - Created research/doc-standards.md with Rust documentation conventions
   - Documented required sections (Examples, Panics, Errors)

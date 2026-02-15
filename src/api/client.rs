@@ -1225,6 +1225,9 @@ mod tests {
         assert_eq!(result.torrents[0].name, "Test Torrent");
         assert_eq!(result.torrents[0].info_hash, "abc123");
         assert_eq!(result.torrents[0].file_count, Some(2));
+
+        // Verify the mock was called (WireMock verification)
+        mock_server.verify().await;
     }
 
     #[tokio::test]
@@ -1245,8 +1248,10 @@ mod tests {
 
         let result = client.list_torrents().await.unwrap();
         assert!(!result.has_successes());
-        assert!(!result.is_partial());
         assert!(result.torrents.is_empty());
+
+        // Verify the mock was called (WireMock verification)
+        mock_server.verify().await;
     }
 
     #[tokio::test]

@@ -7,6 +7,7 @@
 //! - Error handling
 
 use std::sync::Arc;
+use std::sync::Barrier;
 use tempfile::TempDir;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -570,13 +571,19 @@ async fn test_concurrent_torrent_additions() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    use std::thread;
     use torrent_fuse::api::types::{FileInfo, TorrentInfo};
 
-    let handles: Vec<_> = (0..5)
-        .map(|i| {
-            let fs_ref = std::sync::Arc::new(std::sync::Mutex::new(()));
-            let _torrent_info = TorrentInfo {
+    const NUM_TORRENTS: usize = 5;
+    let barrier = Arc::new(Barrier::new(NUM_TORRENTS));
+    let fs_arc = Arc::new(fs);
+    let mut handles = Vec::new();
+
+    for i in 0..NUM_TORRENTS {
+        let barrier = Arc::clone(&barrier);
+        let fs_clone = Arc::clone(&fs_arc);
+
+        let handle = std::thread::spawn(move || {
+            let torrent_info = TorrentInfo {
                 id: 100 + i as u64,
                 info_hash: format!("concurrent{}", i),
                 name: format!("Torrent {}", i),
@@ -590,40 +597,24 @@ async fn test_concurrent_torrent_additions() {
                 piece_length: Some(262144),
             };
 
-            thread::spawn(move || {
-                let _guard = fs_ref.lock().unwrap();
-                // Note: In real concurrent scenario, we'd need proper Arc<Mutex<>> around fs
-                // For this test, we just verify the structure works
-            })
-        })
-        .collect();
+            barrier.wait();
+
+            fs_clone.create_torrent_structure(&torrent_info).unwrap();
+        });
+        handles.push(handle);
+    }
 
     for h in handles {
         h.join().unwrap();
     }
 
-    // Add torrents sequentially but verify the structure supports concurrent access
-    for i in 0..5 {
-        let torrent_info = TorrentInfo {
-            id: 100 + i as u64,
-            info_hash: format!("concurrent{}", i),
-            name: format!("Torrent {}", i),
-            output_folder: "/downloads".to_string(),
-            file_count: Some(1),
-            files: vec![FileInfo {
-                name: format!("file{}.txt", i),
-                length: 100,
-                components: vec![format!("file{}.txt", i)],
-            }],
-            piece_length: Some(262144),
-        };
-        fs.create_torrent_structure(&torrent_info).unwrap();
-    }
-
-    // Verify all torrents were added
-    let inode_manager = fs.inode_manager();
-    for i in 0..5 {
-        assert!(inode_manager.lookup_torrent(100 + i as u64).is_some());
+    let inode_manager = fs_arc.inode_manager();
+    for i in 0..NUM_TORRENTS {
+        assert!(
+            inode_manager.lookup_torrent(100 + i as u64).is_some(),
+            "Torrent {} should exist after concurrent addition",
+            i
+        );
     }
 }
 
