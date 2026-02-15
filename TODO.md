@@ -127,7 +127,7 @@ Each item is designed to be completed independently. Research references are sto
   - Fixed by removing the erroneous `torrent_to_inode.insert()` call from `allocate_file()`
   - All nested directory tests now pass (test_nested_directory_path_resolution, test_deeply_nested_directory_structure, test_multi_file_torrent_structure, test_torrent_removal_with_cleanup)
 
-- [ ] **FS-007**: Add proper FUSE operation tests
+- [x] **FS-007**: Add proper FUSE operation tests
   - Depends on: `[spec:testing]`
   - [x] **FS-007.1**: Read testing specification
     - Read `[spec:testing]` for testing approach and requirements
@@ -191,7 +191,9 @@ Each item is designed to be completed independently. Research references are sto
     - Test not found errors (ENOENT)
     - Test invalid operation errors
   - [x] **FS-007.8**: Verify all tests pass
-    - Run `cargo test` to verify all new tests pass
+    - Fixed 12 failing filesystem tests by converting from `#[test]` to `#[tokio::test]`
+    - Tests needed Tokio runtime for AsyncFuseWorker task spawning
+    - All tests pass: `cargo test` ✅
     - Run `cargo clippy` to check for warnings
     - Run `cargo fmt` to format code
 

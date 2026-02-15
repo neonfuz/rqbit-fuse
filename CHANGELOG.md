@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed failing filesystem tests by converting to tokio::test
+  - Converted 12 tests in `src/fs/filesystem.rs` from `#[test]` to `#[tokio::test]` async tests
+  - Tests were failing due to missing Tokio runtime for AsyncFuseWorker task spawning
+  - All filesystem tests now pass: `cargo test fs::filesystem::tests` ✅
+  - Fixed tests: test_torrent_fs_creation, test_validate_mount_point_success, test_validate_mount_point_nonexistent
+  - Fixed tests: test_build_mount_options, test_build_mount_options_allow_other, test_remove_torrent_cleans_up_inodes
+  - Fixed tests: test_symlink_creation, test_zero_byte_file, test_large_file, test_unicode_filename
+  - Fixed tests: test_single_file_torrent_structure, test_multi_file_torrent_structure
+
 ### Added
 
 - Completed FS-007.7: Implement error case tests

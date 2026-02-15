@@ -2168,8 +2168,8 @@ mod tests {
         Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics))
     }
 
-    #[test]
-    fn test_torrent_fs_creation() {
+    #[tokio::test]
+    async fn test_torrent_fs_creation() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2179,8 +2179,8 @@ mod tests {
         assert_eq!(fs.inode_manager().get(1).unwrap().ino(), 1);
     }
 
-    #[test]
-    fn test_validate_mount_point_success() {
+    #[tokio::test]
+    async fn test_validate_mount_point_success() {
         let temp_dir = TempDir::new().unwrap();
         let mut config = Config::default();
         config.mount.mount_point = temp_dir.path().to_path_buf();
@@ -2191,8 +2191,8 @@ mod tests {
         assert!(fs.validate_mount_point().is_ok());
     }
 
-    #[test]
-    fn test_validate_mount_point_nonexistent() {
+    #[tokio::test]
+    async fn test_validate_mount_point_nonexistent() {
         let mut config = Config::default();
         config.mount.mount_point = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
@@ -2205,8 +2205,8 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
 
-    #[test]
-    fn test_build_mount_options() {
+    #[tokio::test]
+    async fn test_build_mount_options() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2220,8 +2220,8 @@ mod tests {
         assert!(options.contains(&fuser::MountOption::AutoUnmount));
     }
 
-    #[test]
-    fn test_build_mount_options_allow_other() {
+    #[tokio::test]
+    async fn test_build_mount_options_allow_other() {
         let mut config = Config::default();
         config.mount.allow_other = true;
         let metrics = Arc::new(crate::metrics::Metrics::new());
@@ -2233,8 +2233,8 @@ mod tests {
         assert!(options.contains(&fuser::MountOption::AllowOther));
     }
 
-    #[test]
-    fn test_remove_torrent_cleans_up_inodes() {
+    #[tokio::test]
+    async fn test_remove_torrent_cleans_up_inodes() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2340,8 +2340,8 @@ mod tests {
         assert!(!is_safe_path_component("dir\\file"));
     }
 
-    #[test]
-    fn test_symlink_creation() {
+    #[tokio::test]
+    async fn test_symlink_creation() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2363,8 +2363,8 @@ mod tests {
         assert_eq!(attr.size, "/target/path".len() as u64);
     }
 
-    #[test]
-    fn test_zero_byte_file() {
+    #[tokio::test]
+    async fn test_zero_byte_file() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2389,8 +2389,8 @@ mod tests {
         assert_eq!(attr.blocks, 0);
     }
 
-    #[test]
-    fn test_large_file() {
+    #[tokio::test]
+    async fn test_large_file() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2409,8 +2409,8 @@ mod tests {
         assert!(attr.blocks > 0);
     }
 
-    #[test]
-    fn test_unicode_filename() {
+    #[tokio::test]
+    async fn test_unicode_filename() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());
         let async_worker = create_test_async_worker(Arc::clone(&metrics));
@@ -2435,8 +2435,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_single_file_torrent_structure() {
+    #[tokio::test]
+    async fn test_single_file_torrent_structure() {
         use crate::api::types::{FileInfo, TorrentInfo};
 
         let config = Config::default();
@@ -2475,8 +2475,8 @@ mod tests {
         assert_eq!(torrent_inode, *inode);
     }
 
-    #[test]
-    fn test_multi_file_torrent_structure() {
+    #[tokio::test]
+    async fn test_multi_file_torrent_structure() {
         use crate::api::types::{FileInfo, TorrentInfo};
 
         let config = Config::default();
