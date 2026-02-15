@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Replaced string matching with typed errors (ERROR-002)
+  - Removed fragile `.contains("not found")` and `.contains("range")` patterns
+  - Updated `ToFuseError` trait in `src/fs/error.rs` to use proper error downcasting
+  - Updated `src/fs/async_bridge.rs` to use `e.to_fuse_error()` instead of string matching
+  - Error classification now uses typed variants: `ApiError`, `FuseError`, `std::io::Error`
+  - Benefits: type safety, compile-time checking, better maintainability, improved performance
+  - All 175 tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 - Implemented backward seeking with comprehensive tests (STREAM-004)
   - Backward seeking already worked by creating new streams when can_read_at() returns false
   - Added 5 comprehensive seek tests to verify all seek behaviors:

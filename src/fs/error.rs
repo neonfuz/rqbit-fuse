@@ -91,20 +91,19 @@ impl ToFuseError for anyhow::Error {
             return fuse_err.to_errno();
         }
 
-        // String matching (temporary, should use typed errors exclusively)
-        let err_str = self.to_string().to_lowercase();
-        if err_str.contains("not found") {
-            libc::ENOENT
-        } else if err_str.contains("permission") || err_str.contains("access") {
-            libc::EACCES
-        } else if err_str.contains("timeout") {
-            libc::ETIMEDOUT
-        } else if err_str.contains("range") {
-            libc::EINVAL
-        } else {
-            // Covers: channel full, disconnected, and other errors
-            libc::EIO
+        // Check for std::io::Error
+        if let Some(io_err) = self.downcast_ref::<std::io::Error>() {
+            return match io_err.kind() {
+                std::io::ErrorKind::NotFound => libc::ENOENT,
+                std::io::ErrorKind::PermissionDenied => libc::EACCES,
+                std::io::ErrorKind::TimedOut => libc::ETIMEDOUT,
+                std::io::ErrorKind::InvalidInput => libc::EINVAL,
+                _ => libc::EIO,
+            };
         }
+
+        // Default to EIO for unknown errors
+        libc::EIO
     }
 }
 

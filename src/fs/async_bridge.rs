@@ -1,5 +1,5 @@
 use crate::api::client::RqbitClient;
-use crate::fs::error::{FuseError, FuseResult};
+use crate::fs::error::{FuseError, FuseResult, ToFuseError};
 use crate::metrics::Metrics;
 use std::sync::Arc;
 use std::time::Duration;
@@ -186,13 +186,7 @@ impl AsyncFuseWorker {
                     }
                     Ok(Err(e)) => {
                         metrics.fuse.record_error();
-                        let error_code = if e.to_string().contains("not found") {
-                            libc::ENOENT
-                        } else if e.to_string().contains("range") {
-                            libc::EINVAL
-                        } else {
-                            libc::EIO
-                        };
+                        let error_code = e.to_fuse_error();
                         FuseResponse::ReadError {
                             error_code,
                             message: e.to_string(),
@@ -222,11 +216,7 @@ impl AsyncFuseWorker {
                 let response = match result {
                     Ok(_) => FuseResponse::ForgetSuccess,
                     Err(e) => {
-                        let error_code = if e.to_string().contains("not found") {
-                            libc::ENOENT
-                        } else {
-                            libc::EIO
-                        };
+                        let error_code = e.to_fuse_error();
                         FuseResponse::ForgetError {
                             error_code,
                             message: e.to_string(),

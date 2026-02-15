@@ -309,11 +309,12 @@ Each item is designed to be completed independently. Research references are sto
     - FUSE error code mapping strategy
     - Library vs application error separation
 
-- [ ] **ERROR-002**: Replace string matching with typed errors
+- [x] **ERROR-002**: Replace string matching with typed errors
   - Depends on: `[research:error-design]`, `[spec:error-handling]`
-  - Remove `.contains("not found")` pattern (filesystem.rs:1012-1015)
-  - Create specific error types for each failure mode
-  - Update error mapping to FUSE codes
+  - Removed string matching patterns from `src/fs/error.rs` and `src/fs/async_bridge.rs`
+  - Updated `ToFuseError` implementation for `anyhow::Error` to use proper downcasting
+  - Error mapping now uses typed error variants (ApiError, FuseError, std::io::Error)
+  - All tests pass, no clippy warnings, code formatted
 
 - [ ] **ERROR-003**: Fix silent failures in list_torrents()
   - Depends on: `[spec:error-handling]`
