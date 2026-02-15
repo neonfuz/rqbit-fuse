@@ -3,7 +3,10 @@ use crate::api::types::{TorrentState, TorrentStatus};
 use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeManager;
-use crate::fs::macros::{fuse_error, fuse_log, fuse_ok};
+use crate::fs::macros::{
+    fuse_error, fuse_log, fuse_ok, reply_ino_not_found, reply_no_permission, reply_not_directory,
+    reply_not_file,
+};
 use crate::metrics::Metrics;
 use crate::types::handle::FileHandleManager;
 use crate::types::inode::InodeEntry;
@@ -536,33 +539,7 @@ impl TorrentFS {
         self.initialized
     }
 
-    /// Reply with ENOENT (inode not found)
-    fn reply_ino_not_found(&self, reply: &mut dyn Reply, op: &str, ino: u64) {
-        self.metrics.fuse.record_error();
-        fuse_error!(self, op, "ENOENT", ino = ino);
-        reply.error(libc::ENOENT);
-    }
 
-    /// Reply with ENOTDIR (not a directory)
-    fn reply_not_directory(&self, reply: &mut dyn Reply, op: &str, ino: u64) {
-        self.metrics.fuse.record_error();
-        fuse_error!(self, op, "ENOTDIR", ino = ino);
-        reply.error(libc::ENOTDIR);
-    }
-
-    /// Reply with EISDIR (is a directory, not a file)
-    fn reply_not_file(&self, reply: &mut dyn Reply, op: &str, ino: u64) {
-        self.metrics.fuse.record_error();
-        fuse_error!(self, op, "EISDIR", ino = ino);
-        reply.error(libc::EISDIR);
-    }
-
-    /// Reply with EACCES (permission denied)
-    fn reply_no_permission(&self, reply: &mut dyn Reply, op: &str, ino: u64, reason: &str) {
-        self.metrics.fuse.record_error();
-        fuse_error!(self, op, "EACCES", ino = ino, reason = reason);
-        reply.error(libc::EACCES);
-    }
 
     /// Validates the mount point directory.
     /// Checks that:
@@ -1173,9 +1150,7 @@ impl Filesystem for TorrentFS {
                 reply.attr(&ttl, &attr);
             }
             None => {
-                self.metrics.fuse.record_error();
-                fuse_error!(self, "getattr", "ENOENT");
-                reply.error(libc::ENOENT);
+                self.reply_ino_not_found(&mut reply, "getattr", ino);
             }
         }
     }
@@ -1194,9 +1169,7 @@ impl Filesystem for TorrentFS {
             Some(entry) => {
                 // Check if it's a file (not a directory)
                 if entry.is_directory() {
-                    self.metrics.fuse.record_error();
-                    fuse_error!(self, "open", "EISDIR");
-                    reply.error(libc::EISDIR);
+                    self.reply_not_file(&mut reply, "open", ino);
                     return;
                 }
 
@@ -1211,9 +1184,7 @@ impl Filesystem for TorrentFS {
                 // Check write access - this is a read-only filesystem
                 let access_mode = flags & libc::O_ACCMODE;
                 if access_mode != libc::O_RDONLY {
-                    self.metrics.fuse.record_error();
-                    fuse_error!(self, "open", "EACCES", reason = "write_access_requested");
-                    reply.error(libc::EACCES);
+                    self.reply_no_permission(&mut reply, "open", ino, "write_access_requested");
                     return;
                 }
 
@@ -1224,9 +1195,7 @@ impl Filesystem for TorrentFS {
                 reply.opened(fh, 0);
             }
             None => {
-                self.metrics.fuse.record_error();
-                fuse_error!(self, "open", "ENOENT");
-                reply.error(libc::ENOENT);
+                self.reply_ino_not_found(&mut reply, "open", ino);
             }
         }
     }
@@ -1247,8 +1216,7 @@ impl Filesystem for TorrentFS {
                 }
             }
             None => {
-                debug!("readlink: inode {} not found", ino);
-                reply.error(libc::ENOENT);
+                self.reply_ino_not_found(&mut reply, "readlink", ino);
             }
         }
     }
@@ -1341,18 +1309,14 @@ impl Filesystem for TorrentFS {
         let entry = match self.inode_manager.get(ino) {
             Some(e) => e,
             None => {
-                self.metrics.fuse.record_error();
-                fuse_error!(self, "readdir", "ENOENT");
-                reply.error(libc::ENOENT);
+                self.reply_ino_not_found(&mut reply, "readdir", ino);
                 return;
             }
         };
 
         // Check if it's a directory
         if !entry.is_directory() {
-            self.metrics.fuse.record_error();
-            fuse_error!(self, "readdir", "ENOTDIR");
-            reply.error(libc::ENOTDIR);
+            self.reply_not_directory(&mut reply, "readdir", ino);
             return;
         }
 
