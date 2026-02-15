@@ -284,6 +284,8 @@ pub struct PersistentStreamManager {
     cleanup_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Optional authentication credentials for HTTP Basic Auth
     auth_credentials: Option<(String, String)>,
+    /// Maximum number of concurrent streams allowed
+    max_streams: usize,
 }
 
 impl PersistentStreamManager {
@@ -292,6 +294,16 @@ impl PersistentStreamManager {
         client: Client,
         base_url: String,
         auth_credentials: Option<(String, String)>,
+    ) -> Self {
+        Self::with_max_streams(client, base_url, auth_credentials, 50)
+    }
+
+    /// Create a new stream manager with a custom max stream limit
+    pub fn with_max_streams(
+        client: Client,
+        base_url: String,
+        auth_credentials: Option<(String, String)>,
+        max_streams: usize,
     ) -> Self {
         let streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>> =
             Arc::new(Mutex::new(HashMap::new()));
@@ -304,6 +316,7 @@ impl PersistentStreamManager {
             streams: Arc::clone(&streams),
             cleanup_handle: Arc::clone(&cleanup_handle),
             auth_credentials,
+            max_streams,
         };
 
         // Start cleanup task
@@ -429,6 +442,17 @@ impl PersistentStreamManager {
             drop(streams); // Release lock before returning
             result
         } else {
+            // Check if we're at the stream limit before creating a new stream
+            let current_count = streams.len();
+            if current_count >= self.max_streams {
+                // At limit - return an error indicating resource exhaustion
+                // The caller should handle this and possibly retry after closing other streams
+                return Err(anyhow::anyhow!(
+                    "Maximum number of open streams ({}) exceeded",
+                    self.max_streams
+                ));
+            }
+
             // Drop the lock before creating a new stream (creation is async and may block)
             drop(streams);
 
@@ -505,6 +529,7 @@ impl PersistentStreamManager {
         let streams = self.streams.lock().await;
         StreamManagerStats {
             active_streams: streams.len(),
+            max_streams: self.max_streams,
             total_bytes_streaming: streams.values().map(|s| s.current_position).sum(),
         }
     }
@@ -550,6 +575,7 @@ impl Drop for PersistentStreamManager {
 #[derive(Debug)]
 pub struct StreamManagerStats {
     pub active_streams: usize,
+    pub max_streams: usize,
     pub total_bytes_streaming: u64,
 }
 

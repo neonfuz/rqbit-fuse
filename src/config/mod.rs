@@ -232,6 +232,9 @@ pub struct Config {
     /// Log verbosity and metrics settings.
     #[serde(default)]
     pub logging: LoggingConfig,
+    /// Resource limits for preventing resource exhaustion.
+    #[serde(default)]
+    pub resources: ResourceLimitsConfig,
 }
 
 /// Configuration for the rqbit API connection.
@@ -320,6 +323,7 @@ pub struct MountConfig {
 /// * `readahead_size` - Size of read-ahead buffer in bytes (default: 32 MiB)
 /// * `piece_check_enabled` - Enable piece verification checksums (default: true)
 /// * `return_eagain_for_unavailable` - Return EAGAIN when data is unavailable (default: false)
+/// * `prefetch_enabled` - Enable prefetching (default: false)
 ///
 /// # Environment Variables
 ///
@@ -328,6 +332,7 @@ pub struct MountConfig {
 /// - `TORRENT_FUSE_READAHEAD_SIZE` - Read-ahead buffer size in bytes
 /// - `TORRENT_FUSE_PIECE_CHECK_ENABLED` - Enable piece verification
 /// - `TORRENT_FUSE_RETURN_EAGAIN` - Return EAGAIN for unavailable data
+/// - `TORRENT_FUSE_PREFETCH_ENABLED` - Enable prefetching
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerformanceConfig {
@@ -336,6 +341,7 @@ pub struct PerformanceConfig {
     pub readahead_size: u64,
     pub piece_check_enabled: bool,
     pub return_eagain_for_unavailable: bool,
+    pub prefetch_enabled: bool,
 }
 
 /// Configuration for monitoring and status polling.
@@ -387,6 +393,29 @@ pub struct LoggingConfig {
     pub metrics_interval_secs: u64,
 }
 
+/// Configuration for resource limits.
+///
+/// Controls resource consumption limits to prevent resource exhaustion.
+///
+/// # Fields
+///
+/// * `max_cache_bytes` - Maximum cache size in bytes (default: 536870912 = 512MB)
+/// * `max_open_streams` - Maximum number of open HTTP streams (default: 50)
+/// * `max_inodes` - Maximum number of inodes (default: 100000)
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_MAX_CACHE_BYTES` - Maximum cache size in bytes
+/// - `TORRENT_FUSE_MAX_OPEN_STREAMS` - Maximum open streams
+/// - `TORRENT_FUSE_MAX_INODES` - Maximum number of inodes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ResourceLimitsConfig {
+    pub max_cache_bytes: u64,
+    pub max_open_streams: usize,
+    pub max_inodes: usize,
+}
+
 default_fn!(default_api_url, String, "http://127.0.0.1:3030".to_string());
 default_fn!(default_metadata_ttl, u64, 60);
 default_fn!(default_torrent_list_ttl, u64, 30);
@@ -402,6 +431,7 @@ default_fn!(default_max_concurrent_reads, usize, 10);
 default_fn!(default_readahead_size, u64, 33554432);
 default_fn!(default_piece_check_enabled, bool, true);
 default_fn!(default_return_eagain_for_unavailable, bool, false);
+default_fn!(default_prefetch_enabled, bool, false);
 default_fn!(default_status_poll_interval, u64, 5);
 default_fn!(default_stalled_timeout, u64, 300);
 default_fn!(default_log_level, String, "info".to_string());
@@ -410,13 +440,17 @@ default_fn!(default_log_api_calls, bool, true);
 default_fn!(default_metrics_enabled, bool, true);
 default_fn!(default_metrics_interval_secs, u64, 60);
 default_fn!(default_none, Option<String>, None);
+default_fn!(default_max_cache_bytes, u64, 536870912); // 512MB
+default_fn!(default_max_open_streams, usize, 50);
+default_fn!(default_max_inodes, usize, 100000);
 
 default_impl!(ApiConfig, url: default_api_url, username: default_none, password: default_none);
 default_impl!(CacheConfig, metadata_ttl: default_metadata_ttl, torrent_list_ttl: default_torrent_list_ttl, piece_ttl: default_piece_ttl, max_entries: default_max_entries);
 default_impl!(MountConfig, mount_point: default_mount_point, allow_other: default_allow_other, auto_unmount: default_auto_unmount, uid: default_uid, gid: default_gid);
-default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable);
+default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable, prefetch_enabled: default_prefetch_enabled);
 default_impl!(MonitoringConfig, status_poll_interval: default_status_poll_interval, stalled_timeout: default_stalled_timeout);
 default_impl!(LoggingConfig, level: default_log_level, log_fuse_operations: default_log_fuse_operations, log_api_calls: default_log_api_calls, metrics_enabled: default_metrics_enabled, metrics_interval_secs: default_metrics_interval_secs);
+default_impl!(ResourceLimitsConfig, max_cache_bytes: default_max_cache_bytes, max_open_streams: default_max_open_streams, max_inodes: default_max_inodes);
 
 /// Errors that can occur during configuration loading or validation.
 #[derive(Debug, Error)]
@@ -551,6 +585,11 @@ impl Config {
             self.performance.return_eagain_for_unavailable,
             str::parse
         );
+        env_var!(
+            "TORRENT_FUSE_PREFETCH_ENABLED",
+            self.performance.prefetch_enabled,
+            str::parse
+        );
         env_var!("TORRENT_FUSE_LOG_LEVEL", self.logging.level);
         env_var!(
             "TORRENT_FUSE_LOG_FUSE_OPS",
@@ -570,6 +609,23 @@ impl Config {
         env_var!(
             "TORRENT_FUSE_METRICS_INTERVAL",
             self.logging.metrics_interval_secs,
+            str::parse
+        );
+
+        // Resource limits
+        env_var!(
+            "TORRENT_FUSE_MAX_CACHE_BYTES",
+            self.resources.max_cache_bytes,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_MAX_OPEN_STREAMS",
+            self.resources.max_open_streams,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_MAX_INODES",
+            self.resources.max_inodes,
             str::parse
         );
 
@@ -642,6 +698,9 @@ impl Config {
             issues.push(e);
         }
         if let Err(e) = self.validate_logging_config() {
+            issues.push(e);
+        }
+        if let Err(e) = self.validate_resources_config() {
             issues.push(e);
         }
 
@@ -862,6 +921,52 @@ impl Config {
                 field: "logging.metrics_interval_secs".to_string(),
                 message: "metrics_interval_secs exceeds maximum of 86400 seconds (24 hours)"
                     .to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_resources_config(&self) -> Result<(), ValidationIssue> {
+        if self.resources.max_cache_bytes == 0 {
+            return Err(ValidationIssue {
+                field: "resources.max_cache_bytes".to_string(),
+                message: "max_cache_bytes must be greater than 0".to_string(),
+            });
+        }
+
+        if self.resources.max_cache_bytes > 10737418240 {
+            return Err(ValidationIssue {
+                field: "resources.max_cache_bytes".to_string(),
+                message: "max_cache_bytes exceeds maximum of 10GB".to_string(),
+            });
+        }
+
+        if self.resources.max_open_streams == 0 {
+            return Err(ValidationIssue {
+                field: "resources.max_open_streams".to_string(),
+                message: "max_open_streams must be greater than 0".to_string(),
+            });
+        }
+
+        if self.resources.max_open_streams > 1000 {
+            return Err(ValidationIssue {
+                field: "resources.max_open_streams".to_string(),
+                message: "max_open_streams exceeds maximum of 1000".to_string(),
+            });
+        }
+
+        if self.resources.max_inodes == 0 {
+            return Err(ValidationIssue {
+                field: "resources.max_inodes".to_string(),
+                message: "max_inodes must be greater than 0".to_string(),
+            });
+        }
+
+        if self.resources.max_inodes > 10000000 {
+            return Err(ValidationIssue {
+                field: "resources.max_inodes".to_string(),
+                message: "max_inodes exceeds maximum of 10000000".to_string(),
             });
         }
 

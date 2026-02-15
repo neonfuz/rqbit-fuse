@@ -18,9 +18,18 @@ use fuser::Filesystem;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use tokio::time::interval;
 use tracing::{debug, error, info, instrument, trace, warn};
+
+/// Statistics about concurrent operations
+#[derive(Debug, Clone)]
+pub struct ConcurrencyStats {
+    /// Maximum concurrent read operations allowed
+    pub max_concurrent_reads: usize,
+    /// Number of available permits for reads
+    pub available_permits: usize,
+}
 
 /// The main FUSE filesystem implementation for torrent-fuse.
 /// Implements the fuser::Filesystem trait to provide a FUSE interface
@@ -54,6 +63,8 @@ pub struct TorrentFS {
     last_discovery: Arc<AtomicU64>,
     /// Async worker for handling async operations in FUSE callbacks
     async_worker: Arc<AsyncFuseWorker>,
+    /// Semaphore for limiting concurrent read operations
+    read_semaphore: Arc<Semaphore>,
 }
 
 impl TorrentFS {
@@ -81,7 +92,8 @@ impl TorrentFS {
             create_api_client(&config.api, Arc::clone(&metrics.api))
                 .context("Failed to create API client")?,
         );
-        let inode_manager = Arc::new(InodeManager::new());
+        let inode_manager = Arc::new(InodeManager::with_max_inodes(config.resources.max_inodes));
+        let read_semaphore = Arc::new(Semaphore::new(config.performance.max_concurrent_reads));
 
         Ok(Self {
             config,
@@ -96,7 +108,21 @@ impl TorrentFS {
             metrics,
             last_discovery: Arc::new(AtomicU64::new(0)),
             async_worker,
+            read_semaphore,
         })
+    }
+
+    /// Get the read semaphore for limiting concurrent read operations.
+    pub fn read_semaphore(&self) -> &Arc<Semaphore> {
+        &self.read_semaphore
+    }
+
+    /// Get current concurrency statistics.
+    pub fn concurrency_stats(&self) -> ConcurrencyStats {
+        ConcurrencyStats {
+            max_concurrent_reads: self.config.performance.max_concurrent_reads,
+            available_permits: self.read_semaphore.available_permits(),
+        }
     }
 
     /// Start the background status monitoring task
@@ -706,6 +732,30 @@ impl TorrentFS {
         // Update file handle state and check for sequential reads
         self.file_handles.update_state(fh, offset, size);
 
+        // Note: Prefetch is intentionally disabled by default.
+        // The PersistentStream in streaming.rs already handles buffering via:
+        // 1. HTTP Keep-Alive connections for persistent streaming
+        // 2. pending_buffer that caches extra data from HTTP chunks
+        //
+        // The previous implementation made separate HTTP requests for prefetch
+        // which was wasteful. To re-enable prefetch, set prefetch_enabled = true
+        // in the configuration and implement proper caching.
+        if self.config.performance.prefetch_enabled {
+            self.do_prefetch(fh, offset, size, file_size, torrent_id, file_index);
+        }
+    }
+
+    /// Internal prefetch implementation (disabled by default)
+    #[allow(dead_code)]
+    fn do_prefetch(
+        &self,
+        fh: u64,
+        offset: u64,
+        size: u32,
+        file_size: u64,
+        torrent_id: u64,
+        file_index: u64,
+    ) {
         let handle = match self.file_handles.get(fh) {
             Some(h) => h,
             None => return, // Handle was removed
@@ -1707,6 +1757,30 @@ impl Filesystem for TorrentFS {
         // Stop the file handle cleanup task
         self.stop_handle_cleanup();
         // Clean up any resources
+    }
+
+    /// Get filesystem statistics.
+    /// Returns information about the filesystem such as total space, free space, etc.
+    fn statfs(&self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {
+        // For torrent filesystems, we can't know the actual total size
+        // since torrents can grow and we don't track all files upfront.
+        // We return reasonable defaults that applications can work with.
+        
+        // Use inode count as an estimate of number of files
+        let inode_count = self.inode_manager.len() as u64;
+        
+        // Return statfs with reasonable values for a torrent filesystem
+        reply.statfs(
+            0,                      // blocks total (unknown for torrents)
+            0,                      // blocks free (unknown)
+            0,                      // blocks available (unknown)
+            inode_count,            // files (inodes) - actual count
+            inode_count,            // files free (approximation)
+            inode_count,            // files available (approximation)
+            4096,                   // block size (4KB standard)
+            4096,                   // fragment size
+            0,                      // max filename length (no limit)
+        );
     }
 }
 

@@ -638,11 +638,20 @@ Each item is designed to be completed independently. Research references are sto
     - All shutdown paths now properly handle timeouts
     - Research documented in research/child-process-cleanup.md
 
-- [ ] **RES-004**: Add resource limits
+- [x] **RES-004**: Add resource limits
   - Maximum cache size (bytes, not just entries)
   - Maximum open streams
   - Maximum inode count
   - Maximum concurrent operations
+  - Added ResourceLimitsConfig to config/mod.rs with max_cache_bytes (512MB default), max_open_streams (50 default), max_inodes (100000 default)
+  - Added with_max_streams() to PersistentStreamManager for stream limit enforcement
+  - Added with_max_inodes() to InodeManager for inode limit enforcement
+  - Added can_allocate() and max_inodes() methods to InodeManager
+  - Added read_semaphore and ConcurrencyStats to TorrentFS for concurrent operation tracking
+  - Added env var support: TORRENT_FUSE_MAX_CACHE_BYTES, TORRENT_FUSE_MAX_OPEN_STREAMS, TORRENT_FUSE_MAX_INODES
+  - All tests pass: cargo test ✅
+  - No clippy warnings: cargo clippy ✅
+  - Code formatted: cargo fmt ✅
 
 ### Performance
 
@@ -655,12 +664,17 @@ Each item is designed to be completed independently. Research references are sto
   - Recommended: Extend Range requests to include readahead_size
   - Config options: prefetch_enabled, prefetch_multiplier
 
-- [ ] **PERF-002**: Implement read-ahead/prefetching
+- [x] **PERF-002**: Implement read-ahead/prefetching
   - Depends on: `[research:read-ahead]`
-  - Detect sequential access patterns
-  - Prefetch next chunks
-  - Don't immediately drop prefetched data
-  - Make configurable
+  - Detect sequential access patterns - Already implemented via sequential_count tracking
+  - Prefetch next chunks - Implemented but disabled by default
+  - Don't immediately drop prefetched data - PersistentStream already buffers via pending_buffer
+  - Make configurable - Added prefetch_enabled option (default: false)
+  - Note: Prefetch disabled by default because PersistentStream already handles buffering
+  - Environment variable: TORRENT_FUSE_PREFETCH_ENABLED
+  - All tests pass: cargo test ✅
+  - No clippy warnings: cargo clippy ✅
+  - Code formatted: cargo fmt ✅
 
 - [ ] **PERF-003**: Implement statfs operation
   - Add FUSE statfs callback

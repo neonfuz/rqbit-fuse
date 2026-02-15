@@ -14,6 +14,8 @@ pub struct InodeManager {
     path_to_inode: DashMap<String, u64>,
     /// Maps torrent IDs to their directory inode
     torrent_to_inode: DashMap<u64, u64>,
+    /// Maximum number of inodes allowed (0 = unlimited)
+    max_inodes: usize,
 }
 
 /// A view into an entry in the inode manager
@@ -25,7 +27,16 @@ pub struct InodeEntryRef {
 
 impl InodeManager {
     /// Creates a new InodeManager with root inode (inode 1) pre-allocated.
+    /// Default max_inodes is 0 (unlimited).
     pub fn new() -> Self {
+        Self::with_max_inodes(0)
+    }
+
+    /// Creates a new InodeManager with a maximum inode limit.
+    ///
+    /// # Arguments
+    /// * `max_inodes` - Maximum number of inodes allowed (0 = unlimited)
+    pub fn with_max_inodes(max_inodes: usize) -> Self {
         let entries = DashMap::new();
         let path_to_inode = DashMap::new();
         let torrent_to_inode = DashMap::new();
@@ -47,7 +58,23 @@ impl InodeManager {
             entries,
             path_to_inode,
             torrent_to_inode,
+            max_inodes,
         }
+    }
+
+    /// Check if a new inode can be allocated.
+    /// Returns true if allocation is allowed (or if limit is 0/unlimited).
+    pub fn can_allocate(&self) -> bool {
+        if self.max_inodes > 0 {
+            self.entries.len() < self.max_inodes
+        } else {
+            true
+        }
+    }
+
+    /// Get the current inode count limit (0 = unlimited).
+    pub fn max_inodes(&self) -> usize {
+        self.max_inodes
     }
 
     /// Allocates an inode for the given entry and registers it atomically.
@@ -55,7 +82,19 @@ impl InodeManager {
     /// Uses DashMap's entry API to ensure atomic insertion into the primary
     /// entries map. Indices are updated after the primary entry is confirmed.
     /// If index updates fail, the entry still exists and can be recovered.
+    ///
+    /// Returns 0 if the maximum inode limit has been reached.
     fn allocate_entry(&self, entry: InodeEntry, torrent_id: Option<u64>) -> u64 {
+        // Check max_inodes limit (0 means unlimited)
+        if self.max_inodes > 0 && self.entries.len() >= self.max_inodes {
+            tracing::warn!(
+                "Inode limit reached: {} >= {}",
+                self.entries.len(),
+                self.max_inodes
+            );
+            return 0;
+        }
+
         let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
         let entry = entry.with_ino(inode);
         let path = entry.canonical_path().to_string();
