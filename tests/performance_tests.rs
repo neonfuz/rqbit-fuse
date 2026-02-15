@@ -137,7 +137,7 @@ async fn test_lru_eviction_efficiency() {
     for i in 100..150 {
         let key = format!("key_{}", i);
         assert!(
-            cache.contains_key(&key),
+            cache.contains_key(&key).await,
             "Recently accessed entry key_{} should not be evicted",
             i
         );
@@ -147,7 +147,7 @@ async fn test_lru_eviction_efficiency() {
     let mut evicted_count = 0;
     for i in 0..50 {
         let key = format!("key_{}", i);
-        if !cache.contains_key(&key) {
+        if !cache.contains_key(&key).await {
             evicted_count += 1;
         }
     }
