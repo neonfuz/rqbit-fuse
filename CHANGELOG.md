@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserved error context in API client response handling (ERROR-004)
+  - Fixed `check_response()` at lines 289-297: Changed `.unwrap_or_else()` to `match` statement
+  - Fixed `read_stream_range()` at lines 584-592: Same pattern for range error responses
+  - Original errors (connection reset, invalid UTF-8, etc.) are now preserved in `ApiError::NetworkError`
+  - Provides diagnostic context instead of generic "Unknown error" messages
+  - All tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 - Fixed silent failures in list_torrents() (ERROR-003)
   - Added `ListTorrentsResult` struct in `src/api/types.rs` to hold both successes and failures
   - Errors are now collected in the result's `errors` field instead of being silently dropped

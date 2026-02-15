@@ -286,10 +286,16 @@ impl RqbitClient {
         if status.is_success() || status == StatusCode::PARTIAL_CONTENT {
             Ok(response)
         } else {
-            let message = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+            let message = match response.text().await {
+                Ok(text) => text,
+                Err(e) => {
+                    return Err(ApiError::NetworkError(format!(
+                        "Failed to read error response body: {}",
+                        e
+                    ))
+                    .into());
+                }
+            };
             Err(ApiError::ApiError {
                 status: status.as_u16(),
                 message,
@@ -575,10 +581,16 @@ impl RqbitClient {
             }
             .into()),
             StatusCode::RANGE_NOT_SATISFIABLE => {
-                let message = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "Invalid range".to_string());
+                let message = match response.text().await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        return Err(ApiError::NetworkError(format!(
+                            "Failed to read range error response body: {}",
+                            e
+                        ))
+                        .into());
+                    }
+                };
                 Err(ApiError::InvalidRange(message).into())
             }
             _ => {

@@ -327,11 +327,12 @@ Each item is designed to be completed independently. Research references are sto
   - Added `test_list_torrents_partial_failure` test to verify behavior
   - All tests pass, clippy clean
 
-- [ ] **ERROR-004**: Preserve error context
+- [x] **ERROR-004**: Preserve error context
   - Depends on: `[spec:error-handling]`
-  - Lines 289-292: `.unwrap_or_else()` loses original error
-  - Use proper error chaining with `anyhow::Context`
-  - Ensure root cause is preserved in error messages
+  - Fixed lines 289-292 in `check_response()`: Changed `.unwrap_or_else()` to `match` statement that preserves original error in `ApiError::NetworkError`
+  - Fixed lines 584-592 in `read_stream_range()`: Same pattern for range error response handling
+  - Original errors are now properly wrapped and preserved in error messages
+  - All tests pass, clippy clean, code formatted
 
 ### API Client (src/api/client.rs)
 
