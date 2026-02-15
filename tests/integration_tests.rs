@@ -800,8 +800,8 @@ async fn debug_nested_structure() {
 
     // Debug: Print all entries
     println!("All entries:");
-    for entry in inode_manager.entries().iter() {
-        println!("  inode {}: {:?}", entry.key(), entry.value());
+    for entry_ref in inode_manager.iter_entries() {
+        println!("  inode {}: {:?}", entry_ref.inode, entry_ref.entry);
     }
 
     let torrent_inode = inode_manager.lookup_torrent(99).unwrap();

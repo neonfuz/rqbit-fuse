@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Made entries field private with controlled accessors (INODE-004)
+  - Removed public `entries()` accessor method that exposed internal DashMap
+  - Added `InodeEntryRef` struct for safe iteration over entries
+  - Added `contains(inode: u64) -> bool` to check inode existence
+  - Added `iter_entries() -> impl Iterator<Item = InodeEntryRef>` for read-only iteration
+  - Added `len() -> usize` to get total entry count (including root)
+  - Added `is_empty() -> bool` to check if only root exists
+  - Updated all callers in tests to use new controlled API
+  - Prevents external code from directly modifying inode table
+  - All access now goes through controlled methods maintaining invariants
+
 ### Fixed
 
 - Fixed torrent directory mapping for single-file torrents (INODE-003)

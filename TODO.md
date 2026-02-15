@@ -237,12 +237,15 @@ Each item is designed to be completed independently. Research references are sto
   - Path resolution now works correctly for all torrent types
   - Directory listings show proper torrent contents
 
-- [ ] **INODE-004**: Make entries field private
+- [x] **INODE-004**: Make entries field private
   - Depends on: `[spec:inode-design]`
-  - Change `pub entries` to private
-  - Add controlled accessor methods
-  - Prevent external code from breaking invariants
-  - Update all existing callers
+  - Changed `pub entries` to private (field was already private, removed the `entries()` accessor method)
+  - Added controlled accessor methods: `contains()`, `iter_entries()`, `len()`, `is_empty()`
+  - Created `InodeEntryRef` struct for safe iteration
+  - Updated all callers in `src/fs/inode.rs` tests and `tests/integration_tests.rs`
+  - All tests pass: `cargo test` ✅
+  - No clippy warnings related to changes: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
 
 - [ ] **INODE-005**: Fix stale path references
   - Depends on: `[spec:inode-design]`

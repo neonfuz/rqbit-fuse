@@ -15,6 +15,13 @@ pub struct InodeManager {
     torrent_to_inode: DashMap<u64, u64>,
 }
 
+/// A view into an entry in the inode manager
+#[derive(Debug)]
+pub struct InodeEntryRef {
+    pub inode: u64,
+    pub entry: InodeEntry,
+}
+
 impl InodeManager {
     /// Creates a new InodeManager with root inode (inode 1) pre-allocated.
     pub fn new() -> Self {
@@ -142,9 +149,27 @@ impl InodeManager {
         Some(self.build_path(&entry))
     }
 
-    /// Gets all entries in the inode manager.
-    pub fn entries(&self) -> &DashMap<u64, InodeEntry> {
-        &self.entries
+    /// Check if an inode exists in the manager.
+    pub fn contains(&self, inode: u64) -> bool {
+        self.entries.contains_key(&inode)
+    }
+
+    /// Iterate over all entries (read-only).
+    pub fn iter_entries(&self) -> impl Iterator<Item = InodeEntryRef> + '_ {
+        self.entries.iter().map(|item| InodeEntryRef {
+            inode: *item.key(),
+            entry: item.value().clone(),
+        })
+    }
+
+    /// Get the total number of entries (including root).
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Check if the manager only contains the root inode.
+    pub fn is_empty(&self) -> bool {
+        self.entries.len() <= 1
     }
 
     /// Gets the torrent-to-inode mapping.
@@ -578,9 +603,8 @@ mod tests {
 
         // All inodes should be unique
         let mut inodes: Vec<u64> = manager
-            .entries
-            .iter()
-            .map(|e| e.ino())
+            .iter_entries()
+            .map(|e| e.entry.ino())
             .filter(|&ino| ino != 1)
             .collect();
         inodes.sort();
@@ -927,7 +951,8 @@ mod tests {
         );
 
         // All entries should be consistent (no orphans)
-        for entry in manager.entries.iter() {
+        for entry_ref in manager.iter_entries() {
+            let entry = &entry_ref.entry;
             let inode = entry.ino();
             if inode != 1 {
                 // Every non-root entry should have a valid parent
@@ -979,9 +1004,8 @@ mod tests {
 
         // Verify no duplicates in final state
         let final_inodes: HashSet<u64> = manager
-            .entries
-            .iter()
-            .map(|e| e.ino())
+            .iter_entries()
+            .map(|e| e.entry.ino())
             .filter(|&ino| ino != 1)
             .collect();
 
