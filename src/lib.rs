@@ -312,6 +312,7 @@ pub async fn run(config: Config) -> Result<()> {
     // Wrap in Arc for sharing between signal handler and main flow
     let fs_arc = Arc::new(fs);
     let mount_point = fs_arc.mount_point().to_path_buf();
+    let mount_point_cleanup = mount_point.clone();
 
     // Clone for signal handler
     let fs_for_signal = Arc::clone(&fs_arc);
@@ -333,19 +334,51 @@ pub async fn run(config: Config) -> Result<()> {
             }
         }
 
-        // Initiate graceful shutdown
-        fs_for_signal.shutdown();
+        // Initiate graceful shutdown with timeout
+        let shutdown_timeout = Duration::from_secs(10);
+        let mount_point_force = mount_point.clone();
 
-        // Try to unmount the filesystem
-        if let Err(e) = tokio::task::spawn_blocking(move || {
-            std::process::Command::new("fusermount")
-                .arg("-u")
-                .arg(&mount_point)
-                .output()
+        let shutdown_result = tokio::time::timeout(shutdown_timeout, async {
+            fs_for_signal.shutdown();
+
+            // Try to unmount the filesystem gracefully
+            tokio::task::spawn_blocking(move || {
+                std::process::Command::new("fusermount")
+                    .arg("-u")
+                    .arg(&mount_point)
+                    .output()
+            })
+            .await
         })
-        .await
-        {
-            tracing::warn!("Failed to unmount: {}", e);
+        .await;
+
+        match shutdown_result {
+            Ok(Ok(Ok(_))) => {
+                tracing::info!("Graceful shutdown completed successfully");
+            }
+            Ok(Ok(Err(e))) => {
+                tracing::warn!("Unmount failed, trying force unmount: {}", e);
+                // Try force unmount
+                if let Err(force_err) = tokio::task::spawn_blocking(move || {
+                    std::process::Command::new("fusermount")
+                        .arg("-uz")
+                        .arg(&mount_point_force)
+                        .output()
+                })
+                .await
+                {
+                    tracing::error!("Force unmount also failed: {}", force_err);
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::error!("Shutdown task failed: {}", e);
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "Shutdown timed out after {:?}, forcing exit",
+                    shutdown_timeout
+                );
+            }
         }
     });
 
@@ -365,7 +398,23 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     // The filesystem has been unmounted, clean up
-    fs_arc.shutdown();
+    // Use timeout to ensure we don't hang on shutdown
+    let cleanup_timeout = Duration::from_secs(5);
+    let cleanup = async {
+        fs_arc.shutdown();
+
+        // Try to unmount if still mounted
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new("fusermount")
+                .arg("-u")
+                .arg(mount_point_cleanup)
+                .output()
+        })
+        .await
+        .ok();
+    };
+
+    let _ = tokio::time::timeout(cleanup_timeout, cleanup).await;
 
     // Wait for signal handler to complete (it will timeout if already done)
     let _ = tokio::time::timeout(Duration::from_secs(5), signal_handler).await;

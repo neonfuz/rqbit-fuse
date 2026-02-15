@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add child process cleanup (RES-003)
+  - Added 10-second timeout for graceful shutdown in signal handler
+  - Added force unmount fallback (fusermount -uz) if graceful unmount fails
+  - Added 5-second timeout for cleanup on normal exit path
+  - All shutdown paths now properly handle timeouts to prevent hanging
+  - Created research/child-process-cleanup.md with findings
+  - All tests pass, clippy clean, code formatted
+
 - Implement graceful shutdown (RES-002)
   - Added shutdown() method to TorrentFS to stop background tasks
   - Added SIGINT/SIGTERM signal handling in run()

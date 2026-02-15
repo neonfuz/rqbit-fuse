@@ -626,11 +626,17 @@ Each item is designed to be completed independently. Research references are sto
   - Logs final metrics on shutdown
   - All tests pass, clippy clean, code formatted
 
-- [ ] **RES-003**: Add child process cleanup
+- [x] **RES-003**: Add child process cleanup
   - Ensure subprocess cleanup on exit
   - Add timeout for graceful shutdown
   - Force kill if needed
   - Test cleanup behavior
+  - Implemented in src/lib.rs:
+    - Added 10-second timeout for graceful shutdown in signal handler
+    - Added force unmount fallback (fusermount -uz) if graceful fails
+    - Added 5-second timeout for cleanup on normal exit path
+    - All shutdown paths now properly handle timeouts
+    - Research documented in research/child-process-cleanup.md
 
 - [ ] **RES-004**: Add resource limits
   - Maximum cache size (bytes, not just entries)
