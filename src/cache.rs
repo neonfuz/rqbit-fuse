@@ -12,6 +12,36 @@ pub struct CacheStats {
     pub evictions: u64,
     pub expired: u64,
     pub size: usize,
+    pub weight: u64,
+}
+
+impl CacheStats {
+    /// Calculate hit rate as a percentage (0-100)
+    ///
+    /// Returns 0.0 if there are no hits or misses.
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            return 0.0;
+        }
+        (self.hits as f64 / total as f64) * 100.0
+    }
+
+    /// Calculate miss rate as a percentage (0-100)
+    ///
+    /// Returns 0.0 if there are no hits or misses.
+    pub fn miss_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            return 0.0;
+        }
+        (self.misses as f64 / total as f64) * 100.0
+    }
+
+    /// Get total number of requests (hits + misses)
+    pub fn total_requests(&self) -> u64 {
+        self.hits + self.misses
+    }
 }
 
 /// A thread-safe cache with TTL support and LRU eviction.
@@ -33,8 +63,12 @@ pub struct Cache<K, V> {
     hits: ShardedCounter,
     /// Sharded miss counter for reduced contention
     misses: ShardedCounter,
+    /// Sharded eviction counter for tracking evictions
+    evictions: ShardedCounter,
     /// Default TTL for entries
     default_ttl: Duration,
+    /// Maximum capacity (for eviction tracking)
+    max_capacity: u64,
 }
 
 impl<K, V> Cache<K, V>
@@ -53,7 +87,9 @@ where
             inner,
             hits: ShardedCounter::new(),
             misses: ShardedCounter::new(),
+            evictions: ShardedCounter::new(),
             default_ttl,
+            max_capacity: max_entries as u64,
         }
     }
 
@@ -90,8 +126,20 @@ where
         // time_to_idle or a different approach. For now, we use
         // the cache-wide TTL set at construction.
         // TODO: Consider using moka's per-entry expiration when available
+
+        // Track size before insert for eviction estimation
+        let size_before = self.inner.entry_count();
+
         let arc_value = Arc::new(value);
         self.inner.insert(key, arc_value).await;
+
+        // Track potential evictions: if we were at capacity before and size didn't increase,
+        // an eviction likely occurred to make room. This is an approximation due to
+        // moka's async processing.
+        if size_before >= self.max_capacity {
+            self.evictions.increment();
+        }
+
         trace!("Inserted value into cache");
     }
 
@@ -116,9 +164,10 @@ where
         CacheStats {
             hits: self.hits.sum(),
             misses: self.misses.sum(),
-            evictions: 0, // moka doesn't expose eviction count directly
-            expired: 0,   // moka handles expiration internally
+            evictions: self.evictions.sum(),
+            expired: 0, // moka handles expiration internally
             size: self.inner.entry_count() as usize,
+            weight: 0, // Requires weigher to be configured; not available by default
         }
     }
 

@@ -240,7 +240,7 @@ pub use fs::filesystem::TorrentFS;
 ///
 /// Tracks API call latency, cache hits/misses, FUSE operation counts, and other
 /// useful metrics for debugging and optimization.
-pub use metrics::Metrics;
+pub use metrics::{CacheMetrics, Metrics};
 
 /// High-performance counter for concurrent metrics.
 ///

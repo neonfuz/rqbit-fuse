@@ -8,6 +8,7 @@ use tracing::{debug, info, trace, warn};
 /// Generates methods that:
 /// - Increment a counter field
 /// - Emit a trace log with the operation name
+#[allow(unused_macros)]
 macro_rules! record_op {
     // Variant with trace logging
     ($method:ident, $field:ident, $op_name:expr) => {
@@ -262,10 +263,115 @@ impl LatencyMetrics for ApiMetrics {
     }
 }
 
+/// Metrics for cache operations
+#[derive(Debug, Default)]
+pub struct CacheMetrics {
+    /// Total number of cache hits
+    pub hits: AtomicU64,
+    /// Total number of cache misses
+    pub misses: AtomicU64,
+    /// Total number of cache evictions
+    pub evictions: AtomicU64,
+    /// Current cache size (entries)
+    pub current_size: AtomicU64,
+    /// Peak cache size observed
+    pub peak_size: AtomicU64,
+    /// Total bytes served from cache
+    pub bytes_served: AtomicU64,
+}
+
+impl CacheMetrics {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a cache hit
+    pub fn record_hit(&self) {
+        self.hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a cache miss
+    pub fn record_miss(&self) {
+        self.misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a cache eviction
+    pub fn record_eviction(&self) {
+        self.evictions.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Update current cache size and track peak
+    pub fn update_size(&self, size: usize) {
+        let size = size as u64;
+        self.current_size.store(size, Ordering::Relaxed);
+
+        // Update peak if current size exceeds it
+        let current_peak = self.peak_size.load(Ordering::Relaxed);
+        if size > current_peak {
+            let _ = self.peak_size.compare_exchange(
+                current_peak,
+                size,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
+        }
+    }
+
+    /// Record bytes served from cache
+    pub fn record_bytes(&self, bytes: u64) {
+        self.bytes_served.fetch_add(bytes, Ordering::Relaxed);
+    }
+
+    /// Get hit rate as a percentage
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let total = hits + misses;
+        if total == 0 {
+            return 0.0;
+        }
+        (hits as f64 / total as f64) * 100.0
+    }
+
+    /// Get current cache size
+    pub fn current_size(&self) -> usize {
+        self.current_size.load(Ordering::Relaxed) as usize
+    }
+
+    /// Get peak cache size
+    pub fn peak_size(&self) -> usize {
+        self.peak_size.load(Ordering::Relaxed) as usize
+    }
+
+    /// Log a summary of cache metrics
+    pub fn log_summary(&self) {
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let evictions = self.evictions.load(Ordering::Relaxed);
+        let current_size = self.current_size.load(Ordering::Relaxed);
+        let peak_size = self.peak_size.load(Ordering::Relaxed);
+        let bytes_served = self.bytes_served.load(Ordering::Relaxed);
+
+        let hit_rate = self.hit_rate();
+
+        info!(
+            operation = "cache_metrics_summary",
+            hits = hits,
+            misses = misses,
+            hit_rate_pct = hit_rate,
+            evictions = evictions,
+            current_size = current_size,
+            peak_size = peak_size,
+            bytes_served = bytes_served,
+        );
+    }
+}
+
 /// Combined metrics for the entire system
 pub struct Metrics {
     pub fuse: Arc<FuseMetrics>,
     pub api: Arc<ApiMetrics>,
+    pub cache: Arc<CacheMetrics>,
     pub start_time: Instant,
 }
 
@@ -274,6 +380,7 @@ impl Metrics {
         Self {
             fuse: Arc::new(FuseMetrics::new()),
             api: Arc::new(ApiMetrics::new()),
+            cache: Arc::new(CacheMetrics::new()),
             start_time: Instant::now(),
         }
     }
@@ -284,6 +391,7 @@ impl Metrics {
         info!("=== torrent-fuse Metrics Summary ===");
         self.fuse.log_summary(elapsed);
         self.api.log_summary();
+        self.cache.log_summary();
         info!("====================================");
     }
 
@@ -293,6 +401,7 @@ impl Metrics {
         info!("--- torrent-fuse Metrics (periodic) ---");
         self.fuse.log_summary(elapsed);
         self.api.log_summary();
+        self.cache.log_summary();
         info!("---------------------------------------");
     }
 

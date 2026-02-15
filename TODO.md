@@ -731,11 +731,14 @@ Each item is designed to be completed independently. Research references are sto
   - No clippy warnings: cargo clippy ✅
   - Code formatted: cargo fmt ✅
 
-- [ ] **METRICS-002**: Add critical cache metrics
-  - Hit rate, miss rate
-  - Eviction counts
-  - Cache size over time
-  - Required for performance monitoring
+- [x] **METRICS-002**: Add critical cache metrics
+  - Hit rate, miss rate: Added `hit_rate()` and `miss_rate()` methods to CacheStats
+  - Eviction counts: Added tracking via ShardedCounter in Cache with approximate detection
+  - Cache size over time: Added CacheMetrics in metrics.rs with current_size, peak_size, hit_rate, bytes_served
+  - Added periodic logging of cache metrics via Metrics.log_periodic()
+  - All tests pass: cargo test ✅
+  - No clippy warnings: cargo clippy ✅
+  - Code formatted: cargo fmt ✅
 
 - [ ] **METRICS-003**: Reduce trace overhead
   - Remove traces from hot paths

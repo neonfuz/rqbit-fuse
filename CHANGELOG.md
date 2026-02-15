@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add critical cache metrics (METRICS-002)
+  - Added hit_rate() and miss_rate() computed methods to CacheStats
+  - Added eviction tracking via ShardedCounter in Cache
+  - Added CacheMetrics struct for comprehensive cache monitoring:
+    - hits, misses, evictions counters
+    - current_size, peak_size tracking
+    - bytes_served counter
+    - hit_rate() calculation
+    - log_summary() for periodic logging
+  - Integrated CacheMetrics into Metrics struct
+  - Exported CacheMetrics in public API
+  - All tests pass, clippy clean, code formatted
+
 - Add performance benchmarks (PERF-006)
   - Fixed benchmark compilation errors (missing canonical_path, DashSet import)
   - Cache benchmarks: insert (2M ops/s), read hit (4.8M ops/s) at 1000 entries
