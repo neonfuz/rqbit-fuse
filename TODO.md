@@ -286,10 +286,15 @@ Each item is designed to be completed independently. Research references are sto
   - Tracks bytes skipped since last yield and yields every 1MB
   - All streaming tests pass
 
-- [ ] **STREAM-004**: Implement backward seeking
-  - Currently only supports forward seeks
-  - Implement seek backward in stream
-  - Add seek tests for all directions
+- [x] **STREAM-004**: Implement backward seeking
+  - Already supported by creating new stream when can_read_at() returns false
+  - Verified backward seeking creates new HTTP connection
+  - Added 5 comprehensive seek tests:
+    - test_backward_seek_creates_new_stream: Verifies backward seek creates new stream
+    - test_forward_seek_within_limit_reuses_stream: Verifies small forward seeks reuse stream
+    - test_forward_seek_beyond_limit_creates_new_stream: Verifies large forward seeks create new stream
+    - test_sequential_reads_reuse_stream: Verifies sequential access pattern optimization
+    - test_seek_to_same_position_reuses_stream: Verifies idempotent seeks reuse stream
 
 ---
 

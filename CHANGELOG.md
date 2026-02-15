@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Implemented backward seeking with comprehensive tests (STREAM-004)
+  - Backward seeking already worked by creating new streams when can_read_at() returns false
+  - Added 5 comprehensive seek tests to verify all seek behaviors:
+    - test_backward_seek_creates_new_stream: Verifies backward seek creates new HTTP connection
+    - test_forward_seek_within_limit_reuses_stream: Verifies small forward seeks reuse existing stream
+    - test_forward_seek_beyond_limit_creates_new_stream: Verifies large forward seeks create new stream
+    - test_sequential_reads_reuse_stream: Verifies sequential access pattern optimization
+    - test_seek_to_same_position_reuses_stream: Verifies idempotent seeks reuse stream
+  - All 9 streaming tests pass: cargo test streaming::tests ✅
+  - No clippy warnings: cargo clippy ✅
+
 - Added yielding in large skip operations (STREAM-003)
   - Added `SKIP_YIELD_INTERVAL` constant (1MB) to prevent blocking async runtime
   - Modified `PersistentStream::skip()` to yield every 1MB during large skip operations

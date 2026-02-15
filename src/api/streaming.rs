@@ -679,4 +679,161 @@ mod tests {
             );
         }
     }
+
+    /// Test backward seeking creates a new stream
+    #[tokio::test]
+    async fn test_backward_seek_creates_new_stream() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        // Start a mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock response for range request at offset 0
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206)
+                .set_body_bytes(vec![0u8; 1000]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri());
+
+        // First read at offset 0
+        let _ = manager.read(1, 0, 0, 100).await;
+
+        // Then read at offset 500 (backward seek)
+        let _ = manager.read(1, 0, 500, 100).await;
+
+        // Verify both requests were made (backward seek created new stream)
+        mock_server.verify().await;
+    }
+
+    /// Test forward seek within MAX_SEEK_FORWARD reuses stream
+    #[tokio::test]
+    async fn test_forward_seek_within_limit_reuses_stream() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        let mock_server = MockServer::start().await;
+
+        // Should only make ONE request since forward seek within limit reuses stream
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206)
+                .set_body_bytes(vec![0u8; 5000]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri());
+
+        // Read at offset 0
+        let result1 = manager.read(1, 0, 0, 100).await;
+        assert!(result1.is_ok(), "First read should succeed");
+
+        // Read at offset 100 (small forward seek, within MAX_SEEK_FORWARD)
+        let result2 = manager.read(1, 0, 100, 100).await;
+        assert!(result2.is_ok(), "Second read should succeed");
+
+        // Verify only one request was made (stream was reused)
+        mock_server.verify().await;
+    }
+
+    /// Test forward seek beyond MAX_SEEK_FORWARD creates new stream
+    #[tokio::test]
+    async fn test_forward_seek_beyond_limit_creates_new_stream() {
+        use crate::api::streaming::MAX_SEEK_FORWARD;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        let mock_server = MockServer::start().await;
+
+        let seek_distance = MAX_SEEK_FORWARD + 1024;
+
+        // Mock response for any requests to this endpoint
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206)
+                .set_body_bytes(vec![0u8; 100]))
+            .expect(2) // Expect 2 requests (initial + large seek)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri());
+
+        // Read at offset 0
+        let _ = manager.read(1, 0, 0, 100).await;
+
+        // Read at large offset (beyond MAX_SEEK_FORWARD)
+        let _ = manager.read(1, 0, seek_distance, 100).await;
+
+        // Verify two requests were made (new stream created for large seek)
+        mock_server.verify().await;
+    }
+
+    /// Test sequential reads reuse the same stream
+    #[tokio::test]
+    async fn test_sequential_reads_reuse_stream() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        let mock_server = MockServer::start().await;
+
+        // Should only make ONE request for sequential reads
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206)
+                .set_body_bytes(vec![0u8; 10000]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri());
+
+        // Sequential reads at increasing offsets
+        for i in 0..10 {
+            let offset = i * 100;
+            let result = manager.read(1, 0, offset, 100).await;
+            assert!(result.is_ok(), "Read {} at offset {} should succeed", i, offset);
+        }
+
+        // Verify only one request was made
+        mock_server.verify().await;
+    }
+
+    /// Test seek to same position reuses stream
+    #[tokio::test]
+    async fn test_seek_to_same_position_reuses_stream() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        let mock_server = MockServer::start().await;
+
+        // Should only make ONE request
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206)
+                .set_body_bytes(vec![0u8; 1000]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri());
+
+        // Read at offset 100
+        let _ = manager.read(1, 0, 100, 100).await;
+
+        // Read at same offset again
+        let _ = manager.read(1, 0, 100, 100).await;
+
+        // Verify only one request was made
+        mock_server.verify().await;
+    }
 }
