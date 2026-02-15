@@ -251,6 +251,7 @@ pub use sharded_counter::ShardedCounter;
 use crate::api::create_api_client;
 use anyhow::{Context, Result};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Run the torrent-fuse filesystem.
 ///
@@ -308,13 +309,66 @@ pub async fn run(config: Config) -> Result<()> {
     let fs = TorrentFS::new(config, Arc::clone(&metrics), async_worker)
         .context("Failed to create torrent filesystem")?;
 
+    // Wrap in Arc for sharing between signal handler and main flow
+    let fs_arc = Arc::new(fs);
+    let mount_point = fs_arc.mount_point().to_path_buf();
+
+    // Clone for signal handler
+    let fs_for_signal = Arc::clone(&fs_arc);
+    let fs_for_mount = Arc::clone(&fs_arc);
+
+    // Spawn signal handler task
+    let signal_handler = tokio::spawn(async move {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut sigint = signal(SignalKind::interrupt()).unwrap();
+        let mut sigterm = signal(SignalKind::terminate()).unwrap();
+
+        tokio::select! {
+            _ = sigint.recv() => {
+                tracing::info!("Received SIGINT, initiating graceful shutdown...");
+            }
+            _ = sigterm.recv() => {
+                tracing::info!("Received SIGTERM, initiating graceful shutdown...");
+            }
+        }
+
+        // Initiate graceful shutdown
+        fs_for_signal.shutdown();
+
+        // Try to unmount the filesystem
+        if let Err(e) = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("fusermount")
+                .arg("-u")
+                .arg(&mount_point)
+                .output()
+        })
+        .await
+        {
+            tracing::warn!("Failed to unmount: {}", e);
+        }
+    });
+
     // Discover existing torrents before mounting
-    crate::fs::filesystem::discover_existing_torrents(&fs)
+    crate::fs::filesystem::discover_existing_torrents(&fs_arc)
         .await
         .context("Failed to discover existing torrents")?;
 
     // Mount the filesystem (this blocks until unmounted)
-    fs.mount().context("Failed to mount filesystem")?;
+    // This will return when the filesystem is unmounted (either via signal or externally)
+    // Clone the Arc to get owned TorrentFS for mount (cheap - just refcount)
+    if let Err(e) = <TorrentFS as Clone>::clone(&*fs_for_mount).mount() {
+        // If mount fails, we still need to clean up
+        fs_arc.shutdown();
+        metrics.log_full_summary();
+        return Err(e);
+    }
+
+    // The filesystem has been unmounted, clean up
+    fs_arc.shutdown();
+
+    // Wait for signal handler to complete (it will timeout if already done)
+    let _ = tokio::time::timeout(Duration::from_secs(5), signal_handler).await;
 
     // Log final metrics on shutdown
     metrics.log_full_summary();

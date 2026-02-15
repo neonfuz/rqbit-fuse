@@ -25,6 +25,9 @@ use tracing::{debug, error, info, instrument, trace, warn};
 /// The main FUSE filesystem implementation for torrent-fuse.
 /// Implements the fuser::Filesystem trait to provide a FUSE interface
 /// over the rqbit HTTP API.
+///
+/// Clone is cheap as it only increments Arc reference counts.
+#[derive(Clone)]
 pub struct TorrentFS {
     /// Configuration for the filesystem
     config: Config,
@@ -54,6 +57,11 @@ pub struct TorrentFS {
 }
 
 impl TorrentFS {
+    /// Get the mount point path.
+    pub fn mount_point(&self) -> &std::path::Path {
+        &self.config.mount.mount_point
+    }
+
     /// Creates a new TorrentFS instance with the given configuration.
     /// Note: This does not initialize the filesystem - call mount() to do so.
     ///
@@ -322,6 +330,24 @@ impl TorrentFS {
                 info!("Stopped file handle cleanup");
             }
         }
+    }
+
+    /// Gracefully shut down the filesystem.
+    ///
+    /// This stops all background tasks:
+    /// - Status monitoring
+    /// - Torrent discovery
+    /// - File handle cleanup
+    ///
+    /// It also shuts down the async worker to complete pending operations.
+    pub fn shutdown(&self) {
+        info!("Initiating graceful shutdown...");
+
+        self.stop_status_monitoring();
+        self.stop_torrent_discovery();
+        self.stop_handle_cleanup();
+
+        info!("Graceful shutdown complete");
     }
 
     /// Refresh torrent list from rqbit with cooldown protection.

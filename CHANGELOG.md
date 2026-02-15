@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Implement graceful shutdown (RES-002)
+  - Added shutdown() method to TorrentFS to stop background tasks
+  - Added SIGINT/SIGTERM signal handling in run()
+  - Background tasks (status monitoring, discovery, cleanup) are cleanly stopped on shutdown
+  - Filesystem attempts to unmount via fusermount on signal
+  - All tests pass, clippy clean, code formatted
+
 - Optimize buffer allocation (PERF-005)
   - Changed streaming.rs to use BytesMut instead of vec![0u8; size]
   - Avoids zeroing overhead on buffer allocation
