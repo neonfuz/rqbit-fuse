@@ -847,7 +847,9 @@ async fn test_lookup_successful_file() {
         .expect("readme.txt should be in children");
 
     // Verify file attributes can be built (this is what lookup returns)
-    let file_entry = inode_manager.get(readme.0).expect("File entry should exist");
+    let file_entry = inode_manager
+        .get(readme.0)
+        .expect("File entry should exist");
     let attr = fs.build_file_attr(&file_entry);
     assert_eq!(attr.kind, fuser::FileType::RegularFile);
     assert_eq!(attr.size, 1024);
@@ -899,7 +901,9 @@ async fn test_lookup_successful_directory() {
         .expect("Torrent should be in root children");
 
     // Verify directory attributes can be built
-    let dir_entry = inode_manager.get(torrent_dir.0).expect("Directory entry should exist");
+    let dir_entry = inode_manager
+        .get(torrent_dir.0)
+        .expect("Directory entry should exist");
     let attr = fs.build_file_attr(&dir_entry);
     assert_eq!(attr.kind, fuser::FileType::Directory);
 }
@@ -951,11 +955,16 @@ async fn test_lookup_nonexistent_path() {
     let nonexistent = children
         .iter()
         .find(|(_, entry)| entry.name() == "nonexistent.txt");
-    assert!(nonexistent.is_none(), "Non-existent file should not be found");
+    assert!(
+        nonexistent.is_none(),
+        "Non-existent file should not be found"
+    );
 
     // Verify lookup_by_path returns None for non-existent full paths
     assert!(
-        inode_manager.lookup_by_path("/Test Torrent/nonexistent.txt").is_none(),
+        inode_manager
+            .lookup_by_path("/Test Torrent/nonexistent.txt")
+            .is_none(),
         "Non-existent path should return None"
     );
     assert!(
@@ -963,7 +972,9 @@ async fn test_lookup_nonexistent_path() {
         "Non-existent torrent should return None"
     );
     assert!(
-        inode_manager.lookup_by_path("/Test Torrent/subdir/nonexistent.txt").is_none(),
+        inode_manager
+            .lookup_by_path("/Test Torrent/subdir/nonexistent.txt")
+            .is_none(),
         "Non-existent nested path should return None"
     );
 }
@@ -1009,7 +1020,9 @@ async fn test_lookup_invalid_parent() {
         .lookup_by_path("/Test Torrent/file1.txt")
         .expect("File should exist");
 
-    let file_entry = inode_manager.get(file_ino).expect("File entry should exist");
+    let file_entry = inode_manager
+        .get(file_ino)
+        .expect("File entry should exist");
 
     // Verify the entry is NOT a directory
     assert!(!file_entry.is_directory(), "File should not be a directory");
@@ -1164,17 +1177,26 @@ async fn test_lookup_special_characters() {
     let children = inode_manager.get_children(torrent_dir_ino);
     let names: Vec<_> = children.iter().map(|(_, entry)| entry.name()).collect();
 
-    assert!(names.contains(&"file with spaces.txt"), "Spaces in filename should work");
-    assert!(names.contains(&"unicode_日本語.txt"), "Unicode in filename should work");
-    assert!(names.contains(&"symbols@#$%.txt"), "Symbols in filename should work");
+    assert!(
+        names.contains(&"file with spaces.txt"),
+        "Spaces in filename should work"
+    );
+    assert!(
+        names.contains(&"unicode_日本語.txt"),
+        "Unicode in filename should work"
+    );
+    assert!(
+        names.contains(&"symbols@#$%.txt"),
+        "Symbols in filename should work"
+    );
 
     // Verify full path lookup works
-    assert!(
-        inode_manager.lookup_by_path("/Special Torrent/file with spaces.txt").is_some()
-    );
-    assert!(
-        inode_manager.lookup_by_path("/Special Torrent/unicode_日本語.txt").is_some()
-    );
+    assert!(inode_manager
+        .lookup_by_path("/Special Torrent/file with spaces.txt")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Special Torrent/unicode_日本語.txt")
+        .is_some());
 }
 
 // ============================================================================
@@ -1234,9 +1256,19 @@ async fn test_getattr_file_attributes() {
 
     assert_eq!(small_attr.ino, small_ino, "Inode should match");
     assert_eq!(small_attr.size, 100, "Size should be 100 bytes");
-    assert_eq!(small_attr.blocks, 1, "Should occupy 1 block (ceiling of 100/4096)");
-    assert_eq!(small_attr.kind, fuser::FileType::RegularFile, "Should be a regular file");
-    assert_eq!(small_attr.perm, 0o444, "Permissions should be read-only (444)");
+    assert_eq!(
+        small_attr.blocks, 1,
+        "Should occupy 1 block (ceiling of 100/4096)"
+    );
+    assert_eq!(
+        small_attr.kind,
+        fuser::FileType::RegularFile,
+        "Should be a regular file"
+    );
+    assert_eq!(
+        small_attr.perm, 0o444,
+        "Permissions should be read-only (444)"
+    );
     assert_eq!(small_attr.nlink, 1, "Should have 1 hard link");
     assert_eq!(small_attr.blksize, 4096, "Block size should be 4096");
 
@@ -1248,7 +1280,10 @@ async fn test_getattr_file_attributes() {
     let medium_attr = fs.build_file_attr(&medium_entry);
 
     assert_eq!(medium_attr.size, 8192, "Size should be 8192 bytes");
-    assert_eq!(medium_attr.blocks, 2, "Should occupy 2 blocks (ceiling of 8192/4096)");
+    assert_eq!(
+        medium_attr.blocks, 2,
+        "Should occupy 2 blocks (ceiling of 8192/4096)"
+    );
     assert_eq!(medium_attr.kind, fuser::FileType::RegularFile);
     assert_eq!(medium_attr.perm, 0o444);
 
@@ -1259,8 +1294,14 @@ async fn test_getattr_file_attributes() {
     let large_entry = inode_manager.get(large_ino).expect("Entry should exist");
     let large_attr = fs.build_file_attr(&large_entry);
 
-    assert_eq!(large_attr.size, 10485760, "Size should be 10485760 bytes (10 MB)");
-    assert_eq!(large_attr.blocks, 2560, "Should occupy 2560 blocks (10485760/4096)");
+    assert_eq!(
+        large_attr.size, 10485760,
+        "Size should be 10485760 bytes (10 MB)"
+    );
+    assert_eq!(
+        large_attr.blocks, 2560,
+        "Should occupy 2560 blocks (10485760/4096)"
+    );
     assert_eq!(large_attr.kind, fuser::FileType::RegularFile);
     assert_eq!(large_attr.perm, 0o444);
 }
@@ -1301,7 +1342,11 @@ async fn test_getattr_directory_attributes() {
             FileInfo {
                 name: "subdir/nested/deep.txt".to_string(),
                 length: 512,
-                components: vec!["subdir".to_string(), "nested".to_string(), "deep.txt".to_string()],
+                components: vec![
+                    "subdir".to_string(),
+                    "nested".to_string(),
+                    "deep.txt".to_string(),
+                ],
             },
         ],
         piece_length: Some(1048576),
@@ -1316,11 +1361,21 @@ async fn test_getattr_directory_attributes() {
     let root_attr = fs.build_file_attr(&root_entry);
 
     assert_eq!(root_attr.ino, 1, "Root inode should be 1");
-    assert_eq!(root_attr.kind, fuser::FileType::Directory, "Root should be a directory");
+    assert_eq!(
+        root_attr.kind,
+        fuser::FileType::Directory,
+        "Root should be a directory"
+    );
     assert_eq!(root_attr.size, 0, "Directory size should be 0");
-    assert_eq!(root_attr.perm, 0o555, "Permissions should be read+execute (555)");
+    assert_eq!(
+        root_attr.perm, 0o555,
+        "Permissions should be read+execute (555)"
+    );
     // nlink should be 2 + number of children (1 torrent directory)
-    assert_eq!(root_attr.nlink, 3, "nlink should be 3 (2 + 1 torrent directory)");
+    assert_eq!(
+        root_attr.nlink, 3,
+        "nlink should be 3 (2 + 1 torrent directory)"
+    );
     assert_eq!(root_attr.blksize, 4096, "Block size should be 4096");
 
     // Test torrent directory attributes
@@ -1379,7 +1434,11 @@ async fn test_getattr_nonexistent_inode() {
 
     for ino in nonexistent_inodes {
         let entry = inode_manager.get(ino);
-        assert!(entry.is_none(), "Non-existent inode {} should return None", ino);
+        assert!(
+            entry.is_none(),
+            "Non-existent inode {} should return None",
+            ino
+        );
     }
 
     // Verify that inode_manager.get() returns None for invalid inodes
@@ -1436,24 +1495,15 @@ async fn test_getattr_timestamp_consistency() {
     let timestamp_reasonable = |ts: std::time::SystemTime| {
         let elapsed_since = now.duration_since(ts);
         let elapsed_until = ts.duration_since(now);
-        
+
         // Timestamp should be within last 60 seconds or very close to now
-        elapsed_since.map(|d| d.as_secs() < 60).unwrap_or(true) ||
-        elapsed_until.map(|d| d.as_secs() < 1).unwrap_or(false)
+        elapsed_since.map(|d| d.as_secs() < 60).unwrap_or(true)
+            || elapsed_until.map(|d| d.as_secs() < 1).unwrap_or(false)
     };
 
-    assert!(
-        timestamp_reasonable(attr.atime),
-        "atime should be recent"
-    );
-    assert!(
-        timestamp_reasonable(attr.mtime),
-        "mtime should be recent"
-    );
-    assert!(
-        timestamp_reasonable(attr.ctime),
-        "ctime should be recent"
-    );
+    assert!(timestamp_reasonable(attr.atime), "atime should be recent");
+    assert!(timestamp_reasonable(attr.mtime), "mtime should be recent");
+    assert!(timestamp_reasonable(attr.ctime), "ctime should be recent");
 
     // Verify crtime (creation time) is a fixed value
     let expected_crtime = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
@@ -1506,13 +1556,19 @@ async fn test_getattr_symlink_attributes() {
         target_path.clone(),
     );
 
-    let symlink_entry = inode_manager.get(symlink_ino).expect("Symlink entry should exist");
+    let symlink_entry = inode_manager
+        .get(symlink_ino)
+        .expect("Symlink entry should exist");
     let attr = fs.build_file_attr(&symlink_entry);
 
     // Verify symlink attributes
     assert_eq!(attr.ino, symlink_ino, "Inode should match");
     assert_eq!(attr.kind, fuser::FileType::Symlink, "Should be a symlink");
-    assert_eq!(attr.size, target_path.len() as u64, "Size should be target path length");
+    assert_eq!(
+        attr.size,
+        target_path.len() as u64,
+        "Size should be target path length"
+    );
     assert_eq!(attr.perm, 0o777, "Symlinks should have 777 permissions");
     assert_eq!(attr.nlink, 1, "Should have 1 hard link");
     assert_eq!(attr.blocks, 1, "Should occupy 1 block");
