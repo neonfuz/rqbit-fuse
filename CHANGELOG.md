@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Simplified configuration module with macros (SIMPLIFY-001)
+  - Added `default_fn!`, `default_impl!`, and `env_var!` macros
+  - Reduced `src/config/mod.rs` from 515 to ~347 lines (~168 line reduction)
+  - Replaced 20 verbose default functions with 20 macro calls
+  - Replaced 6 Default trait implementations with 6 macro calls
+  - Replaced 20 environment variable merge blocks with 20 macro calls
+  - All existing tests pass without modification
+  - No functional changes - pure refactoring for maintainability
+
 ### Added
 
 - Implemented unique file handle allocation (FS-003)

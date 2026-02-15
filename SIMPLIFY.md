@@ -19,13 +19,13 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### Configuration (`src/config/mod.rs`)
 
-- [ ] **SIMPLIFY-001**: Add macros to reduce config boilerplate
+- [x] **SIMPLIFY-001**: Add macros to reduce config boilerplate
   - [migration:SIMPLIFY-001-config-macros](migration/SIMPLIFY-001-config-macros.md)
   - Create `env_var!`, `default_fn!`, `default_impl!` macros
-  - Replace 19 default functions, 6 Default impls, 24 env merge blocks
+  - Replace 20 default functions, 6 Default impls, 20 env merge blocks
   - **Lines reduced**: ~168 lines (515 → 347)
   - **Risk**: Low - macros preserve exact behavior
-  - **Test**: `cargo test config::tests`
+  - **Test**: `cargo test config::tests` ✅ All tests pass
 
 ### API Client (`src/api/client.rs`)
 

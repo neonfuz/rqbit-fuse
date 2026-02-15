@@ -2,6 +2,44 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
+// Macros for reducing config boilerplate
+macro_rules! default_fn {
+    ($name:ident, $ty:ty, $val:expr) => {
+        fn $name() -> $ty {
+            $val
+        }
+    };
+}
+
+macro_rules! default_impl {
+    ($struct:ty, $($field:ident: $default_fn:ident),* $(,)?) => {
+        impl Default for $struct {
+            fn default() -> Self {
+                Self {
+                    $($field: $default_fn(),)*
+                }
+            }
+        }
+    };
+}
+
+macro_rules! env_var {
+    // String type - no parsing needed
+    ($env_name:expr, $field:expr) => {
+        if let Ok(val) = std::env::var($env_name) {
+            $field = val;
+        }
+    };
+    // Type with parsing (numbers, bools, PathBuf)
+    ($env_name:expr, $field:expr, $parse:expr) => {
+        if let Ok(val) = std::env::var($env_name) {
+            $field = $parse(&val).map_err(|_| {
+                ConfigError::InvalidValue(concat!($env_name, " has invalid format").into())
+            })?;
+        }
+    };
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -19,210 +57,82 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ApiConfig {
-    #[serde(default = "default_api_url")]
     pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CacheConfig {
-    #[serde(default = "default_metadata_ttl")]
     pub metadata_ttl: u64,
-    #[serde(default = "default_torrent_list_ttl")]
     pub torrent_list_ttl: u64,
-    #[serde(default = "default_piece_ttl")]
     pub piece_ttl: u64,
-    #[serde(default = "default_max_entries")]
     pub max_entries: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MountConfig {
-    #[serde(default = "default_mount_point")]
     pub mount_point: PathBuf,
-    #[serde(default = "default_allow_other")]
     pub allow_other: bool,
-    #[serde(default = "default_auto_unmount")]
     pub auto_unmount: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PerformanceConfig {
-    #[serde(default = "default_read_timeout")]
     pub read_timeout: u64,
-    #[serde(default = "default_max_concurrent_reads")]
     pub max_concurrent_reads: usize,
-    #[serde(default = "default_readahead_size")]
     pub readahead_size: u64,
-    #[serde(default = "default_piece_check_enabled")]
     pub piece_check_enabled: bool,
-    #[serde(default = "default_return_eagain_for_unavailable")]
     pub return_eagain_for_unavailable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MonitoringConfig {
-    #[serde(default = "default_status_poll_interval")]
     pub status_poll_interval: u64,
-    #[serde(default = "default_stalled_timeout")]
     pub stalled_timeout: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LoggingConfig {
-    #[serde(default = "default_log_level")]
     pub level: String,
-    #[serde(default = "default_log_fuse_operations")]
     pub log_fuse_operations: bool,
-    #[serde(default = "default_log_api_calls")]
     pub log_api_calls: bool,
-    #[serde(default = "default_metrics_enabled")]
     pub metrics_enabled: bool,
-    #[serde(default = "default_metrics_interval_secs")]
     pub metrics_interval_secs: u64,
 }
 
-fn default_api_url() -> String {
-    "http://127.0.0.1:3030".to_string()
-}
+default_fn!(default_api_url, String, "http://127.0.0.1:3030".to_string());
+default_fn!(default_metadata_ttl, u64, 60);
+default_fn!(default_torrent_list_ttl, u64, 30);
+default_fn!(default_piece_ttl, u64, 5);
+default_fn!(default_max_entries, usize, 1000);
+default_fn!(default_mount_point, PathBuf, PathBuf::from("/mnt/torrents"));
+default_fn!(default_allow_other, bool, false);
+default_fn!(default_auto_unmount, bool, true);
+default_fn!(default_read_timeout, u64, 30);
+default_fn!(default_max_concurrent_reads, usize, 10);
+default_fn!(default_readahead_size, u64, 33554432);
+default_fn!(default_piece_check_enabled, bool, true);
+default_fn!(default_return_eagain_for_unavailable, bool, false);
+default_fn!(default_status_poll_interval, u64, 5);
+default_fn!(default_stalled_timeout, u64, 300);
+default_fn!(default_log_level, String, "info".to_string());
+default_fn!(default_log_fuse_operations, bool, true);
+default_fn!(default_log_api_calls, bool, true);
+default_fn!(default_metrics_enabled, bool, true);
+default_fn!(default_metrics_interval_secs, u64, 60);
 
-fn default_metadata_ttl() -> u64 {
-    60
-}
-
-fn default_torrent_list_ttl() -> u64 {
-    30
-}
-
-fn default_piece_ttl() -> u64 {
-    5
-}
-
-fn default_max_entries() -> usize {
-    1000
-}
-
-fn default_mount_point() -> PathBuf {
-    PathBuf::from("/mnt/torrents")
-}
-
-fn default_allow_other() -> bool {
-    false
-}
-
-fn default_auto_unmount() -> bool {
-    true
-}
-
-fn default_read_timeout() -> u64 {
-    30
-}
-
-fn default_max_concurrent_reads() -> usize {
-    10
-}
-
-fn default_readahead_size() -> u64 {
-    33554432
-}
-
-fn default_piece_check_enabled() -> bool {
-    true
-}
-
-fn default_return_eagain_for_unavailable() -> bool {
-    false
-}
-
-fn default_status_poll_interval() -> u64 {
-    5
-}
-
-fn default_stalled_timeout() -> u64 {
-    300
-}
-
-fn default_log_level() -> String {
-    "info".to_string()
-}
-
-fn default_log_fuse_operations() -> bool {
-    true
-}
-
-fn default_log_api_calls() -> bool {
-    true
-}
-
-fn default_metrics_enabled() -> bool {
-    true
-}
-
-fn default_metrics_interval_secs() -> u64 {
-    60
-}
-
-impl Default for ApiConfig {
-    fn default() -> Self {
-        Self {
-            url: default_api_url(),
-        }
-    }
-}
-
-impl Default for CacheConfig {
-    fn default() -> Self {
-        Self {
-            metadata_ttl: default_metadata_ttl(),
-            torrent_list_ttl: default_torrent_list_ttl(),
-            piece_ttl: default_piece_ttl(),
-            max_entries: default_max_entries(),
-        }
-    }
-}
-
-impl Default for MountConfig {
-    fn default() -> Self {
-        Self {
-            mount_point: default_mount_point(),
-            allow_other: default_allow_other(),
-            auto_unmount: default_auto_unmount(),
-        }
-    }
-}
-
-impl Default for PerformanceConfig {
-    fn default() -> Self {
-        Self {
-            read_timeout: default_read_timeout(),
-            max_concurrent_reads: default_max_concurrent_reads(),
-            readahead_size: default_readahead_size(),
-            piece_check_enabled: default_piece_check_enabled(),
-            return_eagain_for_unavailable: default_return_eagain_for_unavailable(),
-        }
-    }
-}
-
-impl Default for MonitoringConfig {
-    fn default() -> Self {
-        Self {
-            status_poll_interval: default_status_poll_interval(),
-            stalled_timeout: default_stalled_timeout(),
-        }
-    }
-}
-
-impl Default for LoggingConfig {
-    fn default() -> Self {
-        Self {
-            level: default_log_level(),
-            log_fuse_operations: default_log_fuse_operations(),
-            log_api_calls: default_log_api_calls(),
-            metrics_enabled: default_metrics_enabled(),
-            metrics_interval_secs: default_metrics_interval_secs(),
-        }
-    }
-}
+default_impl!(ApiConfig, url: default_api_url);
+default_impl!(CacheConfig, metadata_ttl: default_metadata_ttl, torrent_list_ttl: default_torrent_list_ttl, piece_ttl: default_piece_ttl, max_entries: default_max_entries);
+default_impl!(MountConfig, mount_point: default_mount_point, allow_other: default_allow_other, auto_unmount: default_auto_unmount);
+default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable);
+default_impl!(MonitoringConfig, status_poll_interval: default_status_poll_interval, stalled_timeout: default_stalled_timeout);
+default_impl!(LoggingConfig, level: default_log_level, log_fuse_operations: default_log_fuse_operations, log_api_calls: default_log_api_calls, metrics_enabled: default_metrics_enabled, metrics_interval_secs: default_metrics_interval_secs);
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -267,127 +177,94 @@ impl Config {
     }
 
     pub fn merge_from_env(mut self) -> Result<Self, ConfigError> {
-        if let Ok(url) = std::env::var("TORRENT_FUSE_API_URL") {
-            self.api.url = url;
-        }
-
-        if let Ok(mount_point) = std::env::var("TORRENT_FUSE_MOUNT_POINT") {
-            self.mount.mount_point = PathBuf::from(mount_point);
-        }
-
-        if let Ok(ttl) = std::env::var("TORRENT_FUSE_METADATA_TTL") {
-            self.cache.metadata_ttl = ttl.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_METADATA_TTL must be a number".into())
-            })?;
-        }
-
-        if let Ok(ttl) = std::env::var("TORRENT_FUSE_TORRENT_LIST_TTL") {
-            self.cache.torrent_list_ttl = ttl.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_TORRENT_LIST_TTL must be a number".into())
-            })?;
-        }
-
-        if let Ok(ttl) = std::env::var("TORRENT_FUSE_PIECE_TTL") {
-            self.cache.piece_ttl = ttl.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_PIECE_TTL must be a number".into())
-            })?;
-        }
-
-        if let Ok(entries) = std::env::var("TORRENT_FUSE_MAX_ENTRIES") {
-            self.cache.max_entries = entries.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_MAX_ENTRIES must be a number".into())
-            })?;
-        }
-
-        if let Ok(timeout) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
-            self.performance.read_timeout = timeout.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_READ_TIMEOUT must be a number".into())
-            })?;
-        }
-
-        if let Ok(concurrent) = std::env::var("TORRENT_FUSE_MAX_CONCURRENT_READS") {
-            self.performance.max_concurrent_reads = concurrent.parse().map_err(|_| {
-                ConfigError::InvalidValue(
-                    "TORRENT_FUSE_MAX_CONCURRENT_READS must be a number".into(),
-                )
-            })?;
-        }
-
-        if let Ok(size) = std::env::var("TORRENT_FUSE_READAHEAD_SIZE") {
-            self.performance.readahead_size = size.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_READAHEAD_SIZE must be a number".into())
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_ALLOW_OTHER") {
-            self.mount.allow_other = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_ALLOW_OTHER must be true or false".into())
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_AUTO_UNMOUNT") {
-            self.mount.auto_unmount = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_AUTO_UNMOUNT must be true or false".into())
-            })?;
-        }
-
-        if let Ok(interval) = std::env::var("TORRENT_FUSE_STATUS_POLL_INTERVAL") {
-            self.monitoring.status_poll_interval = interval.parse().map_err(|_| {
-                ConfigError::InvalidValue(
-                    "TORRENT_FUSE_STATUS_POLL_INTERVAL must be a number".into(),
-                )
-            })?;
-        }
-
-        if let Ok(timeout) = std::env::var("TORRENT_FUSE_STALLED_TIMEOUT") {
-            self.monitoring.stalled_timeout = timeout.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_STALLED_TIMEOUT must be a number".into())
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_PIECE_CHECK_ENABLED") {
-            self.performance.piece_check_enabled = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue(
-                    "TORRENT_FUSE_PIECE_CHECK_ENABLED must be true or false".into(),
-                )
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_RETURN_EAGAIN") {
-            self.performance.return_eagain_for_unavailable = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_RETURN_EAGAIN must be true or false".into())
-            })?;
-        }
-
-        if let Ok(level) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
-            self.logging.level = level;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_FUSE_OPS") {
-            self.logging.log_fuse_operations = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_LOG_FUSE_OPS must be true or false".into())
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_API_CALLS") {
-            self.logging.log_api_calls = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_LOG_API_CALLS must be true or false".into())
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_METRICS_ENABLED") {
-            self.logging.metrics_enabled = val.parse::<bool>().map_err(|_| {
-                ConfigError::InvalidValue(
-                    "TORRENT_FUSE_METRICS_ENABLED must be true or false".into(),
-                )
-            })?;
-        }
-
-        if let Ok(interval) = std::env::var("TORRENT_FUSE_METRICS_INTERVAL") {
-            self.logging.metrics_interval_secs = interval.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_METRICS_INTERVAL must be a number".into())
-            })?;
-        }
+        env_var!("TORRENT_FUSE_API_URL", self.api.url);
+        env_var!(
+            "TORRENT_FUSE_MOUNT_POINT",
+            self.mount.mount_point,
+            |v| Ok::<_, std::convert::Infallible>(PathBuf::from(v))
+        );
+        env_var!(
+            "TORRENT_FUSE_METADATA_TTL",
+            self.cache.metadata_ttl,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_TORRENT_LIST_TTL",
+            self.cache.torrent_list_ttl,
+            str::parse
+        );
+        env_var!("TORRENT_FUSE_PIECE_TTL", self.cache.piece_ttl, str::parse);
+        env_var!(
+            "TORRENT_FUSE_MAX_ENTRIES",
+            self.cache.max_entries,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_READ_TIMEOUT",
+            self.performance.read_timeout,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_MAX_CONCURRENT_READS",
+            self.performance.max_concurrent_reads,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_READAHEAD_SIZE",
+            self.performance.readahead_size,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_ALLOW_OTHER",
+            self.mount.allow_other,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_AUTO_UNMOUNT",
+            self.mount.auto_unmount,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_STATUS_POLL_INTERVAL",
+            self.monitoring.status_poll_interval,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_STALLED_TIMEOUT",
+            self.monitoring.stalled_timeout,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_PIECE_CHECK_ENABLED",
+            self.performance.piece_check_enabled,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_RETURN_EAGAIN",
+            self.performance.return_eagain_for_unavailable,
+            str::parse
+        );
+        env_var!("TORRENT_FUSE_LOG_LEVEL", self.logging.level);
+        env_var!(
+            "TORRENT_FUSE_LOG_FUSE_OPS",
+            self.logging.log_fuse_operations,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_LOG_API_CALLS",
+            self.logging.log_api_calls,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_METRICS_ENABLED",
+            self.logging.metrics_enabled,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_METRICS_INTERVAL",
+            self.logging.metrics_interval_secs,
+            str::parse
+        );
 
         Ok(self)
     }
