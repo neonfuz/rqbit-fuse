@@ -40,6 +40,27 @@ macro_rules! env_var {
     };
 }
 
+/// Main configuration container for torrent-fuse.
+///
+/// Combines all configuration sections (API, cache, mount, performance, monitoring, logging)
+/// into a single struct that can be loaded from files, environment variables, or CLI arguments.
+///
+/// # Loading Configuration
+///
+/// Configuration is loaded in the following order (later sources override earlier):
+/// 1. Default values
+/// 2. Config file (TOML or JSON)
+/// 3. Environment variables
+/// 4. CLI arguments
+///
+/// # Example
+///
+/// ```rust
+/// use torrent_fuse::config::Config;
+///
+/// let config = Config::load().expect("Failed to load config");
+/// config.validate().expect("Invalid configuration");
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -56,6 +77,20 @@ pub struct Config {
     pub logging: LoggingConfig,
 }
 
+/// Configuration for the rqbit API connection.
+///
+/// # Fields
+///
+/// * `url` - Base URL of the rqbit HTTP API (default: `http://127.0.0.1:3030`)
+/// * `username` - Optional username for HTTP Basic authentication
+/// * `password` - Optional password for HTTP Basic authentication
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_API_URL` - Override the API URL
+/// - `TORRENT_FUSE_AUTH_USERPASS` - Combined credentials as "username:password"
+/// - `TORRENT_FUSE_AUTH_USERNAME` - Username for authentication
+/// - `TORRENT_FUSE_AUTH_PASSWORD` - Password for authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ApiConfig {
@@ -64,6 +99,23 @@ pub struct ApiConfig {
     pub password: Option<String>,
 }
 
+/// Configuration for caching behavior.
+///
+/// Controls TTL (time-to-live) and capacity limits for various cached data types.
+///
+/// # Fields
+///
+/// * `metadata_ttl` - How long to cache file metadata in seconds (default: 60)
+/// * `torrent_list_ttl` - How long to cache torrent list in seconds (default: 30)
+/// * `piece_ttl` - How long to cache downloaded pieces in seconds (default: 5)
+/// * `max_entries` - Maximum number of entries in the cache (default: 1000)
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_METADATA_TTL` - Metadata cache TTL in seconds
+/// - `TORRENT_FUSE_TORRENT_LIST_TTL` - Torrent list cache TTL in seconds
+/// - `TORRENT_FUSE_PIECE_TTL` - Piece cache TTL in seconds
+/// - `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CacheConfig {
@@ -73,6 +125,23 @@ pub struct CacheConfig {
     pub max_entries: usize,
 }
 
+/// Configuration for FUSE mount options.
+///
+/// Controls where and how the filesystem is mounted.
+///
+/// # Fields
+///
+/// * `mount_point` - Directory to mount the FUSE filesystem (default: `/mnt/torrents`)
+/// * `allow_other` - Allow other users to access the mounted filesystem (default: false)
+/// * `auto_unmount` - Automatically unmount on process exit (default: true)
+/// * `uid` - User ID for file ownership (default: current user's EUID)
+/// * `gid` - Group ID for file ownership (default: current user's EGID)
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_MOUNT_POINT` - Mount point directory path
+/// - `TORRENT_FUSE_ALLOW_OTHER` - Boolean to allow other users access
+/// - `TORRENT_FUSE_AUTO_UNMOUNT` - Boolean to enable auto unmount
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MountConfig {
@@ -83,6 +152,25 @@ pub struct MountConfig {
     pub gid: u32,
 }
 
+/// Configuration for performance-related settings.
+///
+/// Controls read timeouts, concurrency limits, and prefetching behavior.
+///
+/// # Fields
+///
+/// * `read_timeout` - Timeout for read operations in seconds (default: 30)
+/// * `max_concurrent_reads` - Maximum concurrent read operations (default: 10)
+/// * `readahead_size` - Size of read-ahead buffer in bytes (default: 32 MiB)
+/// * `piece_check_enabled` - Enable piece verification checksums (default: true)
+/// * `return_eagain_for_unavailable` - Return EAGAIN when data is unavailable (default: false)
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds
+/// - `TORRENT_FUSE_MAX_CONCURRENT_READS` - Maximum concurrent reads
+/// - `TORRENT_FUSE_READAHEAD_SIZE` - Read-ahead buffer size in bytes
+/// - `TORRENT_FUSE_PIECE_CHECK_ENABLED` - Enable piece verification
+/// - `TORRENT_FUSE_RETURN_EAGAIN` - Return EAGAIN for unavailable data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerformanceConfig {
@@ -93,6 +181,19 @@ pub struct PerformanceConfig {
     pub return_eagain_for_unavailable: bool,
 }
 
+/// Configuration for monitoring and status polling.
+///
+/// Controls how often the filesystem polls for torrent status updates.
+///
+/// # Fields
+///
+/// * `status_poll_interval` - Interval between status polls in seconds (default: 5)
+/// * `stalled_timeout` - Timeout in seconds before marking a torrent as stalled (default: 300)
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_STATUS_POLL_INTERVAL` - Status poll interval in seconds
+/// - `TORRENT_FUSE_STALLED_TIMEOUT` - Stall timeout in seconds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MonitoringConfig {
@@ -100,6 +201,25 @@ pub struct MonitoringConfig {
     pub stalled_timeout: u64,
 }
 
+/// Configuration for logging and metrics output.
+///
+/// Controls log verbosity, operation logging, and metrics collection.
+///
+/// # Fields
+///
+/// * `level` - Log level: error, warn, info, debug, or trace (default: "info")
+/// * `log_fuse_operations` - Log all FUSE operations (default: true)
+/// * `log_api_calls` - Log all API calls to rqbit (default: true)
+/// * `metrics_enabled` - Enable metrics collection and logging (default: true)
+/// * `metrics_interval_secs` - Interval between metrics logs in seconds (default: 60)
+///
+/// # Environment Variables
+///
+/// - `TORRENT_FUSE_LOG_LEVEL` - Log level (error|warn|info|debug|trace)
+/// - `TORRENT_FUSE_LOG_FUSE_OPS` - Boolean to enable FUSE operation logging
+/// - `TORRENT_FUSE_LOG_API_CALLS` - Boolean to enable API call logging
+/// - `TORRENT_FUSE_METRICS_ENABLED` - Boolean to enable metrics
+/// - `TORRENT_FUSE_METRICS_INTERVAL` - Metrics log interval in seconds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
@@ -141,6 +261,7 @@ default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurr
 default_impl!(MonitoringConfig, status_poll_interval: default_status_poll_interval, stalled_timeout: default_stalled_timeout);
 default_impl!(LoggingConfig, level: default_log_level, log_fuse_operations: default_log_fuse_operations, log_api_calls: default_log_api_calls, metrics_enabled: default_metrics_enabled, metrics_interval_secs: default_metrics_interval_secs);
 
+/// Errors that can occur during configuration loading or validation.
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to read config file: {0}")]
@@ -153,6 +274,9 @@ pub enum ConfigError {
     ValidationError(Vec<ValidationIssue>),
 }
 
+/// Represents a single validation error in the configuration.
+///
+/// Contains the field name that failed validation and a description of the issue.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationIssue {
     pub field: String,
@@ -583,6 +707,9 @@ impl Config {
     }
 }
 
+/// Command-line arguments that override configuration values.
+///
+/// These values take precedence over config files and environment variables.
 #[derive(Debug, Clone, Default)]
 pub struct CliArgs {
     pub api_url: Option<String>,

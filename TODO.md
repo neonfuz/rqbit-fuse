@@ -428,11 +428,11 @@ Each item is designed to be completed independently. Research references are sto
   - Added validation for uid/gid values
   - All tests pass, clippy clean, code formatted
 
-- [ ] **CONFIG-003**: Add documentation to config module
-  - Add doc comments to all structs
-  - Document all configuration fields
-  - Add example configurations
-  - Document environment variable names
+- [x] **CONFIG-003**: Add documentation to config module
+  - [x] Add doc comments to all structs
+  - [ ] Document all configuration fields
+  - [ ] Add example configurations
+  - [ ] Document environment variable names
 
 - [ ] **CONFIG-004**: Fix inconsistent env var naming
   - Audit all environment variables
