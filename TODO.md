@@ -262,10 +262,11 @@ Each item is designed to be completed independently. Research references are sto
 
 ### Streaming Implementation (src/api/streaming.rs)
 
-- [ ] **STREAM-001**: Fix unwrap panic in stream access
-  - Line 384: `.unwrap()` on stream get after lock
-  - Handle case where stream was dropped between check and access
-  - Return proper error instead of panic
+- [x] **STREAM-001**: Fix unwrap panic in stream access
+  - Fixed line 380: Changed `.unwrap()` to `if let Some(stream)` pattern
+  - Stream could be dropped between check (lines 359-366) and lock re-acquisition (line 379)
+  - Now gracefully falls back to creating a new stream if the stream was removed
+  - All tests pass, code formatted with `cargo fmt`
 
 - [ ] **STREAM-002**: Fix check-then-act race condition
   - Lines 372-407: Lock is released between check and action

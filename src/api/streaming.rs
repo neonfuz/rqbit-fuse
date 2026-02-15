@@ -377,17 +377,47 @@ impl PersistentStreamManager {
             );
 
             let mut streams = self.streams.lock().await;
-            let stream = streams.get_mut(&key).unwrap();
+            if let Some(stream) = streams.get_mut(&key) {
+                // If we need to seek forward a bit, do it
+                if offset > stream.current_position {
+                    let gap = offset - stream.current_position;
+                    trace!(bytes_to_skip = gap, "Skipping forward in existing stream");
+                    stream.skip(gap).await?;
+                }
 
-            // If we need to seek forward a bit, do it
-            if offset > stream.current_position {
-                let gap = offset - stream.current_position;
-                trace!(bytes_to_skip = gap, "Skipping forward in existing stream");
-                stream.skip(gap).await?;
+                self.read_from_stream(stream, size, torrent_id, file_idx)
+                    .await
+            } else {
+                // Stream was dropped between check and lock acquisition
+                trace!(
+                    stream_op = "recreate",
+                    torrent_id = torrent_id,
+                    file_idx = file_idx,
+                    offset = offset,
+                    size = size,
+                    "Stream was dropped, creating new stream"
+                );
+                drop(streams); // Release lock before creating new stream
+
+                let mut new_stream = PersistentStream::new(
+                    &self.client,
+                    &self.base_url,
+                    torrent_id,
+                    file_idx,
+                    offset,
+                )
+                .await?;
+
+                let result = self
+                    .read_from_stream(&mut new_stream, size, torrent_id, file_idx)
+                    .await?;
+
+                // Store the stream for future use
+                let mut streams = self.streams.lock().await;
+                streams.insert(key, new_stream);
+
+                Ok(result)
             }
-
-            self.read_from_stream(stream, size, torrent_id, file_idx)
-                .await
         } else {
             // Create a new stream
             trace!(

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed unwrap panic in stream access (STREAM-001)
+  - Fixed line 380 in `src/api/streaming.rs`: Changed `.unwrap()` on stream get to `if let Some()` pattern
+  - Eliminates panic when stream is dropped between existence check (lines 359-366) and lock re-acquisition (line 379)
+  - Now gracefully falls back to creating a new stream if the expected stream was removed
+  - All 80 tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 - Fixed stale path references in inode removal (INODE-005)
   - Added `canonical_path: String` field to all `InodeEntry` variants (Directory, File, Symlink)
   - Store canonical path at entry creation time to prevent stale path issues
