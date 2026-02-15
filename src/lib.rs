@@ -318,6 +318,9 @@ pub async fn run(config: Config) -> Result<()> {
     let fs_for_signal = Arc::clone(&fs_arc);
     let fs_for_mount = Arc::clone(&fs_arc);
 
+    // Channel to signal shutdown from signal handler to mount task
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
     // Spawn signal handler task
     let signal_handler = tokio::spawn(async move {
         use tokio::signal::unix::{signal, SignalKind};
@@ -333,6 +336,9 @@ pub async fn run(config: Config) -> Result<()> {
                 tracing::info!("Received SIGTERM, initiating graceful shutdown...");
             }
         }
+
+        // Signal the mount task to shut down
+        let _ = shutdown_tx.send(());
 
         // Initiate graceful shutdown with timeout
         let shutdown_timeout = Duration::from_secs(10);
@@ -387,14 +393,31 @@ pub async fn run(config: Config) -> Result<()> {
         .await
         .context("Failed to discover existing torrents")?;
 
-    // Mount the filesystem (this blocks until unmounted)
+    // Mount the filesystem in a blocking task so signals can be processed
     // This will return when the filesystem is unmounted (either via signal or externally)
-    // Clone the Arc to get owned TorrentFS for mount (cheap - just refcount)
-    if let Err(e) = <TorrentFS as Clone>::clone(&*fs_for_mount).mount() {
+    let mount_result =
+        tokio::task::spawn_blocking(move || <TorrentFS as Clone>::clone(&fs_for_mount).mount())
+            .await;
+
+    // Race between mount completing and receiving shutdown signal
+    // If we received a signal, shutdown_rx will be Some(Err(Canceled))
+    tokio::select! {
+        _ = shutdown_rx => {
+            tracing::info!("Shutdown signal received, mount task is completing...");
+        }
+        _ = async {} => {}
+    }
+
+    if let Err(e) = mount_result {
         // If mount fails, we still need to clean up
         fs_arc.shutdown();
         metrics.log_full_summary();
-        return Err(e);
+        return Err(anyhow::anyhow!("Mount task failed: {}", e));
+    }
+
+    // Check if mount returned due to shutdown signal
+    if mount_result.as_ref().is_ok_and(|r| r.is_err()) {
+        tracing::info!("Mount returned due to unmount signal");
     }
 
     // The filesystem has been unmounted, clean up

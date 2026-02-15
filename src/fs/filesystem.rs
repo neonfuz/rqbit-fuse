@@ -812,14 +812,14 @@ impl TorrentFS {
     /// Builds FUSE mount options based on configuration.
     fn build_mount_options(&self) -> Vec<fuser::MountOption> {
         let mut options = vec![
-            fuser::MountOption::RO,      // Read-only (torrents are read-only)
-            fuser::MountOption::NoSuid,  // No setuid/setgid
-            fuser::MountOption::NoDev,   // No special device files
+            fuser::MountOption::RO,     // Read-only (torrents are read-only)
+            fuser::MountOption::NoSuid, // No setuid/setgid
+            fuser::MountOption::NoDev,  // No special device files
             fuser::MountOption::NoAtime, // Don't update access times
-            // NOTE: Sync option removed - causes hangs on macOS due to blocking
-            // on unmount. Since this is a read-only filesystem, data integrity
-            // is not a concern. This fix was needed after macOS system updates
-            // broke FUSE mounting with Sync option enabled.
+                                        // NOTE: Sync option removed - causes hangs on macOS due to blocking
+                                        // on unmount. Since this is a read-only filesystem, data integrity
+                                        // is not a concern. This fix was needed after macOS system updates
+                                        // broke FUSE mounting with Sync option enabled.
         ];
 
         if self.config.mount.auto_unmount {
@@ -1369,15 +1369,11 @@ impl Filesystem for TorrentFS {
                 let should_run = last_ms == 0 || now_ms.saturating_sub(last_ms) >= COOLDOWN_MS;
 
                 if should_run {
-                    let claim_result = last_discovery.compare_exchange(
-                        last_ms,
-                        now_ms,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    );
-
-                    if claim_result.is_ok() {
-                        if let Err(e) = Self::discover_torrents(&api_client, &inode_manager).await {
+                    match Self::discover_torrents(&api_client, &inode_manager).await {
+                        Ok(_) => {
+                            last_discovery.store(now_ms, Ordering::SeqCst);
+                        }
+                        Err(e) => {
                             warn!("On-demand torrent discovery failed: {}", e);
                         }
                     }
