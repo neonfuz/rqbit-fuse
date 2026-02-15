@@ -13,6 +13,7 @@ pub use fs::filesystem::TorrentFS;
 pub use metrics::Metrics;
 pub use sharded_counter::ShardedCounter;
 
+use crate::api::create_api_client;
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
@@ -25,7 +26,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     // Create API client for the async worker
     let api_client = Arc::new(
-        api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
+        create_api_client(&config.api, Arc::clone(&metrics.api))
             .context("Failed to create API client")?,
     );
 

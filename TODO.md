@@ -349,7 +349,7 @@ Each item is designed to be completed independently. Research references are sto
 - [ ] **API-002**: Add authentication support
   - [x] Research rqbit auth methods - [research:rqbit-authentication](research/rqbit-authentication.md)
   - [x] Add auth token/API key support to client - Implemented HTTP Basic Auth with `with_auth()` constructor and auth header generation for all API requests
-  - Update configuration for credentials
+  - [x] Update configuration for credentials - Added username/password fields to ApiConfig with environment variable support (TORRENT_FUSE_AUTH_USERNAME, TORRENT_FUSE_AUTH_PASSWORD, TORRENT_FUSE_AUTH_USERPASS) and CLI arguments (--username, --password)
   - Add auth failure error handling
 
 - [ ] **API-003**: Fix N+1 query in list_torrents()

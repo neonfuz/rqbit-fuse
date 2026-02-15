@@ -28,6 +28,14 @@ enum Commands {
         #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
 
+        /// rqbit API username for HTTP Basic Auth (overrides config)
+        #[arg(long, env = "TORRENT_FUSE_AUTH_USERNAME")]
+        username: Option<String>,
+
+        /// rqbit API password for HTTP Basic Auth (overrides config)
+        #[arg(long, env = "TORRENT_FUSE_AUTH_PASSWORD")]
+        password: Option<String>,
+
         /// Increase verbosity (can be used multiple times)
         #[arg(short, long, action = clap::ArgAction::Count)]
         verbose: u8,
@@ -88,13 +96,24 @@ async fn main() -> Result<()> {
             mount_point,
             api_url,
             config,
+            username,
+            password,
             verbose,
             quiet,
             allow_other,
             auto_unmount,
         } => {
             setup_logging(verbose, quiet)?;
-            run_mount(mount_point, api_url, config, allow_other, auto_unmount).await
+            run_mount(
+                mount_point,
+                api_url,
+                config,
+                username,
+                password,
+                allow_other,
+                auto_unmount,
+            )
+            .await
         }
         Commands::Umount {
             mount_point,
@@ -136,11 +155,15 @@ fn load_config(
     config_file: Option<PathBuf>,
     mount_point: Option<PathBuf>,
     api_url: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 ) -> Result<Config> {
     let cli_args = CliArgs {
         api_url,
         mount_point,
         config_file: config_file.clone(),
+        username,
+        password,
     };
 
     if let Some(ref config_path) = config_file {
@@ -217,10 +240,12 @@ async fn run_mount(
     mount_point: Option<PathBuf>,
     api_url: Option<String>,
     config_file: Option<PathBuf>,
+    username: Option<String>,
+    password: Option<String>,
     allow_other: bool,
     auto_unmount: bool,
 ) -> Result<()> {
-    let mut config = load_config(config_file, mount_point, api_url)?;
+    let mut config = load_config(config_file, mount_point, api_url, username, password)?;
 
     // Apply command-line overrides for mount options
     if allow_other {
@@ -257,7 +282,7 @@ async fn run_umount(
     config_file: Option<PathBuf>,
     force: bool,
 ) -> Result<()> {
-    let config = load_config(config_file, mount_point.clone(), None)?;
+    let config = load_config(config_file, mount_point.clone(), None, None, None)?;
 
     let mount_point = mount_point.unwrap_or_else(|| config.mount.mount_point.clone());
 
@@ -276,7 +301,7 @@ async fn run_umount(
 }
 
 async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Result<()> {
-    let config = load_config(config_file.clone(), None, None)?;
+    let config = load_config(config_file.clone(), None, None, None, None)?;
 
     let mount_point = &config.mount.mount_point;
     let is_mounted = is_mount_point(mount_point).unwrap_or(false);

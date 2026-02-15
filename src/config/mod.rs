@@ -60,6 +60,8 @@ pub struct Config {
 #[serde(default)]
 pub struct ApiConfig {
     pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,8 +128,9 @@ default_fn!(default_log_fuse_operations, bool, true);
 default_fn!(default_log_api_calls, bool, true);
 default_fn!(default_metrics_enabled, bool, true);
 default_fn!(default_metrics_interval_secs, u64, 60);
+default_fn!(default_none, Option<String>, None);
 
-default_impl!(ApiConfig, url: default_api_url);
+default_impl!(ApiConfig, url: default_api_url, username: default_none, password: default_none);
 default_impl!(CacheConfig, metadata_ttl: default_metadata_ttl, torrent_list_ttl: default_torrent_list_ttl, piece_ttl: default_piece_ttl, max_entries: default_max_entries);
 default_impl!(MountConfig, mount_point: default_mount_point, allow_other: default_allow_other, auto_unmount: default_auto_unmount);
 default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable);
@@ -266,6 +269,23 @@ impl Config {
             str::parse
         );
 
+        // Auth credentials - support both individual fields and combined format
+        if let Ok(auth_str) = std::env::var("TORRENT_FUSE_AUTH_USERPASS") {
+            // Combined format: "username:password"
+            if let Some((username, password)) = auth_str.split_once(':') {
+                self.api.username = Some(username.to_string());
+                self.api.password = Some(password.to_string());
+            }
+        } else {
+            // Individual fields
+            if let Ok(val) = std::env::var("TORRENT_FUSE_AUTH_USERNAME") {
+                self.api.username = Some(val);
+            }
+            if let Ok(val) = std::env::var("TORRENT_FUSE_AUTH_PASSWORD") {
+                self.api.password = Some(val);
+            }
+        }
+
         Ok(self)
     }
 
@@ -276,6 +296,14 @@ impl Config {
 
         if let Some(ref mount_point) = cli.mount_point {
             self.mount.mount_point = mount_point.clone();
+        }
+
+        if let Some(ref username) = cli.username {
+            self.api.username = Some(username.clone());
+        }
+
+        if let Some(ref password) = cli.password {
+            self.api.password = Some(password.clone());
         }
 
         self
@@ -297,6 +325,8 @@ pub struct CliArgs {
     pub api_url: Option<String>,
     pub mount_point: Option<PathBuf>,
     pub config_file: Option<PathBuf>,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 #[cfg(test)]
@@ -381,11 +411,30 @@ max_concurrent_reads = 20
             api_url: Some("http://custom:8080".to_string()),
             mount_point: Some(PathBuf::from("/custom/mount")),
             config_file: None,
+            username: None,
+            password: None,
         };
 
         let merged = config.merge_from_cli(&cli);
 
         assert_eq!(merged.api.url, "http://custom:8080");
         assert_eq!(merged.mount.mount_point, PathBuf::from("/custom/mount"));
+    }
+
+    #[test]
+    fn test_merge_auth_from_cli() {
+        let config = Config::default();
+        let cli = CliArgs {
+            api_url: None,
+            mount_point: None,
+            config_file: None,
+            username: Some("testuser".to_string()),
+            password: Some("testpass".to_string()),
+        };
+
+        let merged = config.merge_from_cli(&cli);
+
+        assert_eq!(merged.api.username, Some("testuser".to_string()));
+        assert_eq!(merged.api.password, Some("testpass".to_string()));
     }
 }

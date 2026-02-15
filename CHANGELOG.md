@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - No clippy warnings: `cargo clippy` ✅
   - Code formatted: `cargo fmt` ✅
 
+- Add authentication credentials configuration support (API-002.2)
+  - Added `username` and `password` fields to `ApiConfig` struct in `src/config/mod.rs`
+  - Added `create_api_client()` helper function in `src/api/client.rs` for creating authenticated clients
+  - Support for environment variables: `TORRENT_FUSE_AUTH_USERNAME`, `TORRENT_FUSE_AUTH_PASSWORD`, `TORRENT_FUSE_AUTH_USERPASS` (combined format)
+  - Added CLI arguments `--username` and `--password` to the `mount` command
+  - Updated `CliArgs` struct to include authentication fields
+  - Updated `merge_from_env()` to parse authentication credentials from environment
+  - Updated `merge_from_cli()` to apply CLI authentication overrides
+  - Updated all client creation points in `src/lib.rs` and `src/fs/filesystem.rs` to use new helper
+  - Added comprehensive tests for authentication configuration in `src/config/mod.rs`
+  - All 285+ tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 ### Research
 
 - Researched rqbit authentication methods (API-002.1)

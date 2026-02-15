@@ -1,4 +1,5 @@
 use crate::api::client::RqbitClient;
+use crate::api::create_api_client;
 use crate::api::types::{TorrentState, TorrentStatus};
 use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
@@ -68,7 +69,7 @@ impl TorrentFS {
         async_worker: Arc<AsyncFuseWorker>,
     ) -> Result<Self> {
         let api_client = Arc::new(
-            RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
+            create_api_client(&config.api, Arc::clone(&metrics.api))
                 .context("Failed to create API client")?,
         );
         let inode_manager = Arc::new(InodeManager::new());
@@ -2243,12 +2244,10 @@ mod tests {
 
     /// Helper function to create a test AsyncFuseWorker
     fn create_test_async_worker(metrics: Arc<Metrics>) -> Arc<AsyncFuseWorker> {
+        let api_config = crate::config::ApiConfig::default();
         let api_client = Arc::new(
-            RqbitClient::new(
-                "http://localhost:3030".to_string(),
-                Arc::clone(&metrics.api),
-            )
-            .expect("Failed to create API client"),
+            create_api_client(&api_config, Arc::clone(&metrics.api))
+                .expect("Failed to create API client"),
         );
         Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics))
     }

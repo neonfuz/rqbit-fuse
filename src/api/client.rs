@@ -935,6 +935,25 @@ impl RqbitClient {
     }
 }
 
+/// Helper function to create an RqbitClient with optional authentication
+///
+/// This function checks if username and password are configured, and creates
+/// the client with authentication if they are present.
+pub fn create_api_client(
+    api_config: &crate::config::ApiConfig,
+    metrics: Arc<crate::metrics::ApiMetrics>,
+) -> Result<RqbitClient> {
+    match (&api_config.username, &api_config.password) {
+        (Some(username), Some(password)) => RqbitClient::with_auth(
+            api_config.url.clone(),
+            username.clone(),
+            password.clone(),
+            metrics,
+        ),
+        _ => RqbitClient::new(api_config.url.clone(), metrics),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
