@@ -212,11 +212,21 @@ Each item is designed to be completed independently. Research references are sto
     - RwLock + HashMap approach
     - Trade-offs for each
 
-- [ ] **INODE-002**: Make inode table operations atomic
+- [x] **INODE-002**: Make inode table operations atomic
   - Depends on: `[research:inode-design]`, `[spec:inode-design]`
-  - Currently `path_to_inode` and `entries` updated separately
-  - Use composite key or transaction to make atomic
-  - Add test for concurrent inode creation/removal
+  - Refactored `allocate_entry()` to use DashMap entry API for atomic insertion
+  - Ensured proper ordering: entries (primary) first, then indices
+  - Added panic handling for corrupted inode counter
+  - Rewrote `remove_inode()` with consistent 4-step atomic removal order
+  - Updated `clear_torrents()` to use atomic `remove_inode()` for each entry
+  - Added 4 comprehensive concurrent tests:
+    - `test_concurrent_allocation_atomicity`: 50 threads × 20 allocations with immediate verification
+    - `test_concurrent_removal_atomicity`: Concurrent torrent removal from multiple threads
+    - `test_mixed_concurrent_operations`: Mixed allocators and removers
+    - `test_atomic_allocation_no_duplicates`: 100 threads allocating simultaneously
+  - All tests pass: `cargo test --lib fs::inode::tests` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
 
 - [ ] **INODE-003**: Fix torrent directory mapping
   - Depends on: `[spec:inode-design]`

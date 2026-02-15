@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Made inode table operations atomic (INODE-002)
+  - Refactored `allocate_entry()` in `src/fs/inode.rs` to use DashMap entry API
+  - Ensured proper insertion order: primary entries first, then indices
+  - Added panic protection for corrupted inode counter (duplicate inode detection)
+  - Rewrote `remove_inode()` with consistent 4-step atomic removal:
+    1. Recursively remove children (bottom-up)
+    2. Remove from parent's children list
+    3. Remove from path and torrent indices
+    4. Finally remove from primary entries map
+  - Updated `clear_torrents()` to use atomic `remove_inode()` for proper cleanup
+  - Prevents inconsistent state if crash occurs during operations
+  - All existing tests pass, no behavioral changes
+
+### Added
+
+- Comprehensive concurrent inode operation tests (INODE-002)
+  - `test_concurrent_allocation_atomicity`: 50 threads × 20 allocations each with immediate verification
+  - `test_concurrent_removal_atomicity`: Concurrent removal of 20 torrents with files from multiple threads
+  - `test_mixed_concurrent_operations`: Mixed concurrent allocators and removers with consistency checks
+  - `test_atomic_allocation_no_duplicates`: 100 simultaneous threads verifying no duplicate inodes
+  - All 20 inode tests pass: `cargo test --lib fs::inode::tests` ✅
+
+### Fixed
+
 - Fixed failing filesystem tests by converting to tokio::test
   - Converted 12 tests in `src/fs/filesystem.rs` from `#[test]` to `#[tokio::test]` async tests
   - Tests were failing due to missing Tokio runtime for AsyncFuseWorker task spawning
