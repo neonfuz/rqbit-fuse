@@ -151,11 +151,16 @@ Each item is designed to be completed independently. Research references are sto
       - Unicode and edge case tests
     - All tests compile and run successfully
     - Research documented in existing spec/testing.md reference
-  - [ ] **FS-007.3**: Implement lookup operation tests
-    - Test successful file lookup
-    - Test successful directory lookup
-    - Test lookup for non-existent paths (ENOENT)
-    - Test lookup with invalid paths
+  - [x] **FS-007.3**: Implement lookup operation tests
+    - Implemented 7 comprehensive lookup tests in `tests/fuse_operations.rs`
+    - `test_lookup_successful_file`: Verifies file lookup returns correct inode and attributes
+    - `test_lookup_successful_directory`: Verifies directory lookup works correctly
+    - `test_lookup_nonexistent_path`: Tests ENOENT for non-existent files and directories
+    - `test_lookup_invalid_parent`: Tests lookup in non-directory returns empty (ENOTDIR behavior)
+    - `test_lookup_nonexistent_parent`: Tests lookup with invalid parent inode
+    - `test_lookup_deeply_nested`: Tests lookup through 4 levels of directory nesting
+    - `test_lookup_special_characters`: Tests lookup with spaces, unicode, and symbols
+    - All tests pass: `cargo test test_lookup --test fuse_operations` ✅
   - [ ] **FS-007.4**: Implement getattr operation tests
     - Test getattr for files (size, permissions, timestamps)
     - Test getattr for directories
