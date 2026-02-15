@@ -450,12 +450,13 @@ Each item is designed to be completed independently. Research references are sto
 
 ### Documentation
 
-- [ ] **DOCS-001**: Research documentation standards
-  - Create `research/doc-standards.md` with:
+- [x] **DOCS-001**: Research documentation standards
+  - [research:doc-standards](research/doc-standards.md) created with:
     - Rust doc comment conventions
     - Required sections (Examples, Panics, Errors)
     - Crate-level documentation requirements
     - Module-level documentation requirements
+    - Current project status and recommendations
 
 - [ ] **DOCS-002**: Add crate-level documentation
   - Depends on: `[research:doc-standards]`
