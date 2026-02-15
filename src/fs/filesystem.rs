@@ -275,7 +275,7 @@ impl TorrentFS {
                 .unwrap_or_default()
                 .as_millis() as u64;
             let last_ms = self.last_discovery.load(Ordering::SeqCst);
-            
+
             // If last_discovery is 0, discovery has never happened (allow it)
             // Otherwise check if cooldown has elapsed
             if last_ms != 0 && now_ms.saturating_sub(last_ms) < COOLDOWN_MS {
@@ -2041,7 +2041,11 @@ impl TorrentFS {
             created_dirs.insert("".to_string(), torrent_dir_inode);
 
             // Process each file in the torrent
-            info!(torrent_id = torrent_id, file_count = torrent_info.files.len(), "About to process files");
+            info!(
+                torrent_id = torrent_id,
+                file_count = torrent_info.files.len(),
+                "About to process files"
+            );
             for (file_idx, file_info) in torrent_info.files.iter().enumerate() {
                 info!(torrent_id = torrent_id, file_idx = file_idx, file_name = %file_info.name, "Processing file");
                 self.create_file_entry(

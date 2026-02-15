@@ -29,12 +29,28 @@ The specification directory contains detailed technical documentation for the pr
 
 ---
 
-### 2. Tasks (`TASKS.md`)
+### 2. Tasks (`TODO.md`)
 
-This is the prioritized task list for implementing the project. Tasks are organized into 8 phases and ordered by dependency.
+This is the prioritized task list for implementing the project.
+
+---
+
+### 3. Reference (`reference/`)
+
+The reference directory contains **external documentation** that should **NOT be modified**. These are third-party specifications, guides, and reference materials.
 
 **What it contains:**
-- Phase-by-phase implementation plan (8 phases total)
+- Third-party API specifications (e.g., rqbit streaming API)
+- External guides and playbooks (e.g., Ralph workflow documentation)
+- Reference materials from outside sources
+
+**Important:**
+- **DO NOT MODIFY** files in this directory
+- These are external resources for reference only
+- If updates are needed, create new files in `spec/` instead
+
+**What it contains:**
+- Phase-by-phase implementation plan
 - Detailed task breakdowns with specific requirements
 - Testing and quality assurance tasks
 - Completed/discovery sections for tracking progress
@@ -45,16 +61,6 @@ This is the prioritized task list for implementing the project. Tasks are organi
 - Mark tasks as completed when finished
 - Add discovered issues during implementation
 
-**Task phases:**
-1. **Foundation & Setup** - Project structure, data structures, API client
-2. **FUSE Filesystem Core** - Inode management, FUSE callbacks
-3. **Read Operations & Caching** - File reading, cache layer, read-ahead
-4. **Torrent Lifecycle** - Adding/monitoring/removing torrents
-5. **Error Handling** - Error mapping, edge cases, graceful degradation
-6. **CLI & UX** - Command-line interface, logging, documentation
-7. **Testing & Quality** - Unit tests, integration tests, CI/CD
-8. **Polish & Release** - Security review, optimization, final docs
-
 ---
 
 ## Agent Workflow
@@ -62,14 +68,15 @@ This is the prioritized task list for implementing the project. Tasks are organi
 ### Starting a new task:
 1. Read `spec/README.md` to understand what spec documents apply
 2. Read the relevant spec files (architecture, api, etc.)
-3. Check `TASKS.md` for the current phase and task
+3. Check `TODO.md` for the current phase and task
 4. Review any discovered issues or notes
 
 ### During implementation:
 1. Follow the technical design in the spec files
 2. Reference API documentation when implementing API calls
 3. Add new issues to the "Discovered Issues" section in `TASKS.md`
-4. Update "Completed" section as tasks finish
+4. Update the spec with any new designs implemented and fix any mistakes in the spec
+5. Update "Completed" section as tasks finish
 
 ### Before submitting changes:
 1. Run tests: `cargo test`
@@ -84,67 +91,5 @@ This is the prioritized task list for implementing the project. Tasks are organi
 - FUSE operations require careful error mapping (ENOENT, EACCES, EIO, etc.)
 - HTTP Range requests are used for reading torrent data
 - Cache implementation uses TTL and LRU eviction
-- All specs are complete and ready for implementation
 
 ---
-
-## Docker Development (Linux on macOS)
-
-Since this is a FUSE-based project with platform-specific differences, you may need to build and test the Linux version while developing on macOS.
-
-### Building the Docker Image
-
-```bash
-docker build -t torrent-fuse-dev .
-```
-
-### Running Tests in Docker
-
-```bash
-# Run all tests
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev
-
-# Run with cargo watch for continuous testing
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo watch -x test
-
-# Run specific test
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo test <test_name>
-```
-
-### Building the Project
-
-```bash
-# Build release binary for Linux
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo build --release
-
-# The binary will be in target/release/torrent-fuse (Linux ELF format)
-```
-
-### Running Clippy and Format
-
-```bash
-# Run linter
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo clippy
-
-# Format code
-docker run --rm -v "$(pwd):/app" torrent-fuse-dev cargo fmt
-```
-
-### Interactive Development Shell
-
-```bash
-# Get a bash shell inside the container
-docker run --rm -it -v "$(pwd):/app" torrent-fuse-dev bash
-
-# Then run cargo commands as usual:
-# cargo test
-# cargo build
-# cargo clippy
-```
-
-### Notes
-
-- The project directory is mounted as a volume, so changes are reflected immediately
-- The Docker image includes `libfuse-dev` for Linux FUSE development
-- Target directory is shared between host and container (may cause issues if switching between macOS and Linux builds)
-- For clean builds, consider using `docker run --rm -v "$(pwd):/app" -v /app/target torrent-fuse-dev cargo build`

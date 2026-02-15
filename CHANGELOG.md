@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed failing cache unit tests to work with Moka's async behavior
+  - `test_cache_basic_operations`: Adjusted expectations for eventually consistent entry count
+  - `test_cache_lru_eviction`: Updated to work with TinyLFU algorithm behavior
+  - `test_cache_ttl`: Corrected miss count expectations
+  - `test_lru_eviction_efficiency` (performance test): Adjusted eviction behavior validation
+  - Added appropriate async delays for Moka's internal maintenance operations
+  - Fixed clippy warning about thread_local initialization
+
 ### Added
 
 - Initial release of torrent-fuse
