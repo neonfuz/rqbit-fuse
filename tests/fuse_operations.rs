@@ -1176,3 +1176,345 @@ async fn test_lookup_special_characters() {
         inode_manager.lookup_by_path("/Special Torrent/unicode_日本語.txt").is_some()
     );
 }
+
+// ============================================================================
+// FS-007.4: Getattr Operation Tests
+// ============================================================================
+// These tests verify the getattr operation scenarios that the FUSE getattr()
+// callback must handle correctly. The getattr callback retrieves file attributes
+// for a given inode and is called frequently by the kernel.
+
+/// Test getattr for files - verify size, permissions, and timestamps
+#[tokio::test]
+async fn test_getattr_file_attributes() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent with different file sizes
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "small.txt".to_string(),
+                length: 100,
+                components: vec!["small.txt".to_string()],
+            },
+            FileInfo {
+                name: "medium.txt".to_string(),
+                length: 8192,
+                components: vec!["medium.txt".to_string()],
+            },
+            FileInfo {
+                name: "large.bin".to_string(),
+                length: 10485760, // 10 MB
+                components: vec!["large.bin".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test small file attributes
+    let small_ino = inode_manager
+        .lookup_by_path("/Test Torrent/small.txt")
+        .expect("Small file should exist");
+    let small_entry = inode_manager.get(small_ino).expect("Entry should exist");
+    let small_attr = fs.build_file_attr(&small_entry);
+
+    assert_eq!(small_attr.ino, small_ino, "Inode should match");
+    assert_eq!(small_attr.size, 100, "Size should be 100 bytes");
+    assert_eq!(small_attr.blocks, 1, "Should occupy 1 block (ceiling of 100/4096)");
+    assert_eq!(small_attr.kind, fuser::FileType::RegularFile, "Should be a regular file");
+    assert_eq!(small_attr.perm, 0o444, "Permissions should be read-only (444)");
+    assert_eq!(small_attr.nlink, 1, "Should have 1 hard link");
+    assert_eq!(small_attr.blksize, 4096, "Block size should be 4096");
+
+    // Test medium file attributes
+    let medium_ino = inode_manager
+        .lookup_by_path("/Test Torrent/medium.txt")
+        .expect("Medium file should exist");
+    let medium_entry = inode_manager.get(medium_ino).expect("Entry should exist");
+    let medium_attr = fs.build_file_attr(&medium_entry);
+
+    assert_eq!(medium_attr.size, 8192, "Size should be 8192 bytes");
+    assert_eq!(medium_attr.blocks, 2, "Should occupy 2 blocks (ceiling of 8192/4096)");
+    assert_eq!(medium_attr.kind, fuser::FileType::RegularFile);
+    assert_eq!(medium_attr.perm, 0o444);
+
+    // Test large file attributes
+    let large_ino = inode_manager
+        .lookup_by_path("/Test Torrent/large.bin")
+        .expect("Large file should exist");
+    let large_entry = inode_manager.get(large_ino).expect("Entry should exist");
+    let large_attr = fs.build_file_attr(&large_entry);
+
+    assert_eq!(large_attr.size, 10485760, "Size should be 10485760 bytes (10 MB)");
+    assert_eq!(large_attr.blocks, 2560, "Should occupy 2560 blocks (10485760/4096)");
+    assert_eq!(large_attr.kind, fuser::FileType::RegularFile);
+    assert_eq!(large_attr.perm, 0o444);
+}
+
+/// Test getattr for directories - verify nlink count and permissions
+#[tokio::test]
+async fn test_getattr_directory_attributes() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with nested directories
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(4),
+        files: vec![
+            FileInfo {
+                name: "root_file.txt".to_string(),
+                length: 1024,
+                components: vec!["root_file.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/file1.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/file2.txt".to_string(),
+                length: 3072,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/nested/deep.txt".to_string(),
+                length: 512,
+                components: vec!["subdir".to_string(), "nested".to_string(), "deep.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test root directory attributes
+    let root_entry = inode_manager.get(1).expect("Root should exist");
+    let root_attr = fs.build_file_attr(&root_entry);
+
+    assert_eq!(root_attr.ino, 1, "Root inode should be 1");
+    assert_eq!(root_attr.kind, fuser::FileType::Directory, "Root should be a directory");
+    assert_eq!(root_attr.size, 0, "Directory size should be 0");
+    assert_eq!(root_attr.perm, 0o555, "Permissions should be read+execute (555)");
+    // nlink should be 2 + number of children (1 torrent directory)
+    assert_eq!(root_attr.nlink, 3, "nlink should be 3 (2 + 1 torrent directory)");
+    assert_eq!(root_attr.blksize, 4096, "Block size should be 4096");
+
+    // Test torrent directory attributes
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent directory should exist");
+    let torrent_entry = inode_manager.get(torrent_ino).expect("Entry should exist");
+    let torrent_attr = fs.build_file_attr(&torrent_entry);
+
+    assert_eq!(torrent_attr.ino, torrent_ino);
+    assert_eq!(torrent_attr.kind, fuser::FileType::Directory);
+    assert_eq!(torrent_attr.size, 0);
+    assert_eq!(torrent_attr.perm, 0o555);
+    // nlink should be 2 + number of children (root_file.txt + subdir = 2)
+    assert_eq!(torrent_attr.nlink, 4, "nlink should be 4 (2 + 2 children)");
+
+    // Test subdir attributes
+    let subdir_ino = inode_manager
+        .lookup_by_path("/Test Torrent/subdir")
+        .expect("Subdir should exist");
+    let subdir_entry = inode_manager.get(subdir_ino).expect("Entry should exist");
+    let subdir_attr = fs.build_file_attr(&subdir_entry);
+
+    assert_eq!(subdir_attr.kind, fuser::FileType::Directory);
+    assert_eq!(subdir_attr.perm, 0o555);
+    // nlink should be 2 + number of children (file1.txt + file2.txt + nested = 3)
+    assert_eq!(subdir_attr.nlink, 5, "nlink should be 5 (2 + 3 children)");
+
+    // Test nested directory attributes
+    let nested_ino = inode_manager
+        .lookup_by_path("/Test Torrent/subdir/nested")
+        .expect("Nested directory should exist");
+    let nested_entry = inode_manager.get(nested_ino).expect("Entry should exist");
+    let nested_attr = fs.build_file_attr(&nested_entry);
+
+    assert_eq!(nested_attr.kind, fuser::FileType::Directory);
+    assert_eq!(nested_attr.perm, 0o555);
+    // nlink should be 2 + number of children (deep.txt = 1)
+    assert_eq!(nested_attr.nlink, 3, "nlink should be 3 (2 + 1 child)");
+}
+
+/// Test getattr for non-existent inodes - should return None
+#[tokio::test]
+async fn test_getattr_nonexistent_inode() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let inode_manager = fs.inode_manager();
+
+    // Test various non-existent inodes
+    let nonexistent_inodes = vec![0, 99999, u64::MAX];
+
+    for ino in nonexistent_inodes {
+        let entry = inode_manager.get(ino);
+        assert!(entry.is_none(), "Non-existent inode {} should return None", ino);
+    }
+
+    // Verify that inode_manager.get() returns None for invalid inodes
+    // In a real FUSE getattr callback, this would result in ENOENT
+    let entry = inode_manager.get(12345);
+    assert!(entry.is_none(), "Inode 12345 should not exist");
+}
+
+/// Test getattr timestamp consistency - verify atime, mtime, ctime are reasonable
+#[tokio::test]
+async fn test_getattr_timestamp_consistency() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file1.txt")
+        .expect("File should exist");
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    // Get current time for comparison
+    let now = std::time::SystemTime::now();
+
+    // Verify timestamps are reasonable (not in the past, not too far in the future)
+    let timestamp_reasonable = |ts: std::time::SystemTime| {
+        let elapsed_since = now.duration_since(ts);
+        let elapsed_until = ts.duration_since(now);
+        
+        // Timestamp should be within last 60 seconds or very close to now
+        elapsed_since.map(|d| d.as_secs() < 60).unwrap_or(true) ||
+        elapsed_until.map(|d| d.as_secs() < 1).unwrap_or(false)
+    };
+
+    assert!(
+        timestamp_reasonable(attr.atime),
+        "atime should be recent"
+    );
+    assert!(
+        timestamp_reasonable(attr.mtime),
+        "mtime should be recent"
+    );
+    assert!(
+        timestamp_reasonable(attr.ctime),
+        "ctime should be recent"
+    );
+
+    // Verify crtime (creation time) is a fixed value
+    let expected_crtime = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    assert_eq!(
+        attr.crtime, expected_crtime,
+        "crtime should be fixed at Unix epoch + 1_700_000_000 seconds"
+    );
+}
+
+/// Test getattr for symlinks - verify symlink-specific attributes
+#[tokio::test]
+async fn test_getattr_symlink_attributes() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent first
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    // Create a symlink manually
+    let inode_manager = fs.inode_manager();
+    let target_path = "/Test Torrent/file1.txt".to_string();
+    let symlink_ino = inode_manager.allocate_symlink(
+        "link_to_file".to_string(),
+        1, // parent is root
+        target_path.clone(),
+    );
+
+    let symlink_entry = inode_manager.get(symlink_ino).expect("Symlink entry should exist");
+    let attr = fs.build_file_attr(&symlink_entry);
+
+    // Verify symlink attributes
+    assert_eq!(attr.ino, symlink_ino, "Inode should match");
+    assert_eq!(attr.kind, fuser::FileType::Symlink, "Should be a symlink");
+    assert_eq!(attr.size, target_path.len() as u64, "Size should be target path length");
+    assert_eq!(attr.perm, 0o777, "Symlinks should have 777 permissions");
+    assert_eq!(attr.nlink, 1, "Should have 1 hard link");
+    assert_eq!(attr.blocks, 1, "Should occupy 1 block");
+    assert_eq!(attr.blksize, 4096, "Block size should be 4096");
+}
