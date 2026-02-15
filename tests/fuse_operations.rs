@@ -2130,7 +2130,7 @@ async fn test_read_file_contents() {
         file_count: Some(1),
         files: vec![FileInfo {
             name: "test.txt".to_string(),
-            length: file_content.len() as i64,
+            length: file_content.len() as u64,
             components: vec!["test.txt".to_string()],
         }],
         piece_length: Some(1048576),
@@ -2180,7 +2180,7 @@ async fn test_read_various_buffer_sizes() {
         file_count: Some(1),
         files: vec![FileInfo {
             name: "large.bin".to_string(),
-            length: file_content.len() as i64,
+            length: file_content.len() as u64,
             components: vec!["large.bin".to_string()],
         }],
         piece_length: Some(1048576),
@@ -2234,7 +2234,7 @@ async fn test_read_at_different_offsets() {
         file_count: Some(1),
         files: vec![FileInfo {
             name: "offset_test.bin".to_string(),
-            length: file_content.len() as i64,
+            length: file_content.len() as u64,
             components: vec!["offset_test.bin".to_string()],
         }],
         piece_length: Some(1048576),
@@ -2284,7 +2284,7 @@ async fn test_read_beyond_file_end() {
         file_count: Some(1),
         files: vec![FileInfo {
             name: "small.txt".to_string(),
-            length: file_content.len() as i64,
+            length: file_content.len() as u64,
             components: vec!["small.txt".to_string()],
         }],
         piece_length: Some(1048576),
@@ -2347,12 +2347,12 @@ async fn test_read_multi_file_torrent() {
         files: vec![
             FileInfo {
                 name: "file1.txt".to_string(),
-                length: content1.len() as i64,
+                length: content1.len() as u64,
                 components: vec!["file1.txt".to_string()],
             },
             FileInfo {
                 name: "file2.txt".to_string(),
-                length: content2.len() as i64,
+                length: content2.len() as u64,
                 components: vec!["file2.txt".to_string()],
             },
         ],
@@ -2556,7 +2556,7 @@ async fn test_read_large_file() {
         file_count: Some(1),
         files: vec![FileInfo {
             name: "large.iso".to_string(),
-            length: file_size as i64,
+            length: file_size as u64,
             components: vec!["large.iso".to_string()],
         }],
         piece_length: Some(1048576),

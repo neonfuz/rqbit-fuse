@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Completed FS-007.6: Implement read operation tests
+  - Fixed compilation errors: changed `i64` to `u64` for file length fields in tests
+  - `test_read_file_contents`: Tests basic file read with WireMock API mocking
+  - `test_read_various_buffer_sizes`: Tests 100KB file with correct block calculations (25 blocks)
+  - `test_read_at_different_offsets`: Tests 8KB file with offset-based reading
+  - `test_read_beyond_file_end`: Tests graceful EOF handling with 100 byte file
+  - `test_read_multi_file_torrent`: Tests multiple files in torrent with different content
+  - `test_read_zero_bytes`: Tests zero-byte read scenarios
+  - `test_read_invalid_file_handle`: Tests error handling for invalid file handles
+  - `test_read_from_directory`: Tests EISDIR behavior when reading directories
+  - `test_read_nonexistent_inode`: Tests ENOENT for non-existent inodes
+  - `test_read_large_file`: Tests 10MB file with correct block calculations (2560 blocks)
+  - All 16 read tests pass: `cargo test test_read --test fuse_operations` ✅
+
 - Completed FS-007.4: Implement getattr operation tests
   - Implemented 5 comprehensive getattr tests in `tests/fuse_operations.rs`
   - `test_getattr_file_attributes`: Tests file size, blocks, permissions (0o444), for files 100 bytes to 10 MB
