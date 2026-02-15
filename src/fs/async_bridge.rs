@@ -116,18 +116,30 @@ impl AsyncFuseWorker {
     }
 
     /// Create a new async worker for testing purposes.
-    /// This creates a minimal worker without spawning a background task.
-    /// It should only be used in unit tests where async operations aren't needed.
-    #[cfg(test)]
-    pub fn new_for_test(_api_client: Arc<RqbitClient>, _metrics: Arc<Metrics>) -> Self {
-        // Create a channel but don't spawn the worker task
-        // The channel will just buffer requests but they won't be processed
-        let (request_tx, _request_rx) = mpsc::channel::<FuseRequest>(1);
-        let (shutdown_tx, _) = oneshot::channel();
+    /// This spawns a real worker that processes requests and can interact with mock servers.
+    pub fn new_for_test(api_client: Arc<RqbitClient>, metrics: Arc<Metrics>) -> Self {
+        let (request_tx, mut request_rx) = mpsc::channel::<FuseRequest>(100);
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+
+        let worker_handle = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut shutdown_rx => break,
+                    Some(request) = request_rx.recv() => {
+                        let api_client = Arc::clone(&api_client);
+                        let metrics = Arc::clone(&metrics);
+                        tokio::spawn(async move {
+                            Self::handle_request(&api_client, &metrics, request).await;
+                        });
+                    }
+                }
+            }
+        });
 
         Self {
             request_tx,
-            worker_handle: None,
+            worker_handle: Some(worker_handle),
             shutdown_tx: Some(shutdown_tx),
         }
     }

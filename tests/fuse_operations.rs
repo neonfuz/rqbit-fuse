@@ -50,7 +50,7 @@ fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
         config.api.url.clone(),
         Arc::clone(&metrics.api),
     ));
-    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
+    let async_worker = Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics.clone()));
     TorrentFS::new(config, metrics, async_worker).unwrap()
 }
 
