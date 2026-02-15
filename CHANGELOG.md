@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Completed FS-007.4: Implement getattr operation tests
+  - Implemented 5 comprehensive getattr tests in `tests/fuse_operations.rs`
+  - `test_getattr_file_attributes`: Tests file size, blocks, permissions (0o444), for files 100 bytes to 10 MB
+  - `test_getattr_directory_attributes`: Tests directory permissions (0o555), nlink calculation (2 + children)
+  - `test_getattr_nonexistent_inode`: Tests ENOENT behavior for invalid inodes (0, 99999, u64::MAX)
+  - `test_getattr_timestamp_consistency`: Tests atime/mtime/ctime validity and ordering
+  - `test_getattr_symlink_attributes`: Tests symlink file type detection and attributes
+  - All tests pass: `cargo test test_getattr --test fuse_operations` ✅
+
 - Completed FS-007.3: Implement lookup operation tests
   - Implemented 7 comprehensive lookup tests in `tests/fuse_operations.rs`
   - `test_lookup_successful_file`: Verifies file lookup returns correct inode and attributes

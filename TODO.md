@@ -161,10 +161,14 @@ Each item is designed to be completed independently. Research references are sto
     - `test_lookup_deeply_nested`: Tests lookup through 4 levels of directory nesting
     - `test_lookup_special_characters`: Tests lookup with spaces, unicode, and symbols
     - All tests pass: `cargo test test_lookup --test fuse_operations` ✅
-  - [ ] **FS-007.4**: Implement getattr operation tests
-    - Test getattr for files (size, permissions, timestamps)
-    - Test getattr for directories
-    - Test getattr for non-existent inodes
+  - [x] **FS-007.4**: Implement getattr operation tests
+    - Implemented 5 comprehensive getattr tests in `tests/fuse_operations.rs`
+    - `test_getattr_file_attributes`: Tests file size, blocks, permissions (0o444), and attributes for files of varying sizes (100 bytes to 10 MB)
+    - `test_getattr_directory_attributes`: Tests directory permissions (0o555), nlink count calculation (2 + children), and nested directory attributes
+    - `test_getattr_nonexistent_inode`: Tests ENOENT behavior for invalid inodes (0, 99999, u64::MAX)
+    - `test_getattr_timestamp_consistency`: Tests atime/mtime/ctime validity and ordering
+    - `test_getattr_symlink_attributes`: Tests symlink file type detection and attributes
+    - All tests pass: `cargo test test_getattr --test fuse_operations` ✅
   - [ ] **FS-007.5**: Implement readdir operation tests
     - Test reading root directory contents
     - Test reading torrent directory contents
