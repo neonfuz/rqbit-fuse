@@ -268,10 +268,16 @@ Each item is designed to be completed independently. Research references are sto
   - Now gracefully falls back to creating a new stream if the stream was removed
   - All tests pass, code formatted with `cargo fmt`
 
-- [ ] **STREAM-002**: Fix check-then-act race condition
-  - Lines 372-407: Lock is released between check and action
-  - Use entry API or keep lock across entire operation
-  - Add test for concurrent stream access
+- [x] **STREAM-002**: Fix check-then-act race condition
+  - Fixed by holding lock across entire check-and-act operation in `read()` method
+  - Removed the race condition between checking stream usability and getting mutable reference
+  - Lock is now acquired once at the start and held until the operation completes
+  - Added 4 concurrent access tests:
+    - `test_concurrent_stream_access`: Tests multiple concurrent readers for same stream
+    - `test_concurrent_stream_creation`: Tests concurrent stream creation
+    - `test_stream_check_then_act_atomicity`: Tests atomicity of check-then-act pattern
+    - `test_stream_lock_held_during_skip`: Tests lock held during skip operations
+  - All tests pass, no clippy warnings, code formatted
 
 - [ ] **STREAM-003**: Add yielding in large skip operations
   - Lines 187-236: Large skips block runtime

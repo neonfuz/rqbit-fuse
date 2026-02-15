@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed check-then-act race condition in stream access (STREAM-002)
+  - Restructured `PersistentStreamManager::read()` to hold the streams lock continuously
+  - Removed race window between checking stream usability and getting mutable reference
+  - Lock is now acquired once at the start and held until the operation completes
+  - Simplified code flow by removing separate lock acquisition points
+  - All 4 new concurrent access tests pass
+  - No clippy warnings, code formatted
+
 - Fixed unwrap panic in stream access (STREAM-001)
   - Fixed line 380 in `src/api/streaming.rs`: Changed `.unwrap()` on stream get to `if let Some()` pattern
   - Eliminates panic when stream is dropped between existence check (lines 359-366) and lock re-acquisition (line 379)

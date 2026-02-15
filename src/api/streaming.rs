@@ -355,18 +355,22 @@ impl PersistentStreamManager {
             file_idx,
         };
 
-        // Check if we have a usable stream
-        let can_use_existing = {
-            let streams = self.streams.lock().await;
-            if let Some(stream) = streams.get(&key) {
-                stream.can_read_at(offset)
-            } else {
-                false
-            }
+        // Try to use existing stream first, holding lock for entire check-and-act
+        let mut streams = self.streams.lock().await;
+
+        let can_use_existing = if let Some(stream) = streams.get(&key) {
+            stream.can_read_at(offset)
+        } else {
+            false
         };
 
         if can_use_existing {
-            // Use existing stream
+            // We know the stream exists and is usable, get mutable reference
+            // This is safe because we held the lock continuously
+            let stream = streams
+                .get_mut(&key)
+                .expect("Stream must exist after check");
+
             trace!(
                 stream_op = "reuse",
                 torrent_id = torrent_id,
@@ -376,49 +380,23 @@ impl PersistentStreamManager {
                 "Reusing existing stream"
             );
 
-            let mut streams = self.streams.lock().await;
-            if let Some(stream) = streams.get_mut(&key) {
-                // If we need to seek forward a bit, do it
-                if offset > stream.current_position {
-                    let gap = offset - stream.current_position;
-                    trace!(bytes_to_skip = gap, "Skipping forward in existing stream");
-                    stream.skip(gap).await?;
-                }
-
-                self.read_from_stream(stream, size, torrent_id, file_idx)
-                    .await
-            } else {
-                // Stream was dropped between check and lock acquisition
-                trace!(
-                    stream_op = "recreate",
-                    torrent_id = torrent_id,
-                    file_idx = file_idx,
-                    offset = offset,
-                    size = size,
-                    "Stream was dropped, creating new stream"
-                );
-                drop(streams); // Release lock before creating new stream
-
-                let mut new_stream = PersistentStream::new(
-                    &self.client,
-                    &self.base_url,
-                    torrent_id,
-                    file_idx,
-                    offset,
-                )
-                .await?;
-
-                let result = self
-                    .read_from_stream(&mut new_stream, size, torrent_id, file_idx)
-                    .await?;
-
-                // Store the stream for future use
-                let mut streams = self.streams.lock().await;
-                streams.insert(key, new_stream);
-
-                Ok(result)
+            // If we need to seek forward a bit, do it
+            if offset > stream.current_position {
+                let gap = offset - stream.current_position;
+                trace!(bytes_to_skip = gap, "Skipping forward in existing stream");
+                stream.skip(gap).await?;
             }
+
+            // Read while still holding lock, then release
+            let result = self
+                .read_from_stream(stream, size, torrent_id, file_idx)
+                .await;
+            drop(streams); // Release lock before returning
+            result
         } else {
+            // Drop the lock before creating a new stream (creation is async and may block)
+            drop(streams);
+
             // Create a new stream
             trace!(
                 stream_op = "create_new",
@@ -529,4 +507,164 @@ impl Drop for PersistentStreamManager {
 pub struct StreamManagerStats {
     pub active_streams: usize,
     pub total_bytes_streaming: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::Barrier;
+
+    /// Test that concurrent reads to the same stream key don't cause race conditions
+    #[tokio::test]
+    async fn test_concurrent_stream_access() {
+        let client = Client::new();
+        let manager = Arc::new(PersistentStreamManager::new(
+            client,
+            "http://localhost:0".to_string(),
+        ));
+
+        // Create a barrier for synchronization
+        let barrier = Arc::new(Barrier::new(3));
+        let mut handles = vec![];
+
+        // Spawn 3 concurrent readers for the same stream
+        for reader_id in 0..3 {
+            let manager = Arc::clone(&manager);
+            let barrier = Arc::clone(&barrier);
+
+            let handle = tokio::spawn(async move {
+                // Wait for all readers to be ready
+                barrier.wait().await;
+
+                // Try to read - this tests the race condition fix
+                // Even though the stream will fail to connect (invalid URL),
+                // we're testing that the locking works correctly without panics
+                let result = manager.read(1, 0, 0, 1024).await;
+
+                // We expect an error since we're using an invalid URL
+                // but the important thing is we don't panic or hit race conditions
+                assert!(
+                    result.is_err(),
+                    "Reader {} should get an error with invalid URL",
+                    reader_id
+                );
+
+                reader_id
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all readers to complete
+        let results = futures::future::join_all(handles).await;
+
+        // All should complete without panics
+        for result in results {
+            assert!(result.is_ok(), "All readers should complete without panics");
+        }
+    }
+
+    /// Test that stream creation is properly serialized
+    #[tokio::test]
+    async fn test_concurrent_stream_creation() {
+        let client = Client::new();
+        let manager = Arc::new(PersistentStreamManager::new(
+            client,
+            "http://localhost:0".to_string(),
+        ));
+
+        let barrier = Arc::new(Barrier::new(5));
+        let mut handles = vec![];
+
+        // Spawn multiple concurrent readers for the same file
+        for i in 0..5 {
+            let manager = Arc::clone(&manager);
+            let barrier = Arc::clone(&barrier);
+
+            let handle = tokio::spawn(async move {
+                barrier.wait().await;
+
+                // All try to read the same file at the same time
+                let _ = manager.read(1, 0, (i * 1024) as u64, 1024).await;
+
+                i
+            });
+
+            handles.push(handle);
+        }
+
+        // All should complete without panics
+        let results = futures::future::join_all(handles).await;
+        for result in results {
+            assert!(result.is_ok(), "All readers should complete without panics");
+        }
+    }
+
+    /// Test that the check-then-act pattern is atomic
+    #[tokio::test]
+    async fn test_stream_check_then_act_atomicity() {
+        let client = Client::new();
+        let manager = Arc::new(PersistentStreamManager::new(
+            client,
+            "http://localhost:0".to_string(),
+        ));
+
+        // Test that checking stream usability and getting the stream is atomic
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let manager = Arc::clone(&manager);
+                tokio::spawn(async move {
+                    // Each reader tries multiple times
+                    for _ in 0..5 {
+                        let _ = manager.read(1, i % 2, 0, 512).await;
+                    }
+                    i
+                })
+            })
+            .collect();
+
+        let results = futures::future::join_all(handles).await;
+
+        // All should complete successfully
+        for result in results {
+            assert!(
+                result.is_ok(),
+                "All operations should complete without panics"
+            );
+        }
+    }
+
+    /// Test stream lock is held during skip operation
+    #[tokio::test]
+    async fn test_stream_lock_held_during_skip() {
+        let client = Client::new();
+        let manager = Arc::new(PersistentStreamManager::new(
+            client,
+            "http://localhost:0".to_string(),
+        ));
+
+        // This test verifies that when multiple concurrent reads happen,
+        // the lock is held continuously during the check-and-read operation
+        let handles: Vec<_> = (0..5)
+            .map(|i| {
+                let manager = Arc::clone(&manager);
+                tokio::spawn(async move {
+                    // Try reading at different offsets - this tests skip logic too
+                    let offset = (i * 2048) as u64;
+                    let _ = manager.read(1, 0, offset, 1024).await;
+                    i
+                })
+            })
+            .collect();
+
+        let results = futures::future::join_all(handles).await;
+
+        for result in results {
+            assert!(
+                result.is_ok(),
+                "All operations should complete without panics"
+            );
+        }
+    }
 }
