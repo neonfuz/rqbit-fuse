@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Macros automatically check `log_fuse_operations` config flag
   - All 90 tests pass, clippy clean, code formatted
 
+- Add error handler macros for FUSE operations (SIMPLIFY-005)
+  - Created `reply_ino_not_found!`, `reply_not_directory!`, `reply_not_file!`, `reply_no_permission!` macros
+  - Replaced ~100 lines of duplicated error handling code across 6 FUSE operations
+  - Operations updated: read, lookup, getattr, open, readlink, readdir
+  - Macros record error metrics, log errors (when enabled), and reply with appropriate libc error codes
+  - Updated imports in `src/fs/filesystem.rs` to include new macros
+  - Fixed unused `mut` warnings with `cargo fix`
+  - Code compiles cleanly, clippy clean
+
 - Extract helper functions from main.rs (SIMPLIFY-003)
   - Added `load_config()` helper to consolidate config loading across 3 commands
   - Added `run_command()` helper for shell command execution with error handling

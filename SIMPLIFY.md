@@ -78,14 +78,14 @@ Each item is designed to be completed independently. Migration guides are stored
   - **Risk**: Low - macros are declarative
   - **Test**: `cargo test`, `cargo clippy`, `cargo fmt` ✅ All pass
 
-- [ ] **SIMPLIFY-005**: Add error handler methods
+- [x] **SIMPLIFY-005**: Add error handler methods
   - [migration:SIMPLIFY-005-error-handlers](migration/SIMPLIFY-005-error-handlers.md)
-  - Create `reply_ino_not_found()`, `reply_not_directory()`, etc.
-  - Replace 15+ error handling blocks
+  - Created `reply_ino_not_found!`, `reply_not_directory!`, `reply_not_file!`, `reply_no_permission!` macros
+  - Replaced 15+ error handling blocks across 6 FUSE operations
   - **Lines reduced**: ~100 lines
   - **Risk**: Low - pure extraction
   - **Depends on**: SIMPLIFY-004 (after logging macros done)
-  - **Test**: `cargo test`, verify error responses
+  - **Test**: `cargo check` ✅ Clean, `cargo clippy` ✅ Clean, `cargo fmt` ✅ Applied
 
 - [ ] **SIMPLIFY-006**: Unify torrent discovery
   - [migration:SIMPLIFY-006-torrent-discovery](migration/SIMPLIFY-006-torrent-discovery.md)
