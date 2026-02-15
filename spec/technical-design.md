@@ -464,58 +464,43 @@ impl PersistentStreamManager {
 
 ### Generic Cache (src/cache.rs)
 
-The actual implementation is a generic LRU cache:
+The actual implementation is a Moka-based generic LRU cache:
 
 ```rust
-pub struct Cache<K, V> {
-    entries: DashMap<K, Arc<CacheEntry<V>>>,
-    max_entries: usize,
-    lru_counter: AtomicU64,
-}
+use moka::future::Cache;
 
-pub struct CacheEntry<T> {
-    value: T,
-    created_at: Instant,
-    sequence: u64,  // For LRU ordering
+pub struct Cache<K, V> {
+    inner: Cache<K, Arc<V>>,
+    hits: AtomicU64,
+    misses: AtomicU64,
 }
 
 pub struct CacheStats {
-    pub hits: AtomicU64,
-    pub misses: AtomicU64,
-    pub evictions: AtomicU64,
-    pub expired: AtomicU64,
+    pub hits: u64,
+    pub misses: u64,
+    pub evictions: u64,
+    pub expired: u64,
+    pub size: usize,
 }
 
-impl<K: Eq + std::hash::Hash, V: Clone> Cache<K, V> {
-    pub fn get(&self, key: &K, ttl: Duration) -> Option<V> {
-        // Check if entry exists and not expired
-        // Update LRU sequence on hit
-        // Return cloned value
-    }
-    
-    pub fn insert(&self, key: K, value: V) {
-        // Insert with TTL check
-        // Evict LRU entries if at capacity
-    }
-    
-    pub fn insert_with_ttl(&self, key: K, value: V, ttl: Duration) {
-        // Insert with specific TTL
-    }
-    
-    pub fn remove(&self, key: &K) -> Option<V>;
-    pub fn clear(&self);
-    pub fn stats(&self) -> CacheStats;
+impl<K: Eq + std::hash::Hash + Clone, V: Clone> Cache<K, V> {
+    pub async fn get(&self, key: &K) -> Option<V>;
+    pub async fn insert(&self, key: K, value: V);
+    pub async fn remove(&self, key: &K) -> Option<V>;
+    pub async fn clear(&self);
+    pub async fn stats(&self) -> CacheStats;
     pub fn contains_key(&self, key: &K) -> bool;
     pub fn len(&self) -> usize;
     pub fn is_empty(&self) -> bool;
 }
 ```
 
-**Major Differences from Spec:**
-- Generic design (not torrent-specific)
-- LRU eviction in addition to TTL
+**Major Differences from Original Spec:**
+- Uses Moka crate instead of custom implementation
+- O(1) eviction via TinyLFU algorithm
+- Atomic capacity management (no race conditions)
+- Transparent TTL handling
 - Statistics tracking
-- No torrent-specific methods
 
 ## Error Mapping
 
@@ -768,4 +753,74 @@ pub struct ApiMetrics {
 }
 ```
 
-Last updated: 2024-02-14
+### ShardedCounter (src/sharded_counter.rs)
+
+A high-performance counter for reducing atomic contention under high concurrency:
+
+```rust
+/// Sharded counter to reduce contention under high concurrency.
+/// Uses a thread-local counter to select shards, avoiding atomic contention
+/// while working in async contexts where tasks migrate between threads.
+pub struct ShardedCounter {
+    shards: Vec<AtomicU64>,
+}
+
+impl ShardedCounter {
+    /// Increment a counter shard using round-robin selection via thread-local counter.
+    #[inline]
+    pub fn increment(&self);
+    
+    /// Sum all shards to get the total count.
+    pub fn sum(&self) -> u64;
+}
+```
+
+**Key Features:**
+- Uses 64 shards to distribute atomic operations
+- Thread-local selection avoids contention
+- Works correctly in async contexts
+- Used for high-frequency metrics collection
+
+### AsyncFuseWorker (src/fs/async_bridge.rs)
+
+Bridges synchronous FUSE callbacks to asynchronous operations:
+
+```rust
+/// Async worker that handles FUSE callbacks in a separate task.
+/// This resolves deadlock issues from block_in_place + block_on patterns.
+pub struct AsyncFuseWorker {
+    request_tx: mpsc::Sender<FuseRequest>,
+    metrics: Arc<Metrics>,
+}
+
+impl AsyncFuseWorker {
+    /// Create a new async worker with the given channel capacity.
+    pub fn new(api_client: Arc<RqbitClient>, metrics: Arc<Metrics>, channel_capacity: usize) -> Self;
+    
+    /// Execute a read operation asynchronously.
+    pub async fn read_file(&self, request: FuseRequest) -> Result<FuseResponse, FuseError>;
+}
+```
+
+### FuseError (src/fs/error.rs)
+
+FUSE-specific error types:
+
+```rust
+#[derive(Debug, Clone)]
+pub enum FuseError {
+    NotFound,
+    PermissionDenied,
+    TimedOut,
+    IoError(String),
+    NotReady,
+    ChannelFull,
+    WorkerDisconnected,
+}
+
+impl FuseError {
+    pub fn to_errno(&self) -> libc::c_int;
+}
+```
+
+Last updated: 2026-02-15

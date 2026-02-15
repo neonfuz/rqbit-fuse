@@ -15,6 +15,7 @@ High-level system architecture and design overview.
 - Configuration schema
 - CLI interface specification
 - Security and performance considerations
+- Async bridge for FUSE callbacks
 
 **Read this first** to understand the overall system design.
 
@@ -101,9 +102,17 @@ User-facing documentation for installing and using rqbit-fuse.
 
 Specifications have been updated to match the actual implementation.
 
-**Last updated:** 2024-02-14
+**Last updated:** 2026-02-15
+
+**New Modules Added:**
+- `fs/async_bridge.rs` - Async/sync bridge for FUSE callbacks
+- `fs/error.rs` - FUSE-specific error types
+- `fs/macros.rs` - Helper macros for FUSE operations
+- `mount.rs` - Mount point utilities
+- `sharded_counter.rs` - High-performance sharded counter
 
 **Notes:**
 - All specs have been reviewed and updated to reflect actual code
 - Some documented features are not yet implemented (see roadmap.md)
 - Directory structure in architecture.md now matches actual `src/` layout
+- AsyncFuseWorker implementation resolves the async-in-sync deadlock issue

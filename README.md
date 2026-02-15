@@ -456,7 +456,7 @@ read(inode=42,                   GET /torrents/123/stream/0
 - Directory operations (lookup, readdir, mkdir, rmdir)
 - File attributes (getattr, setattr)
 - Read operations with HTTP Range support
-- LRU cache with TTL and eviction policies
+- LRU cache with TTL and eviction policies (Moka-based)
 - Read-ahead optimization with sequential detection
 - Torrent lifecycle management (add, monitor, remove)
 - Comprehensive error handling with circuit breaker
@@ -464,6 +464,10 @@ read(inode=42,                   GET /torrents/123/stream/0
 - CLI with subcommands (mount, umount, status)
 - Extended attributes for torrent status
 - Background status monitoring with stalled detection
+- AsyncFuseWorker for safe async/sync bridging (prevents deadlocks)
+- FuseError types for proper FUSE error mapping
+- ShardedCounter for high-performance metrics collection
+- Signal handling for graceful shutdown
 
 **Current Stats:**
 - 50+ unit tests passing

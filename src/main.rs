@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use rqbit_fuse::config::{CliArgs, Config};
 use rqbit_fuse::mount::{get_mount_info, is_mount_point, setup_logging, unmount_filesystem};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "rqbit-fuse")]

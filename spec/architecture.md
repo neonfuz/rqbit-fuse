@@ -57,6 +57,7 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - Manage concurrent reads with piece prioritization via HTTP Range requests
 - Collect metrics on FUSE operations and API calls
 - Background torrent discovery and status monitoring
+- Bridge sync FUSE callbacks to async operations via AsyncFuseWorker
 
 **Key Modules:**
 
@@ -65,6 +66,25 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - Maps FUSE operations to torrent file operations
 - Directory structure: One directory per torrent, containing torrent files
 - Background tasks for torrent discovery and status monitoring
+
+#### fs/async_bridge.rs
+- AsyncFuseWorker bridges sync FUSE callbacks to async operations
+- Uses channel-based request/response pattern
+- Prevents deadlocks from block_in_place + block_on patterns
+- Handles read operations and torrent removal through async worker
+
+#### fs/inode.rs
+- InodeManager for inode allocation and management
+- Thread-safe concurrent access using DashMap
+- Supports directories, files, and symlinks
+- Path-to-inode and torrent-to-inode mappings
+
+#### fs/error.rs
+- FuseError enum for FUSE-specific errors
+- Error to FUSE errno mapping
+
+#### fs/macros.rs
+- Helper macros for FUSE operations (fuse_error, fuse_log, fuse_ok)
 
 #### api/client.rs
 - HTTP client for rqbit API with circuit breaker pattern
@@ -134,25 +154,31 @@ rqbit-fuse/
 ├── src/
 │   ├── main.rs              # CLI entry point
 │   ├── lib.rs               # Library exports
-│   ├── cache.rs             # Generic LRU cache with TTL
+│   ├── cache.rs             # Generic LRU cache with TTL (Moka-based)
 │   ├── metrics.rs           # Metrics collection
+│   ├── mount.rs             # Mount point utilities
+│   ├── sharded_counter.rs   # High-performance sharded counter
 │   ├── config/
 │   │   └── mod.rs           # Configuration management
 │   ├── fs/                  # FUSE filesystem implementation
 │   │   ├── mod.rs
 │   │   ├── filesystem.rs    # FUSE callbacks
-│   │   └── inode.rs         # Inode management
+│   │   ├── inode.rs         # Inode management
+│   │   ├── async_bridge.rs # Async/sync bridge for FUSE
+│   │   ├── error.rs        # FUSE error types
+│   │   └── macros.rs        # Helper macros
 │   ├── api/                 # HTTP API client
 │   │   ├── mod.rs
 │   │   ├── client.rs        # HTTP client with retry logic
 │   │   ├── types.rs         # API types and error mapping
-│   │   └── streaming.rs     # Persistent streaming manager
+│   │   ├── streaming.rs     # Persistent streaming manager
+│   │   └── circuit_breaker.rs # Circuit breaker pattern
 │   └── types/               # Core type definitions
 │       ├── mod.rs
-│       ├── torrent.rs       # Torrent structures
-│       ├── file.rs          # File structures
 │       ├── inode.rs         # Inode entry types
-│       └── attr.rs          # File attribute helpers
+│       ├── attr.rs          # File attribute helpers
+│       ├── handle.rs        # File handle types
+│       └── torrent.rs       # Torrent structures
 └── spec/
     ├── architecture.md      # This file
     └── api.md               # API endpoint documentation
@@ -439,6 +465,8 @@ Options:
 - `dirs` - Config directory detection
 - `libc` - FUSE error codes
 - `dashmap` - Concurrent hash map
+- `moka` - High-performance cache (TinyLFU algorithm)
+- `tokio-util` - Async utilities including cancellation tokens
 
 ## Security Considerations
 
@@ -486,7 +514,7 @@ Options:
 - Basic FUSE mount/unmount
 - Directory listing (torrents as dirs, files)
 - File read via HTTP Range requests
-- Metadata caching with TTL and LRU
+- Metadata caching with TTL and LRU (Moka-based)
 - Background torrent discovery
 - Status monitoring
 - Circuit breaker pattern
@@ -495,12 +523,17 @@ Options:
 - Comprehensive error handling
 - Configuration file support
 - CLI with status command
+- AsyncFuseWorker for safe async/sync bridging
+- FuseError types for proper error mapping
+- ShardedCounter for high-performance metrics
+- Mount utilities module
+- Signal handling for graceful shutdown
 
 ### Not Implemented
 - `list` command (documented but not implemented)
 - `cache clear` command (documented but not implemented)
 - `daemon` command (documented but not implemented)
 - Write support
-- macOS support
+- macOS support (FUSE-T or macFUSE)
 
-Last updated: 2024-02-14
+Last updated: 2026-02-15

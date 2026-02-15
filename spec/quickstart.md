@@ -218,6 +218,8 @@ All config options can be overridden via environment variables:
 - `TORRENT_FUSE_LOG_API_CALLS`
 - `TORRENT_FUSE_METRICS_ENABLED`
 - `TORRENT_FUSE_METRICS_INTERVAL`
+- `TORRENT_FUSE_AUTH_USERNAME` - HTTP Basic Auth username
+- `TORRENT_FUSE_AUTH_PASSWORD` - HTTP Basic Auth password
 
 ## Command Reference
 
@@ -233,6 +235,8 @@ Options:
   -q, --quiet                Suppress output except errors
       --allow-other          Allow other users to access the mount [env: TORRENT_FUSE_ALLOW_OTHER]
       --auto-unmount         Auto-unmount on process exit [env: TORRENT_FUSE_AUTO_UNMOUNT]
+      --username <USER>      rqbit API username for HTTP Basic Auth [env: TORRENT_FUSE_AUTH_USERNAME]
+      --password <PASS>      rqbit API password for HTTP Basic Auth [env: TORRENT_FUSE_AUTH_PASSWORD]
 ```
 
 **Examples:**
