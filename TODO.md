@@ -1,182 +1,518 @@
-# Ralph-Loop Fix Checklist: Range Request Streaming
+# torrent-fuse Improvement Checklist
 
-## Pre-Flight Checklist
-- [x] torrent-fuse is currently mounted at `./dl2`
-- [x] rqbit server is running at localhost:3030 (2 torrents available)
-- [x] Test file exists: ubuntu-25.10-desktop-amd64.iso via API (returns 200, not 206 - confirms range issue)
+## How to Use This File
 
-## Iteration 1: Add Streaming Support to API Client ✅
-**Goal**: Modify `read_file` to stream response and limit bytes when server ignores Range headers
+Each item is designed to be completed independently. Research references are stored in `research/` folder with corresponding names.
 
-**Files modified**:
-- `src/api/client.rs`
-- `Cargo.toml`
-
-**Changes made**:
-1. Added `futures = "0.3"` dependency to Cargo.toml
-2. Enabled reqwest "stream" feature in Cargo.toml
-3. Added import: `use futures::stream::StreamExt;` after line 11
-4. Replaced lines 538-551 with streaming implementation that:
-   - Detects when server returns 200 OK for range requests
-   - Streams response and limits bytes to requested size
-   - Logs warnings when server ignores Range headers
-
-**Test Results**:
-```bash
-$ time head -c 4096 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
-0.04s total (was 2+ seconds)
-```
-✅ 4KB read: 40ms (was 2+ seconds) - 50x faster
-✅ 64KB read: 5ms
-✅ Data integrity verified against API
-✅ Warning logs confirm server returns 200 OK instead of 206
+**Workflow:**
+1. Pick an unchecked item
+2. If it references a research file (e.g., `[research:cache-design]`), read that file first
+3. Complete the task
+4. Check the box
+5. Commit your changes
 
 ---
 
-## Iteration 2: Verify Range Header Format ✅
-**Goal**: Ensure Range header format matches rqbit expectations exactly
+## Phase 1: Critical Fixes (Must Fix Before Production)
 
-**Files checked**:
-- `src/api/client.rs` (line 505)
+### Cache System (src/cache.rs)
 
-**Findings**:
-- Range header format is correct: `bytes={start}-{end}` (inclusive, both values)
-- Example: `bytes=0-4095` for 4096 bytes
-- Format follows HTTP/1.1 specification exactly
+- [x] **CACHE-001**: Research and document cache design options
+  - [research:cache-design](research/cache-design.md) comparing:
+    - Current DashMap + custom LRU approach
+    - Using `lru` crate
+    - Using `cached` crate  
+    - Using `moka` crate (RECOMMENDED)
+  - Documented migration plan to Moka
+  - Fixes identified: CACHE-002 through CACHE-006
 
-**Test Results**:
-```bash
-$ curl -sI -H "Range: bytes=0-4095" http://localhost:3030/torrents/1/stream/0
-HTTP/1.1 200 OK
-accept-ranges: bytes
-```
+- [ ] **CACHE-002**: Implement O(1) cache eviction
+  - Depends on: `[research:cache-design]`
+  - Replace full cache scan eviction with proper LRU
+  - Ensure eviction happens atomically with insert
+  - Maintain thread safety with concurrent access
 
-**Conclusion**: Range header format is correct. Server returns 200 OK instead of 206 Partial Content. This is a rqbit bug - server advertises `accept-ranges: bytes` but doesn't honor Range requests. Proceeded to Iteration 3 workaround.
+- [ ] **CACHE-003**: Fix capacity check race condition
+  - Make `check_and_evict_if_needed()` atomic operation
+  - Prevent cache from exceeding max_entries
+  - Add unit test for concurrent insertions at capacity
+
+- [ ] **CACHE-004**: Fix `contains_key()` memory leak
+  - Currently returns true for expired entries
+  - Should return false for expired entries
+  - Add test verifying expired entries are not counted
+
+- [ ] **CACHE-005**: Fix TOCTOU in expired entry removal
+  - Line 112-118: Double removal possible
+  - Use entry API to make check-and-remove atomic
+  - Add test for concurrent expired entry access
+
+- [ ] **CACHE-006**: Fix cache remove ambiguity
+  - Currently cannot distinguish "not found" from "entry in use"
+  - Return enum: `Removed`, `NotFound`, `InUse`
+  - Update all callers to handle new return type
+
+- [ ] **CACHE-007**: Add cache statistics endpoint
+  - Expose hit rate, miss rate, eviction count
+  - Make available via metrics or logging
+  - Required for CACHE-008 optimization verification
+
+- [ ] **CACHE-008**: Optimize cache statistics collection
+  - Depends on: CACHE-007
+  - Reduce contention on stats counter
+  - Use sharded counters or atomic operations
+  - Measure impact on concurrent read performance
+
+### Filesystem Implementation (src/fs/filesystem.rs)
+
+- [ ] **FS-001**: Research async FUSE patterns
+  - Create `research/async-fuse-patterns.md` documenting:
+    - Current `block_in_place` + `block_on` approach and deadlock risks
+    - Alternative: Spawn tasks and use channels
+    - Alternative: Use `fuser` async support if available
+    - Alternative: Restructure to avoid async-in-sync
+  - Document recommended approach with examples
+
+- [ ] **FS-002**: Fix blocking async in sync callbacks
+  - Depends on: `[research:async-fuse-patterns]`
+  - Replace `block_in_place` + `block_on` pattern
+  - Eliminate deadlock risk in FUSE callbacks
+  - Add stress test with concurrent operations
+
+- [ ] **FS-003**: Implement unique file handle allocation
+  - Currently using inode as file handle (violates FUSE semantics)
+  - Create handle table with unique IDs per open
+  - Map handles to (inode, open flags, state)
+  - Update all file operations to use handles
+
+- [ ] **FS-004**: Fix read_states memory leak
+  - Clean up `read_states` entries in `release()` callback
+  - Add TTL-based eviction for orphaned states
+  - Add memory usage metrics for read_states
+
+- [ ] **FS-005**: Replace std::sync::Mutex with tokio::sync::Mutex
+  - Find all std::sync::Mutex in async context (lines 73, 77, 79, 83, 101, 102)
+  - Replace with tokio::sync::Mutex
+  - Verify no blocking operations remain
+
+- [ ] **FS-006**: Fix path resolution for nested directories
+  - Line 1117-1123: Nested directories resolve incorrectly
+  - Add test cases for multi-level directory structures
+  - Fix and verify correct resolution
+
+- [ ] **FS-007**: Add proper FUSE operation tests
+  - Create `tests/fuse_operations.rs`
+  - Test lookup, getattr, readdir, read with real FUSE
+  - Use fuse_mt or similar for testing
+  - Include error case testing
+
+### Inode Management (src/fs/inode.rs)
+
+- [ ] **INODE-001**: Research inode table design
+  - Create `research/inode-design.md` comparing:
+    - Current multi-map approach
+    - Single DashMap with composite keys
+    - RwLock + HashMap approach
+    - Trade-offs for each
+
+- [ ] **INODE-002**: Make inode table operations atomic
+  - Depends on: `[research:inode-design]`
+  - Currently `path_to_inode` and `entries` updated separately
+  - Use composite key or transaction to make atomic
+  - Add test for concurrent inode creation/removal
+
+- [ ] **INODE-003**: Fix torrent directory mapping
+  - Currently maps torrent_id to file's parent
+  - Should map to torrent directory inode
+  - Fix path resolution for torrent files
+  - Update directory listing to show torrent contents
+
+- [ ] **INODE-004**: Make entries field private
+  - Change `pub entries` to private
+  - Add controlled accessor methods
+  - Prevent external code from breaking invariants
+  - Update all existing callers
+
+- [ ] **INODE-005**: Fix stale path references
+  - `remove_inode()` rebuilds path which may be outdated
+  - Store canonical path or use inode-based removal
+  - Add test for path updates after directory rename
+
+### Streaming Implementation (src/api/streaming.rs)
+
+- [ ] **STREAM-001**: Fix unwrap panic in stream access
+  - Line 384: `.unwrap()` on stream get after lock
+  - Handle case where stream was dropped between check and access
+  - Return proper error instead of panic
+
+- [ ] **STREAM-002**: Fix check-then-act race condition
+  - Lines 372-407: Lock is released between check and action
+  - Use entry API or keep lock across entire operation
+  - Add test for concurrent stream access
+
+- [ ] **STREAM-003**: Add yielding in large skip operations
+  - Lines 187-236: Large skips block runtime
+  - Add `.await` yield points every N bytes
+  - Use `tokio::task::yield_now()` or similar
+
+- [ ] **STREAM-004**: Implement backward seeking
+  - Currently only supports forward seeks
+  - Implement seek backward in stream
+  - Add seek tests for all directions
 
 ---
 
-## Iteration 3: Add Response Status Validation ✅
-**Goal**: Detect when server returns 200 instead of 206 and apply byte limiting
+## Phase 2: High Priority Fixes
 
-**Status**: COMPLETED - Implemented as part of Iteration 1 streaming changes
+### Error Handling
 
-**Files modified**:
-- `src/api/client.rs` (lines 552-604)
+- [ ] **ERROR-001**: Research typed error design
+  - Create `research/error-design.md` with:
+    - Current string-based error detection issues
+    - Proposed error enum hierarchy
+    - FUSE error code mapping strategy
+    - Library vs application error separation
 
-**Implementation details**:
-- Check response status before consuming body: `let status = response.status()`
-- Detect full response: `is_full_response = status == 200 && range.is_some()`
-- Log warning when server returns 200 OK for range requests
-- Stream response with byte limiting when full response detected
+- [ ] **ERROR-002**: Replace string matching with typed errors
+  - Depends on: `[research:error-design]`
+  - Remove `.contains("not found")` pattern (filesystem.rs:1012-1015)
+  - Create specific error types for each failure mode
+  - Update error mapping to FUSE codes
 
-**Log output confirms working**:
-```
-WARN ... Server returned 200 OK for range request, will limit to 4096 bytes
-```
+- [ ] **ERROR-003**: Fix silent failures in list_torrents()
+  - Lines 320-338: Logs but doesn't propagate errors
+  - Return Result with partial success info
+  - Let caller decide how to handle partial failures
 
-**Test Results**:
-- 16KB read completes in <100ms (was 2+ seconds)
-- Warning logs confirm detection of 200 OK responses
-- Byte limiting ensures only requested data is returned
+- [ ] **ERROR-004**: Preserve error context
+  - Lines 289-292: `.unwrap_or_else()` loses original error
+  - Use proper error chaining with `anyhow::Context`
+  - Ensure root cause is preserved in error messages
+
+### API Client (src/api/client.rs)
+
+- [ ] **API-001**: Remove panics from API client
+  - Lines 142-143, 170-171: Replace `.expect()` with Result
+  - Line 541: Handle request clone failure gracefully
+  - Return proper errors for all failure cases
+
+- [ ] **API-002**: Add authentication support
+  - Research rqbit auth methods
+  - Add auth token/API key support to client
+  - Update configuration for credentials
+  - Add auth failure error handling
+
+- [ ] **API-003**: Fix N+1 query in list_torrents()
+  - Lines 308-346: Makes N+1 API calls
+  - Use bulk endpoint if available
+  - Or add caching to reduce redundant calls
+  - Add performance benchmark
+
+- [ ] **API-004**: Use reqwest::Url instead of String
+  - Change URL fields from String to reqwest::Url
+  - Validate URLs at construction time
+  - Fail fast on invalid URL configuration
+
+### Type System
+
+- [ ] **TYPES-001**: Research torrent type consolidation
+  - Create `research/torrent-types.md` analyzing:
+    - `types/torrent.rs` (appears dead code)
+    - `api/types.rs::TorrentInfo`
+    - Any other torrent representations
+  - Document consolidation strategy
+
+- [ ] **TYPES-002**: Consolidate torrent representations
+  - Depends on: `[research:torrent-types]`
+  - Remove or complete `types/torrent.rs`
+  - Use single canonical type throughout codebase
+  - Update all imports and conversions
+
+- [ ] **TYPES-003**: Remove unused types
+  - Remove `TorrentSummary` (api/types.rs:151-161)
+  - Remove `FileStats` (api/types.rs:259-264)
+  - Verify no code references these types
+  - Check tests for usage
+
+- [ ] **TYPES-004**: Fix platform-dependent types
+  - Change `file_index: usize` to `u64` (types/inode.rs:16)
+  - Audit for other usize vs u64 issues
+  - Ensure 32-bit and 64-bit compatibility
+
+- [ ] **TYPES-005**: Improve InodeEntry children lookup
+  - `children: Vec<u64>` has O(n) lookup
+  - Consider HashSet or DashSet for O(1)
+  - Measure impact on directory operations
+
+### Configuration (src/config/mod.rs)
+
+- [ ] **CONFIG-001**: Add comprehensive config validation
+  - Validate URLs (non-empty, valid format)
+  - Validate timeouts (positive, reasonable range)
+  - Validate paths (exist, permissions)
+  - Return detailed validation errors
+
+- [ ] **CONFIG-002**: Remove hardcoded UID/GID
+  - Lines 17-18, 36-37: Remove hardcoded 1000
+  - Use current user's UID/GID by default
+  - Make configurable via config file
+
+- [ ] **CONFIG-003**: Add documentation to config module
+  - Add doc comments to all structs
+  - Document all configuration fields
+  - Add example configurations
+  - Document environment variable names
+
+- [ ] **CONFIG-004**: Fix inconsistent env var naming
+  - Audit all environment variables
+  - Use consistent prefix (e.g., `TORRENT_FUSE_*`)
+  - Document naming convention
+
+- [ ] **CONFIG-005**: Fix case-sensitive file extension detection
+  - Make config file detection case-insensitive
+  - Support .toml, .TOML, .json, .JSON
+  - Add test for various extensions
 
 ---
 
-## Iteration 4: Optimize Chunk Size
-**Goal**: Tune read size for best performance
+## Phase 3: Documentation & Testing
 
-**Files to modify**:
-- `src/fs/filesystem.rs`
+### Documentation
 
-**Current value**: Line 1481 `const FUSE_MAX_READ: u32 = 4 * 1024; // 4KB`
+- [ ] **DOCS-001**: Research documentation standards
+  - Create `research/doc-standards.md` with:
+    - Rust doc comment conventions
+    - Required sections (Examples, Panics, Errors)
+    - Crate-level documentation requirements
+    - Module-level documentation requirements
 
-**Benchmarking**:
-```bash
-# Test different chunk sizes
-cargo build --release && umount dl2 && ./target/release/torrent-fuse mount -m ./dl2
+- [ ] **DOCS-002**: Add crate-level documentation
+  - Depends on: `[research:doc-standards]`
+  - Document overall purpose and architecture
+  - Add quickstart example
+  - Document feature flags if any
 
-# Test 4KB (current)
-time head -c 4096 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+- [ ] **DOCS-003**: Document blocking behavior
+  - Add prominent documentation about async/blocking
+  - Document which operations block
+  - Add warnings about deadlock risks
+  - Include in crate-level docs
 
-# Test 16KB
-time head -c 16384 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+- [ ] **DOCS-004**: Document public API
+  - Depends on: `[research:doc-standards]`
+  - Add doc comments to all public items
+  - Include examples where appropriate
+  - Document error conditions
 
-# Test 64KB
-time head -c 65536 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+- [ ] **DOCS-005**: Add troubleshooting guide
+  - Common issues and solutions
+  - Performance tuning tips
+  - Debugging techniques
+  - FAQ section
 
-# Test 256KB
-time head -c 262144 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
-```
+- [ ] **DOCS-006**: Document security considerations
+  - Path traversal prevention
+  - Resource exhaustion limits
+  - Error information leakage
+  - TOCTOU vulnerabilities
 
-**Recommended values**:
-- 4KB: Safe, works everywhere
-- 16KB: Good balance
-- 64KB: Optimal for most cases (matches rqbit buffer size from spec)
-- 256KB+: May cause "Too much data" FUSE errors
+### Testing
 
-**Changes**:
-1. Update `FUSE_MAX_READ` constant based on benchmark results
-2. Recommended: `64 * 1024` (64KB) - matches rqbit's internal buffer
+- [ ] **TEST-001**: Research FUSE testing approaches
+  - Create `research/fuse-testing.md` documenting:
+    - Testing with libfuse mock
+    - Docker-based integration tests
+    - Testing on CI (GitHub Actions)
+    - Real filesystem operation tests
 
-**Final test**:
-```bash
-cargo build --release && umount dl2 && ./target/release/torrent-fuse mount -m ./dl2
-time cat dl2/ubuntu-25.10-desktop-amd64.iso > /tmp/test_output.iso
-cmp <(head -c 1000000 /tmp/test_output.iso) <(head -c 1000000 dl2/ubuntu-25.10-desktop-amd64.iso) && echo "Data matches!"
-```
-**Expected**: Copy completes in reasonable time, data integrity verified
+- [ ] **TEST-002**: Add FUSE operation integration tests
+  - Depends on: `[research:fuse-testing]`
+  - Test mount/unmount cycles
+  - Test file operations (open, read, close)
+  - Test directory operations (lookup, readdir)
+  - Test error scenarios
+
+- [ ] **TEST-003**: Fix misleading concurrent test
+  - `test_concurrent_torrent_additions` doesn't test concurrency
+  - Rewrite with actual concurrent operations
+  - Use barriers or synchronization
+  - Verify proper concurrent behavior
+
+- [ ] **TEST-004**: Add cache integration tests
+  - Test TTL expiration
+  - Test LRU eviction
+  - Test concurrent cache access
+  - Test cache statistics accuracy
+
+- [ ] **TEST-005**: Add mock verification to tests
+  - Verify WireMock expectations are met
+  - Check request counts and patterns
+  - Add assertions for API call efficiency
+
+- [ ] **TEST-006**: Research property-based testing
+  - Create `research/property-testing.md`
+  - Document proptest or quickcheck integration
+  - Identify properties to test (invariants)
+
+- [ ] **TEST-007**: Add property-based tests
+  - Depends on: `[research:property-testing]`
+  - Test inode table invariants
+  - Test cache consistency properties
+  - Test path resolution properties
 
 ---
 
-## Research Files
+## Phase 4: Architectural Improvements
 
-### `research/streaming-implementation.md`
-Complete implementation details for streaming response handling.
+### Module Organization
 
-### `research/range-header-analysis.md`
-Analysis of HTTP Range header formats and rqbit behavior.
+- [ ] **ARCH-001**: Audit module visibility
+  - Review all `pub` declarations
+  - Make internal modules private
+  - Identify what should be public API
+  - Create `research/public-api.md` with decisions
 
-### `research/benchmark-results.md`
-Performance benchmarks for different chunk sizes.
+- [ ] **ARCH-002**: Implement module re-exports
+  - Depends on: `[research:public-api]`
+  - Add convenience re-exports at module roots
+  - Export `fs::TorrentFS` instead of `fs::filesystem::TorrentFS`
+  - Update all imports to use new paths
+
+- [ ] **ARCH-003**: Extract mount operations
+  - Move mount logic from main.rs to new module
+  - Create `src/mount.rs` or similar
+  - Keep main.rs focused on CLI only
+
+- [ ] **ARCH-004**: Split RqbitClient into focused modules
+  - Currently too large (HTTP, retry, circuit breaking, streaming)
+  - Extract retry logic
+  - Extract circuit breaker
+  - Extract streaming to separate module
+
+### Resource Management
+
+- [ ] **RES-001**: Research signal handling options
+  - Create `research/signal-handling.md` documenting:
+    - tokio::signal usage
+    - Graceful shutdown patterns
+    - Child process cleanup on SIGTERM
+    - FUSE unmount on signal
+
+- [ ] **RES-002**: Implement graceful shutdown
+  - Depends on: `[research:signal-handling]`
+  - Handle SIGINT and SIGTERM
+  - Flush caches on shutdown
+  - Unmount FUSE cleanly
+  - Clean up background tasks
+
+- [ ] **RES-003**: Add child process cleanup
+  - Ensure subprocess cleanup on exit
+  - Add timeout for graceful shutdown
+  - Force kill if needed
+  - Test cleanup behavior
+
+- [ ] **RES-004**: Add resource limits
+  - Maximum cache size (bytes, not just entries)
+  - Maximum open streams
+  - Maximum inode count
+  - Maximum concurrent operations
+
+### Performance
+
+- [ ] **PERF-001**: Research read-ahead strategies
+  - Create `research/read-ahead.md` documenting:
+    - Current prefetch behavior (fetched but dropped)
+    - Sequential read detection
+    - Configurable read-ahead size
+    - Implementation approaches
+
+- [ ] **PERF-002**: Implement read-ahead/prefetching
+  - Depends on: `[research:read-ahead]`
+  - Detect sequential access patterns
+  - Prefetch next chunks
+  - Don't immediately drop prefetched data
+  - Make configurable
+
+- [ ] **PERF-003**: Implement statfs operation
+  - Add FUSE statfs callback
+  - Return filesystem statistics
+  - Required for some applications
+
+- [ ] **PERF-004**: Implement access operation
+  - Add FUSE access callback
+  - Check file permissions
+  - Required for proper permission handling
+
+- [ ] **PERF-005**: Optimize buffer allocation
+  - streaming.rs:394,423: Avoid zeroing large buffers
+  - Use `Vec::with_capacity` instead of `vec![0u8; size]`
+  - Profile memory allocation
+
+- [ ] **PERF-006**: Add performance benchmarks
+  - Depends on: CACHE-007 (statistics)
+  - Benchmark cache operations
+  - Benchmark FUSE operations
+  - Create performance regression workflow
+
+### Metrics
+
+- [ ] **METRICS-001**: Fix race conditions in averages
+  - Research atomic average calculation
+  - Fix race in metrics calculations
+  - Use proper atomic operations
+
+- [ ] **METRICS-002**: Add critical cache metrics
+  - Hit rate, miss rate
+  - Eviction counts
+  - Cache size over time
+  - Required for performance monitoring
+
+- [ ] **METRICS-003**: Reduce trace overhead
+  - Remove traces from hot paths
+  - Make trace level configurable
+  - Measure overhead impact
+
+- [ ] **METRICS-004**: Add periodic logging mechanism
+  - Log metrics at regular intervals
+  - Configurable log frequency
+  - Human-readable format
 
 ---
 
-## Quick Commands Reference
+## Quick Reference
 
-```bash
-# Full rebuild and remount
-cargo build --release && umount dl2 && ./target/release/torrent-fuse mount -m ./dl2
+### Research Files Created
 
-# Quick test (4KB read)
-time head -c 4096 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+When you see `[research:X]`, it means read the file at:
+- `research/cache-design.md`
+- `research/async-fuse-patterns.md`
+- `research/inode-design.md`
+- `research/error-design.md`
+- `research/torrent-types.md`
+- `research/doc-standards.md`
+- `research/fuse-testing.md`
+- `research/property-testing.md`
+- `research/public-api.md`
+- `research/signal-handling.md`
+- `research/read-ahead.md`
 
-# Medium test (64KB read)
-time head -c 65536 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+### Priority Order
 
-# Large test (1MB read)
-time head -c 1048576 dl2/ubuntu-25.10-desktop-amd64.iso > /dev/null
+1. **Phase 1**: Critical fixes (safety/correctness)
+2. **Phase 2**: High priority (reliability/maintainability)
+3. **Phase 3**: Documentation & testing (understanding/confidence)
+4. **Phase 4**: Architecture (performance/design)
 
-# Full file copy test
-time cat dl2/ubuntu-25.10-desktop-amd64.iso > /tmp/full_copy.iso
+### Completion Criteria
 
-# Verify data integrity
-cmp /tmp/full_copy.iso dl2/ubuntu-25.10-desktop-amd64.iso
-
-# Check logs for warnings
-tail -f /tmp/torrent-fuse.log | grep -E "(WARN|ERROR|streaming|range)"
-```
+Each item should:
+- Have code changes committed
+- Have tests added/updated
+- Pass `cargo test`
+- Pass `cargo clippy`
+- Pass `cargo fmt`
+- Have checkbox marked as complete
 
 ---
 
-## Success Criteria
-
-- [x] 4KB read completes in <500ms (verified: 40ms in Iteration 1)
-- [x] 64KB read completes in <1s (verified: ~5ms in benchmarks)
-- [x] 1MB read completes in <5s (streaming implementation handles large reads efficiently)
-- [x] No "Too much data" FUSE errors (64KB chunk size prevents this)
-- [x] File copy produces identical output (data integrity verified in Iteration 1)
-- [x] Log shows warning when server ignores Range headers (implemented in Iteration 1)
-
-**Status**: All success criteria met. Range request streaming implementation complete.
-- FUSE_MAX_READ optimized to 64KB (line 1479 in src/fs/filesystem.rs)
-- Server 200 OK responses are detected and byte-limited
-- All 98 tests passing with no clippy errors in core functionality
+*Generated from code review - February 14, 2026*

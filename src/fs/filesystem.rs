@@ -2018,7 +2018,9 @@ impl TorrentFS {
             created_dirs.insert("".to_string(), torrent_dir_inode);
 
             // Process each file in the torrent
+            info!(torrent_id = torrent_id, file_count = torrent_info.files.len(), "About to process files");
             for (file_idx, file_info) in torrent_info.files.iter().enumerate() {
+                info!(torrent_id = torrent_id, file_idx = file_idx, file_name = %file_info.name, "Processing file");
                 self.create_file_entry(
                     file_info,
                     file_idx,
@@ -2027,6 +2029,7 @@ impl TorrentFS {
                     &mut created_dirs,
                 )?;
             }
+            info!(torrent_id = torrent_id, "Finished processing all files");
         }
 
         // Start monitoring this torrent's status
@@ -2062,10 +2065,11 @@ impl TorrentFS {
     ) -> Result<()> {
         let components = &file_info.components;
 
-        debug!(
+        info!(
             torrent_id = torrent_id,
             file_idx = file_idx,
             components = ?components,
+            file_name = %file_info.name,
             torrent_dir_inode = torrent_dir_inode,
             "create_file_entry called"
         );
@@ -2074,7 +2078,25 @@ impl TorrentFS {
             debug!(
                 torrent_id = torrent_id,
                 file_idx = file_idx,
-                "create_file_entry: empty components, returning"
+                file_name = %file_info.name,
+                "create_file_entry: empty components, using file name as fallback"
+            );
+            // Use file_info.name as fallback when components is empty
+            let file_name = sanitize_filename(&file_info.name);
+            let file_inode = self.inode_manager.allocate_file(
+                file_name.clone(),
+                torrent_dir_inode,
+                torrent_id,
+                file_idx,
+                file_info.length,
+            );
+            self.inode_manager.add_child(torrent_dir_inode, file_inode);
+            debug!(
+                torrent_id = torrent_id,
+                file_idx = file_idx,
+                file_name = %file_name,
+                inode = file_inode,
+                "Created file from empty components"
             );
             return Ok(());
         }
@@ -2132,9 +2154,14 @@ impl TorrentFS {
         // Add to parent directory
         self.inode_manager.add_child(current_dir_inode, file_inode);
 
-        debug!(
-            "Created file {} at inode {} (size: {})",
-            file_name, file_inode, file_info.length
+        info!(
+            torrent_id = torrent_id,
+            file_idx = file_idx,
+            file_name = %file_name,
+            inode = file_inode,
+            parent_inode = current_dir_inode,
+            size = file_info.length,
+            "Created file entry"
         );
 
         Ok(())
