@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Each struct includes purpose, field descriptions, and environment variable references
   - All tests pass, clippy clean, code formatted
 
+- Document all configuration fields (CONFIG-003.2)
+  - Added doc comments to all Config struct fields (api, cache, mount, performance, monitoring, logging)
+  - Added doc comments to all CliArgs struct fields (api_url, mount_point, config_file, username, password)
+  - Config struct now has Fields section in doc comment listing all subconfigs
+
 - Improve InodeEntry children lookup performance (TYPES-005)
   - Changed `children: Vec<u64>` to `children: DashSet<u64>` in InodeEntry::Directory
   - `add_child()` now uses DashSet::insert() for O(1) instead of O(n) Vec::contains + push

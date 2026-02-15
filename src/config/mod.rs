@@ -53,6 +53,15 @@ macro_rules! env_var {
 /// 3. Environment variables
 /// 4. CLI arguments
 ///
+/// # Fields
+///
+/// * `api` - API connection settings for rqbit
+/// * `cache` - Cache TTL and capacity settings
+/// * `mount` - FUSE mount point and options
+/// * `performance` - Read timeouts and concurrency limits
+/// * `monitoring` - Status polling and stall detection
+/// * `logging` - Log verbosity and metrics settings
+///
 /// # Example
 ///
 /// ```rust
@@ -63,16 +72,22 @@ macro_rules! env_var {
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
+    /// API connection settings for rqbit daemon.
     #[serde(default)]
     pub api: ApiConfig,
+    /// Cache TTL and capacity settings.
     #[serde(default)]
     pub cache: CacheConfig,
+    /// FUSE mount point and options.
     #[serde(default)]
     pub mount: MountConfig,
+    /// Read timeouts and concurrency limits.
     #[serde(default)]
     pub performance: PerformanceConfig,
+    /// Status polling and stall detection settings.
     #[serde(default)]
     pub monitoring: MonitoringConfig,
+    /// Log verbosity and metrics settings.
     #[serde(default)]
     pub logging: LoggingConfig,
 }
@@ -710,12 +725,25 @@ impl Config {
 /// Command-line arguments that override configuration values.
 ///
 /// These values take precedence over config files and environment variables.
+///
+/// # Fields
+///
+/// * `api_url` - Override the rqbit API URL
+/// * `mount_point` - Override the FUSE mount point
+/// * `config_file` - Path to a config file to load
+/// * `username` - Username for HTTP Basic authentication
+/// * `password` - Password for HTTP Basic authentication
 #[derive(Debug, Clone, Default)]
 pub struct CliArgs {
+    /// Override the rqbit API URL (e.g., "http://localhost:3030")
     pub api_url: Option<String>,
+    /// Override the FUSE mount point (must be absolute path)
     pub mount_point: Option<PathBuf>,
+    /// Path to a config file to load (TOML or JSON)
     pub config_file: Option<PathBuf>,
+    /// Username for HTTP Basic authentication
     pub username: Option<String>,
+    /// Password for HTTP Basic authentication
     pub password: Option<String>,
 }
 
