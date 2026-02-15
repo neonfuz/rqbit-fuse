@@ -185,12 +185,12 @@ Each item is designed to be completed independently. Research references are sto
     - Test read at different offsets - tested 8KB file with pattern verification
     - Test read beyond file end - verified EOF handling with 100 byte file
     - All 16 read tests pass: `cargo test test_read --test fuse_operations`
-  - [ ] **FS-007.7**: Implement error case tests
+  - [x] **FS-007.7**: Implement error case tests
     - Test permission errors (EACCES)
     - Test I/O errors (EIO)
     - Test not found errors (ENOENT)
     - Test invalid operation errors
-  - [ ] **FS-007.8**: Verify all tests pass
+  - [x] **FS-007.8**: Verify all tests pass
     - Run `cargo test` to verify all new tests pass
     - Run `cargo clippy` to check for warnings
     - Run `cargo fmt` to format code

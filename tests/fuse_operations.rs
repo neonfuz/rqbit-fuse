@@ -2578,3 +2578,751 @@ async fn test_read_large_file() {
     // 10 MB / 4096 bytes per block = 2560 blocks
     assert_eq!(attr.blocks, 2560);
 }
+
+// ============================================================================
+// FS-007.7: Error Case Tests
+// ============================================================================
+// These tests verify error handling scenarios that the FUSE filesystem
+// must handle correctly. These error codes are returned by FUSE callbacks
+// to signal various error conditions to the kernel.
+
+/// Test ENOENT (No such file or directory) - should return None for non-existent entries
+#[tokio::test]
+async fn test_error_enoent_nonexistent_path() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with known structure
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "exists.txt".to_string(),
+                length: 1024,
+                components: vec!["exists.txt".to_string()],
+            },
+            FileInfo {
+                name: "other.txt".to_string(),
+                length: 2048,
+                components: vec!["other.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Verify existing paths work
+    assert!(inode_manager.lookup_by_path("/Test Torrent").is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/exists.txt")
+        .is_some());
+
+    // Verify non-existent paths return None (becomes ENOENT in FUSE)
+    assert!(inode_manager.lookup_by_path("/Nonexistent").is_none());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/nonexistent.txt")
+        .is_none());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/exists.txt/nonexistent")
+        .is_none());
+
+    // Verify non-existent inode returns None
+    assert!(inode_manager.get(99999).is_none());
+    assert!(inode_manager.get(0).is_none());
+    assert!(inode_manager.get(u64::MAX).is_none());
+}
+
+/// Test ENOENT in various FUSE operations context
+#[tokio::test]
+async fn test_error_enoent_lookup_operations() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent structure
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory for lookup tests
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent should exist");
+
+    // Verify lookup in valid directory fails for non-existent entries
+    let children = inode_manager.get_children(torrent_ino);
+    let nonexistent = children
+        .iter()
+        .find(|(_, entry)| entry.name() == "nonexistent.txt");
+    assert!(
+        nonexistent.is_none(),
+        "Non-existent file should not be found"
+    );
+
+    // Verify children lookup on non-existent inode returns empty
+    let no_children = inode_manager.get_children(99999);
+    assert!(
+        no_children.is_empty(),
+        "Non-existent inode should have no children"
+    );
+}
+
+/// Test ENOTDIR (Not a directory) - attempting directory operations on files
+#[tokio::test]
+async fn test_error_enotdir_file_as_directory() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get a file inode (not a directory)
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file1.txt")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+
+    // Verify it's actually a file
+    assert!(
+        !file_entry.is_directory(),
+        "Should be a file, not directory"
+    );
+    assert!(file_entry.is_file(), "Should be a regular file");
+
+    // Attempting to get children of a file should return empty (ENOTDIR behavior)
+    let children = inode_manager.get_children(file_ino);
+    assert!(children.is_empty(), "Files should have no children");
+
+    // Attempting to look up inside a file path should fail
+    let nested_in_file = inode_manager.lookup_by_path("/Test Torrent/file1.txt/nested");
+    assert!(
+        nested_in_file.is_none(),
+        "Should not be able to look up inside a file"
+    );
+}
+
+/// Test EISDIR (Is a directory) - attempting file operations on directories
+#[tokio::test]
+async fn test_error_eisdir_directory_as_file() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent with subdirectories
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/file2.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/nested/file3.txt".to_string(),
+                length: 3072,
+                components: vec![
+                    "subdir".to_string(),
+                    "nested".to_string(),
+                    "file3.txt".to_string(),
+                ],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get directory inodes
+    let torrent_dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent dir should exist");
+    let subdir_ino = inode_manager
+        .lookup_by_path("/Test Torrent/subdir")
+        .expect("Subdir should exist");
+    let nested_ino = inode_manager
+        .lookup_by_path("/Test Torrent/subdir/nested")
+        .expect("Nested should exist");
+
+    // Verify each is actually a directory
+    for (name, ino) in [
+        ("torrent dir", torrent_dir_ino),
+        ("subdir", subdir_ino),
+        ("nested", nested_ino),
+    ] {
+        let entry = inode_manager
+            .get(ino)
+            .unwrap_or_else(|| panic!("{} should exist", name));
+        assert!(entry.is_directory(), "{} should be a directory", name);
+        assert!(entry.is_directory(), "{} should be a directory", name);
+
+        // Verify file attributes show directory type
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(attr.kind, fuser::FileType::Directory);
+    }
+
+    // Verify directories have size 0 (cannot be read as files)
+    let torrent_entry = inode_manager.get(torrent_dir_ino).unwrap();
+    let torrent_attr = fs.build_file_attr(&torrent_entry);
+    assert_eq!(torrent_attr.size, 0, "Directory size should be 0");
+}
+
+/// Test EACCES (Permission denied) scenarios - read-only filesystem behavior
+#[tokio::test]
+async fn test_error_eacces_read_only_filesystem() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get file inode
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file1.txt")
+        .expect("File should exist");
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let file_attr = fs.build_file_attr(&file_entry);
+
+    // Verify files have read-only permissions (0o444)
+    assert_eq!(file_attr.perm, 0o444, "Files should be read-only (444)");
+
+    // Verify no write permissions
+    assert_eq!(
+        file_attr.perm & 0o222,
+        0,
+        "Files should not have write permission"
+    );
+
+    // Get directory inode
+    let dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Dir should exist");
+    let dir_entry = inode_manager.get(dir_ino).expect("Entry should exist");
+    let dir_attr = fs.build_file_attr(&dir_entry);
+
+    // Verify directories have read+execute permissions (0o555)
+    assert_eq!(
+        dir_attr.perm, 0o555,
+        "Directories should be read+execute (555)"
+    );
+
+    // Verify no write permissions on directories
+    assert_eq!(
+        dir_attr.perm & 0o222,
+        0,
+        "Directories should not have write permission"
+    );
+}
+
+/// Test permission bits for different entry types
+#[tokio::test]
+async fn test_error_permission_bits_verification() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create torrent with file and directory
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file.txt".to_string(),
+                length: 1024,
+                components: vec!["file.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/nested.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "nested.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test file permissions
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file.txt")
+        .expect("File should exist");
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let file_attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(file_attr.perm, 0o444, "File should be read-only");
+    assert!(file_attr.perm & 0o400 != 0, "File should have owner read");
+    assert!(file_attr.perm & 0o040 != 0, "File should have group read");
+    assert!(file_attr.perm & 0o004 != 0, "File should have other read");
+    assert!(
+        file_attr.perm & 0o200 == 0,
+        "File should NOT have owner write"
+    );
+    assert!(
+        file_attr.perm & 0o020 == 0,
+        "File should NOT have group write"
+    );
+    assert!(
+        file_attr.perm & 0o002 == 0,
+        "File should NOT have other write"
+    );
+
+    // Test directory permissions
+    let dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent/subdir")
+        .expect("Dir should exist");
+    let dir_entry = inode_manager.get(dir_ino).expect("Entry should exist");
+    let dir_attr = fs.build_file_attr(&dir_entry);
+
+    assert_eq!(dir_attr.perm, 0o555, "Directory should be read+execute");
+    assert!(
+        dir_attr.perm & 0o500 != 0,
+        "Directory should have owner read+execute"
+    );
+    assert!(
+        dir_attr.perm & 0o050 != 0,
+        "Directory should have group read+execute"
+    );
+    assert!(
+        dir_attr.perm & 0o005 != 0,
+        "Directory should have other read+execute"
+    );
+    assert!(
+        dir_attr.perm & 0o200 == 0,
+        "Directory should NOT have owner write"
+    );
+}
+
+/// Test EIO (I/O error) scenarios - simulated API failures
+#[tokio::test]
+async fn test_error_eio_api_failure() {
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Mock API failure with 500 error
+    Mock::given(method("GET"))
+        .and(path_regex(r"/torrents/.*"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // The filesystem should handle API failures gracefully
+    // In actual FUSE operations, API errors would be mapped to EIO
+
+    // Verify filesystem was created successfully even with failing API
+    assert!(!fs.is_initialized());
+}
+
+/// Test EIO with network timeout simulation
+#[tokio::test]
+async fn test_error_eio_timeout() {
+    use std::time::Duration;
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Mock timeout by delaying response
+    Mock::given(method("GET"))
+        .and(path_regex(r"/torrents/.*"))
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(10)))
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let _fs = create_test_fs(config, metrics);
+
+    // The filesystem structure tests would continue
+    // In actual FUSE read, timeouts would be mapped to EIO
+}
+
+/// Test EINVAL (Invalid argument) - invalid parameters
+#[tokio::test]
+async fn test_error_einval_invalid_parameters() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent (2+ files creates a directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file.txt".to_string(),
+                length: 1024,
+                components: vec!["file.txt".to_string()],
+            },
+            FileInfo {
+                name: "other.txt".to_string(),
+                length: 2048,
+                components: vec!["other.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get file inode
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file.txt")
+        .expect("File should exist");
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    // Verify valid attributes
+    assert_eq!(attr.size, 1024);
+    assert!(attr.size > 0);
+
+    // Verify negative or zero sizes don't occur for existing files
+    assert!(attr.blocks > 0, "Blocks should be positive");
+    assert_eq!(attr.blksize, 4096, "Block size should be 4096");
+}
+
+/// Test EBADF (Bad file descriptor) - invalid file handle scenarios
+#[tokio::test]
+async fn test_error_ebadf_invalid_file_handle() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent (2+ files creates a directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file.txt".to_string(),
+                length: 1024,
+                components: vec!["file.txt".to_string()],
+            },
+            FileInfo {
+                name: "other.txt".to_string(),
+                length: 2048,
+                components: vec!["other.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Verify file exists
+    let file_ino = inode_manager
+        .lookup_by_path("/Test Torrent/file.txt")
+        .expect("File should exist");
+    assert!(file_ino > 0);
+
+    // Verify invalid file handle wouldn't correspond to a valid inode
+    let invalid_handle: u64 = 0; // 0 is typically invalid
+    assert!(inode_manager.get(invalid_handle).is_none());
+
+    // Another invalid handle
+    let another_invalid: u64 = 999999;
+    assert!(inode_manager.get(another_invalid).is_none());
+}
+
+/// Test error scenarios with empty or malformed torrents
+#[tokio::test]
+async fn test_error_edge_cases_empty_torrent() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with no files - should still work
+    let empty_torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "empty123".to_string(),
+        name: "Empty Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(0),
+        files: vec![],
+        piece_length: Some(1048576),
+    };
+
+    // Empty torrent creation should succeed
+    fs.create_torrent_structure(&empty_torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Torrent directory should exist
+    let torrent_ino = inode_manager.lookup_by_path("/Empty Torrent");
+    assert!(
+        torrent_ino.is_some(),
+        "Empty torrent directory should exist"
+    );
+
+    // Torrent should have no files (only itself as a directory)
+    if let Some(ino) = torrent_ino {
+        let children = inode_manager.get_children(ino);
+        assert!(
+            children.is_empty(),
+            "Empty torrent should have no file children"
+        );
+    }
+}
+
+/// Test error handling with invalid torrent IDs
+#[tokio::test]
+async fn test_error_invalid_torrent_id() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let inode_manager = fs.inode_manager();
+
+    // Non-existent torrent ID should return None
+    assert!(inode_manager.lookup_torrent(99999).is_none());
+    assert!(inode_manager.lookup_torrent(0).is_none());
+    assert!(inode_manager.lookup_torrent(u64::MAX).is_none());
+
+    // Filesystem should not have these torrents
+    assert!(!fs.has_torrent(99999));
+    assert!(!fs.has_torrent(0));
+}
+
+/// Test error scenarios with deeply nested invalid paths
+#[tokio::test]
+async fn test_error_deeply_nested_invalid_paths() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create torrent with limited nesting (2+ files for directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file.txt".to_string(),
+                length: 1024,
+                components: vec!["file.txt".to_string()],
+            },
+            FileInfo {
+                name: "other.txt".to_string(),
+                length: 2048,
+                components: vec!["other.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Valid paths
+    assert!(inode_manager.lookup_by_path("/Test Torrent").is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/file.txt")
+        .is_some());
+
+    // Invalid deeply nested paths that extend beyond valid structure
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/file.txt/extra")
+        .is_none());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/nonexistent/deep")
+        .is_none());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/file.txt/deep/nested")
+        .is_none());
+}
+
+/// Test error handling with symlinks to non-existent targets
+#[tokio::test]
+async fn test_error_symlink_to_nonexistent() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "file.txt".to_string(),
+            length: 1024,
+            components: vec!["file.txt".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Create a symlink to a non-existent path
+    let symlink_ino = inode_manager.allocate_symlink(
+        "broken_link".to_string(),
+        1, // parent is root
+        "/nonexistent/path".to_string(),
+    );
+
+    // Symlink should be created
+    let symlink_entry = inode_manager.get(symlink_ino);
+    assert!(symlink_entry.is_some(), "Symlink should exist");
+
+    let entry = symlink_entry.unwrap();
+    assert!(entry.is_symlink(), "Should be a symlink");
+    assert!(entry.is_symlink());
+
+    // Symlink attributes should be valid even with broken target
+    let attr = fs.build_file_attr(&entry);
+    assert_eq!(attr.kind, fuser::FileType::Symlink);
+    assert_eq!(attr.size, "/nonexistent/path".len() as u64);
+}

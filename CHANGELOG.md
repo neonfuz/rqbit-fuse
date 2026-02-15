@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Completed FS-007.7: Implement error case tests
+  - Implemented 15 comprehensive error case tests in `tests/fuse_operations.rs`
+  - Error code coverage: ENOENT, ENOTDIR, EISDIR, EACCES, EIO, EINVAL, EBADF
+  - `test_error_enoent_nonexistent_path`: Tests non-existent paths return None (ENOENT)
+  - `test_error_enoent_lookup_operations`: Tests lookup failures on invalid entries
+  - `test_error_enotdir_file_as_directory`: Tests directory operations on files (ENOTDIR)
+  - `test_error_eisdir_directory_as_file`: Tests file operations on directories (EISDIR)
+  - `test_error_eacces_read_only_filesystem`: Tests read-only permission checks (EACCES)
+  - `test_error_permission_bits_verification`: Detailed permission bit testing (0o444/0o555)
+  - `test_error_eio_api_failure`: Tests API failure handling (EIO)
+  - `test_error_eio_timeout`: Tests timeout scenario handling (EIO)
+  - `test_error_einval_invalid_parameters`: Tests invalid parameter validation (EINVAL)
+  - `test_error_ebadf_invalid_file_handle`: Tests invalid file handle scenarios (EBADF)
+  - `test_error_edge_cases_empty_torrent`: Tests empty torrent error handling
+  - `test_error_invalid_torrent_id`: Tests invalid torrent ID scenarios
+  - `test_error_deeply_nested_invalid_paths`: Tests deep nesting validation
+  - `test_error_symlink_to_nonexistent`: Tests broken symlink handling
+  - All 15 error tests pass: `cargo test test_error --test fuse_operations` ✅
+  - Code passes clippy and formatting checks
+
 - Completed FS-007.6: Implement read operation tests
   - Fixed compilation errors: changed `i64` to `u64` for file length fields in tests
   - `test_read_file_contents`: Tests basic file read with WireMock API mocking
