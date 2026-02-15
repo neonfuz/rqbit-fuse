@@ -1192,8 +1192,8 @@ impl Filesystem for TorrentFS {
                     return;
                 }
 
-                // Use the inode as the file handle (simple approach)
-                let fh = ino;
+                // Allocate a unique file handle
+                let fh = self.file_handles.allocate(ino, flags);
 
                 fuse_ok!(self, "open", ino = ino, fh = fh);
                 reply.opened(fh, 0);
