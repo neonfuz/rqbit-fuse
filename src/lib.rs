@@ -24,10 +24,10 @@ pub async fn run(config: Config) -> Result<()> {
     let metrics = Arc::new(Metrics::new());
 
     // Create API client for the async worker
-    let api_client = Arc::new(api::client::RqbitClient::new(
-        config.api.url.clone(),
-        Arc::clone(&metrics.api),
-    ));
+    let api_client = Arc::new(
+        api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
+            .context("Failed to create API client")?,
+    );
 
     // Create async worker for FUSE callbacks
     // Channel capacity of 1000 allows for good concurrency without excessive memory use

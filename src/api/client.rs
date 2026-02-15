@@ -124,7 +124,7 @@ pub struct RqbitClient {
 
 impl RqbitClient {
     /// Create a new RqbitClient with default configuration
-    pub fn new(base_url: String, metrics: Arc<ApiMetrics>) -> Self {
+    pub fn new(base_url: String, metrics: Arc<ApiMetrics>) -> Result<Self> {
         Self::with_config(base_url, 3, Duration::from_millis(500), metrics)
     }
 
@@ -134,16 +134,16 @@ impl RqbitClient {
         max_retries: u32,
         retry_delay: Duration,
         metrics: Arc<ApiMetrics>,
-    ) -> Self {
+    ) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
             .build()
-            .expect("Failed to build HTTP client");
+            .map_err(|e| ApiError::ClientInitializationError(e.to_string()))?;
 
         let stream_manager = PersistentStreamManager::new(client.clone(), base_url.clone());
 
-        Self {
+        Ok(Self {
             client,
             base_url,
             max_retries,
@@ -151,7 +151,7 @@ impl RqbitClient {
             circuit_breaker: CircuitBreaker::new(5, Duration::from_secs(30)),
             metrics,
             stream_manager,
-        }
+        })
     }
 
     /// Create a new RqbitClient with custom retry and circuit breaker configuration
@@ -162,16 +162,16 @@ impl RqbitClient {
         failure_threshold: u32,
         circuit_timeout: Duration,
         metrics: Arc<ApiMetrics>,
-    ) -> Self {
+    ) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
             .build()
-            .expect("Failed to build HTTP client");
+            .map_err(|e| ApiError::ClientInitializationError(e.to_string()))?;
 
         let stream_manager = PersistentStreamManager::new(client.clone(), base_url.clone());
 
-        Self {
+        Ok(Self {
             client,
             base_url,
             max_retries,
@@ -179,7 +179,7 @@ impl RqbitClient {
             circuit_breaker: CircuitBreaker::new(failure_threshold, circuit_timeout),
             metrics,
             stream_manager,
-        }
+        })
     }
 
     /// Get the current circuit breaker state
@@ -570,8 +570,19 @@ impl RqbitClient {
             request = request.header("Range", range_header);
         }
 
+        // Handle request clone failure gracefully
+        // First clone is validated; subsequent clones during retries are safe since
+        // GET requests have no body and can always be cloned
+        let request = request
+            .try_clone()
+            .ok_or_else(|| ApiError::RequestCloneError("Request body not cloneable".to_string()))?;
+
         let response = self
-            .execute_with_retry(&endpoint, || request.try_clone().unwrap().send())
+            .execute_with_retry(&endpoint, move || {
+                // This unwrap is safe because we validated the request can be cloned above.
+                // GET requests with no body can always be cloned.
+                request.try_clone().unwrap().send()
+            })
             .await?;
 
         match response.status() {
@@ -884,7 +895,7 @@ mod tests {
     async fn test_client_creation() {
         use crate::metrics::ApiMetrics;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new("http://localhost:3030".to_string(), metrics);
+        let client = RqbitClient::new("http://localhost:3030".to_string(), metrics).unwrap();
         assert_eq!(client.base_url, "http://localhost:3030");
         assert_eq!(client.max_retries, 3);
     }
@@ -1009,7 +1020,7 @@ mod tests {
     async fn test_list_torrents_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let response_body = serde_json::json!({
             "torrents": [
@@ -1068,7 +1079,7 @@ mod tests {
     async fn test_list_torrents_empty() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let response_body = serde_json::json!({
             "torrents": []
@@ -1090,7 +1101,7 @@ mod tests {
     async fn test_list_torrents_partial_failure() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         // Mock the list endpoint returning 2 torrents
         let list_response = serde_json::json!({
@@ -1156,7 +1167,7 @@ mod tests {
     async fn test_get_torrent_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let response_body = serde_json::json!({
             "id": 1,
@@ -1185,7 +1196,7 @@ mod tests {
     async fn test_get_torrent_not_found() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("GET"))
             .and(path("/torrents/999"))
@@ -1203,7 +1214,7 @@ mod tests {
     async fn test_add_torrent_magnet_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let request_body = serde_json::json!({
             "magnet_link": "magnet:?xt=urn:btih:abc123"
@@ -1234,7 +1245,7 @@ mod tests {
     async fn test_add_torrent_url_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let request_body = serde_json::json!({
             "torrent_link": "http://example.com/test.torrent"
@@ -1265,7 +1276,7 @@ mod tests {
     async fn test_get_torrent_stats_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let response_body = serde_json::json!({
             "state": "live",
@@ -1312,7 +1323,7 @@ mod tests {
     async fn test_get_torrent_stats_error_state() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let response_body = serde_json::json!({
             "state": "error",
@@ -1344,7 +1355,7 @@ mod tests {
     async fn test_get_piece_bitfield_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         // Bitfield with pieces 0, 1, 3 downloaded (binary: 1011 = 0x0B)
         let bitfield_data = vec![0b00001011u8];
@@ -1372,7 +1383,7 @@ mod tests {
     async fn test_read_file_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let file_data = b"Hello, World!";
 
@@ -1390,7 +1401,7 @@ mod tests {
     async fn test_read_file_with_range() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         let file_data = b"World";
 
@@ -1413,7 +1424,7 @@ mod tests {
     async fn test_read_file_not_found() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("GET"))
             .and(path("/torrents/1/stream/99"))
@@ -1437,7 +1448,7 @@ mod tests {
     async fn test_read_file_invalid_range() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("GET"))
             .and(path("/torrents/1/stream/0"))
@@ -1456,7 +1467,7 @@ mod tests {
     async fn test_pause_torrent_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/1/pause"))
@@ -1471,7 +1482,7 @@ mod tests {
     async fn test_pause_torrent_not_found() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/999/pause"))
@@ -1489,7 +1500,7 @@ mod tests {
     async fn test_start_torrent_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/1/start"))
@@ -1504,7 +1515,7 @@ mod tests {
     async fn test_start_torrent_not_found() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/999/start"))
@@ -1522,7 +1533,7 @@ mod tests {
     async fn test_forget_torrent_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/1/forget"))
@@ -1537,7 +1548,7 @@ mod tests {
     async fn test_forget_torrent_not_found() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/999/forget"))
@@ -1555,7 +1566,7 @@ mod tests {
     async fn test_delete_torrent_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/1/delete"))
@@ -1570,7 +1581,7 @@ mod tests {
     async fn test_delete_torrent_not_found() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("POST"))
             .and(path("/torrents/999/delete"))
@@ -1588,7 +1599,7 @@ mod tests {
     async fn test_health_check_success() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("GET"))
             .and(path("/torrents"))
@@ -1606,7 +1617,7 @@ mod tests {
     async fn test_health_check_failure() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("GET"))
             .and(path("/torrents"))
@@ -1624,7 +1635,8 @@ mod tests {
         let metrics = Arc::new(ApiMetrics::new());
         // Use client with 1 retry for faster test
         let client =
-            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), metrics);
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), metrics)
+                .unwrap();
 
         // First request fails with 503, second succeeds
         Mock::given(method("GET"))
@@ -1650,7 +1662,7 @@ mod tests {
     async fn test_api_error_response() {
         let mock_server = MockServer::start().await;
         let metrics = Arc::new(ApiMetrics::new());
-        let client = RqbitClient::new(mock_server.uri(), metrics);
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
 
         Mock::given(method("GET"))
             .and(path("/torrents"))

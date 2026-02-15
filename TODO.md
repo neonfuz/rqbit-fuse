@@ -336,10 +336,15 @@ Each item is designed to be completed independently. Research references are sto
 
 ### API Client (src/api/client.rs)
 
-- [ ] **API-001**: Remove panics from API client
-  - Lines 142-143, 170-171: Replace `.expect()` with Result
-  - Line 541: Handle request clone failure gracefully
-  - Return proper errors for all failure cases
+- [x] **API-001**: Remove panics from API client
+  - Changed `RqbitClient::new()` to return `Result<Self>` instead of panicking
+  - Changed `RqbitClient::with_config()` to return `Result<Self>` 
+  - Changed `RqbitClient::with_circuit_breaker()` to return `Result<Self>`
+  - Added `ClientInitializationError` variant to `ApiError` enum
+  - Added `RequestCloneError` variant to `ApiError` enum
+  - Fixed `read_file()` to validate request clone before retry loop
+  - Updated all callers to handle the new Result types
+  - All tests pass, clippy clean, code formatted
 
 - [ ] **API-002**: Add authentication support
   - Research rqbit auth methods

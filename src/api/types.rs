@@ -8,6 +8,12 @@ pub enum ApiError {
     #[error("HTTP request failed: {0}")]
     HttpError(String),
 
+    #[error("Failed to initialize HTTP client: {0}")]
+    ClientInitializationError(String),
+
+    #[error("Failed to clone HTTP request: {0}")]
+    RequestCloneError(String),
+
     #[error("API returned error: {status} - {message}")]
     ApiError { status: u16, message: String },
 
@@ -91,7 +97,9 @@ impl ApiError {
             ApiError::ServiceUnavailable(_)
             | ApiError::CircuitBreakerOpen
             | ApiError::RetryLimitExceeded => libc::EAGAIN,
-            ApiError::HttpError(_) => libc::EIO,
+            ApiError::HttpError(_)
+            | ApiError::ClientInitializationError(_)
+            | ApiError::RequestCloneError(_) => libc::EIO,
         }
     }
 

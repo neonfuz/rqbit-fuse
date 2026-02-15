@@ -46,10 +46,13 @@ fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> Conf
 
 /// Helper function to create a TorrentFS with an async worker for tests
 fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
-    let api_client = Arc::new(torrent_fuse::api::client::RqbitClient::new(
-        config.api.url.clone(),
-        Arc::clone(&metrics.api),
-    ));
+    let api_client = Arc::new(
+        torrent_fuse::api::client::RqbitClient::new(
+            config.api.url.clone(),
+            Arc::clone(&metrics.api),
+        )
+        .expect("Failed to create API client"),
+    );
     let async_worker = Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics.clone()));
     TorrentFS::new(config, metrics, async_worker).unwrap()
 }

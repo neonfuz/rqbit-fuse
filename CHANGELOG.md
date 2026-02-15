@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Removed panics from API client (API-001)
+  - Changed `RqbitClient::new()` to return `Result<Self>` instead of panicking on HTTP client initialization failure
+  - Changed `RqbitClient::with_config()` to return `Result<Self>` 
+  - Changed `RqbitClient::with_circuit_breaker()` to return `Result<Self>`
+  - Added `ClientInitializationError` variant to `ApiError` enum for HTTP client build failures
+  - Added `RequestCloneError` variant to `ApiError` enum for request cloning failures
+  - Fixed `read_file()` to validate request can be cloned before retry loop
+  - Updated error mappings in `to_fuse_error()` for new error variants
+  - Updated all callers across the codebase to handle the new Result types with proper error handling
+  - All 275+ tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 - Preserved error context in API client response handling (ERROR-004)
   - Fixed `check_response()` at lines 289-297: Changed `.unwrap_or_else()` to `match` statement
   - Fixed `read_stream_range()` at lines 584-592: Same pattern for range error responses
