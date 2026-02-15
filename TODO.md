@@ -129,10 +129,43 @@ Each item is designed to be completed independently. Research references are sto
 
 - [ ] **FS-007**: Add proper FUSE operation tests
   - Depends on: `[spec:testing]`
-  - Create `tests/fuse_operations.rs`
-  - Test lookup, getattr, readdir, read with real FUSE
-  - Use fuse_mt or similar for testing
-  - Include error case testing
+  - [x] **FS-007.1**: Read testing specification
+    - Read `[spec:testing]` for testing approach and requirements
+    - Understood FUSE testing approaches (mock, Docker, real filesystem)
+    - Reviewed test categories: unit, integration, property-based, performance
+    - Identified test infrastructure needs (WireMock, FUSE helpers, fixtures)
+  - [ ] **FS-007.2**: Set up FUSE testing infrastructure
+    - Research and select FUSE testing framework (fuse_mt or similar)
+    - Create test utilities for mount/unmount operations
+    - Add test helpers for FUSE operation assertions
+  - [ ] **FS-007.3**: Implement lookup operation tests
+    - Test successful file lookup
+    - Test successful directory lookup
+    - Test lookup for non-existent paths (ENOENT)
+    - Test lookup with invalid paths
+  - [ ] **FS-007.4**: Implement getattr operation tests
+    - Test getattr for files (size, permissions, timestamps)
+    - Test getattr for directories
+    - Test getattr for non-existent inodes
+  - [ ] **FS-007.5**: Implement readdir operation tests
+    - Test reading root directory contents
+    - Test reading torrent directory contents
+    - Test reading empty directories
+    - Test readdir with various offsets
+  - [ ] **FS-007.6**: Implement read operation tests
+    - Test reading file contents
+    - Test read with various buffer sizes
+    - Test read at different offsets
+    - Test read beyond file end
+  - [ ] **FS-007.7**: Implement error case tests
+    - Test permission errors (EACCES)
+    - Test I/O errors (EIO)
+    - Test not found errors (ENOENT)
+    - Test invalid operation errors
+  - [ ] **FS-007.8**: Verify all tests pass
+    - Run `cargo test` to verify all new tests pass
+    - Run `cargo clippy` to check for warnings
+    - Run `cargo fmt` to format code
 
 - [x] **FS-008**: Fix race condition in torrent discovery
   - Lines 1351-1407: readdir() spawned discovery without atomic check-and-act

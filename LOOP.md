@@ -4,3 +4,4 @@
 ***CRITICAL*** After checking off an item, write what you did to a git commit message in the file .git/COMMIT_EDITMSG
 ***CRITICAL*** If you are done with every item in the checklist, create an empty file in the root directory named .done
 ***CRITICAL*** Update the CHANGELOG.md after you have checked off a task
+***CRITICAL*** If there are multiple subtasks under a parent task, only do the first one.
