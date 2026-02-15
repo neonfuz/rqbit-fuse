@@ -9,7 +9,7 @@ use crate::types::handle::FileHandleManager;
 use crate::types::inode::InodeEntry;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use fuser::Filesystem;
+use fuser::{Filesystem, Reply};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -536,6 +536,34 @@ impl TorrentFS {
         self.initialized
     }
 
+    /// Reply with ENOENT (inode not found)
+    fn reply_ino_not_found(&self, reply: &mut dyn Reply, op: &str, ino: u64) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "ENOENT", ino = ino);
+        reply.error(libc::ENOENT);
+    }
+
+    /// Reply with ENOTDIR (not a directory)
+    fn reply_not_directory(&self, reply: &mut dyn Reply, op: &str, ino: u64) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "ENOTDIR", ino = ino);
+        reply.error(libc::ENOTDIR);
+    }
+
+    /// Reply with EISDIR (is a directory, not a file)
+    fn reply_not_file(&self, reply: &mut dyn Reply, op: &str, ino: u64) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "EISDIR", ino = ino);
+        reply.error(libc::EISDIR);
+    }
+
+    /// Reply with EACCES (permission denied)
+    fn reply_no_permission(&self, reply: &mut dyn Reply, op: &str, ino: u64, reason: &str) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "EACCES", ino = ino, reason = reason);
+        reply.error(libc::EACCES);
+    }
+
     /// Validates the mount point directory.
     /// Checks that:
     /// - The path exists
@@ -842,7 +870,7 @@ impl Filesystem for TorrentFS {
             Some(inode) => inode,
             None => {
                 self.metrics.fuse.record_error();
-                fuse_error!(self, "read", "EBADF", reason = "invalid_file_handle");
+                fuse_error!(self, "read", "EBADF", fh = fh, reason = "invalid_file_handle");
                 reply.error(libc::EBADF);
                 return;
             }
@@ -858,16 +886,12 @@ impl Filesystem for TorrentFS {
                     ..
                 } => (torrent_id, file_index, size),
                 _ => {
-                    self.metrics.fuse.record_error();
-                    fuse_error!(self, "read", "EISDIR");
-                    reply.error(libc::EISDIR);
+                    self.reply_not_file(&mut reply, "read", ino);
                     return;
                 }
             },
             None => {
-                self.metrics.fuse.record_error();
-                fuse_error!(self, "read", "ENOENT");
-                reply.error(libc::ENOENT);
+                self.reply_ino_not_found(&mut reply, "read", ino);
                 return;
             }
         };
@@ -1062,18 +1086,14 @@ impl Filesystem for TorrentFS {
         let parent_entry = match self.inode_manager.get(parent) {
             Some(entry) => entry,
             None => {
-                self.metrics.fuse.record_error();
-                fuse_error!(self, "lookup", "ENOENT");
-                reply.error(libc::ENOENT);
+                self.reply_ino_not_found(&mut reply, "lookup", parent);
                 return;
             }
         };
 
         // Check if parent is a directory
         if !parent_entry.is_directory() {
-            self.metrics.fuse.record_error();
-            fuse_error!(self, "lookup", "ENOTDIR");
-            reply.error(libc::ENOTDIR);
+            self.reply_not_directory(&mut reply, "lookup", parent);
             return;
         }
 
