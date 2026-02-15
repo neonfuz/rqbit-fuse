@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exported CacheMetrics in public API
   - All tests pass, clippy clean, code formatted
 
+- Reduce trace overhead (METRICS-003)
+  - Removed trace! calls from cache get/insert methods (hot path)
+  - Removed unused trace import from cache.rs
+  - Trace level already configurable via TORRENT_FUSE_LOG_LEVEL
+  - All tests pass, clippy clean, code formatted
+
 - Add performance benchmarks (PERF-006)
   - Fixed benchmark compilation errors (missing canonical_path, DashSet import)
   - Cache benchmarks: insert (2M ops/s), read hit (4.8M ops/s) at 1000 entries

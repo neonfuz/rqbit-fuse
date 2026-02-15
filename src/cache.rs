@@ -2,7 +2,6 @@ use crate::sharded_counter::ShardedCounter;
 use moka::future::Cache as MokaCache;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::trace;
 
 /// Cache statistics for monitoring
 #[derive(Debug, Clone, Default)]
@@ -101,12 +100,10 @@ where
     {
         match self.inner.get(key).await {
             Some(value) => {
-                trace!("Cache hit for key");
                 self.hits.increment();
                 Some((*value).clone())
             }
             None => {
-                trace!("Cache miss for key");
                 self.misses.increment();
                 None
             }
@@ -139,8 +136,6 @@ where
         if size_before >= self.max_capacity {
             self.evictions.increment();
         }
-
-        trace!("Inserted value into cache");
     }
 
     /// Remove a specific entry from the cache
