@@ -129,6 +129,90 @@ fn setup_logging(verbose: u8, quiet: bool) -> Result<()> {
     Ok(())
 }
 
+/// Load configuration from CLI arguments
+///
+/// Handles the config file -> env -> CLI merge order
+fn load_config(
+    config_file: Option<PathBuf>,
+    mount_point: Option<PathBuf>,
+    api_url: Option<String>,
+) -> Result<Config> {
+    let cli_args = CliArgs {
+        api_url,
+        mount_point,
+        config_file: config_file.clone(),
+    };
+
+    if let Some(ref config_path) = config_file {
+        Ok(Config::from_file(config_path)?
+            .merge_from_env()?
+            .merge_from_cli(&cli_args))
+    } else {
+        Ok(Config::load_with_cli(&cli_args)?)
+    }
+}
+
+/// Run a shell command and return output on success
+///
+/// # Arguments
+/// * `program` - The program to execute
+/// * `args` - Arguments to pass to the program
+/// * `context` - Context message for error reporting
+///
+/// # Returns
+/// * `Ok(Output)` if command succeeds
+/// * `Err` if command fails to run or returns non-zero exit code
+fn run_command<S: AsRef<std::ffi::OsStr>>(
+    program: &str,
+    args: &[S],
+    context: &str,
+) -> Result<std::process::Output> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .with_context(|| format!("Failed to run {}", context))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("{} failed: {}", context, stderr);
+    }
+
+    Ok(output)
+}
+
+/// Unmount a FUSE filesystem, trying fusermount3 then fusermount
+///
+/// # Arguments
+/// * `path` - Mount point to unmount
+/// * `force` - Whether to force unmount even if busy
+///
+/// # Returns
+/// * `Ok(())` on successful unmount
+/// * `Err` if both fusermount3 and fusermount fail
+fn try_unmount(path: &std::path::Path, force: bool) -> Result<()> {
+    let path_str = path.to_string_lossy();
+    let args: Vec<&str> = if force {
+        vec!["-zu", &path_str]
+    } else {
+        vec!["-u", &path_str]
+    };
+
+    // Try fusermount3 first (modern systems)
+    match run_command("fusermount3", &args, "fusermount3") {
+        Ok(_) => return Ok(()),
+        Err(e) => {
+            let err_str = e.to_string();
+            // Only try fallback if command not found
+            if !err_str.contains("command not found") && !err_str.contains("No such file") {
+                return Err(e);
+            }
+        }
+    }
+
+    // Fallback to fusermount (older systems)
+    run_command("fusermount", &args, "fusermount").map(|_| ())
+}
+
 async fn run_mount(
     mount_point: Option<PathBuf>,
     api_url: Option<String>,
@@ -136,19 +220,7 @@ async fn run_mount(
     allow_other: bool,
     auto_unmount: bool,
 ) -> Result<()> {
-    let cli_args = CliArgs {
-        api_url,
-        mount_point,
-        config_file,
-    };
-
-    let mut config = if let Some(ref config_path) = cli_args.config_file {
-        Config::from_file(config_path)?
-            .merge_from_env()?
-            .merge_from_cli(&cli_args)
-    } else {
-        Config::load_with_cli(&cli_args)?
-    };
+    let mut config = load_config(config_file, mount_point, api_url)?;
 
     // Apply command-line overrides for mount options
     if allow_other {
@@ -185,19 +257,7 @@ async fn run_umount(
     config_file: Option<PathBuf>,
     force: bool,
 ) -> Result<()> {
-    let cli_args = CliArgs {
-        api_url: None,
-        mount_point: mount_point.clone(),
-        config_file,
-    };
-
-    let config = if let Some(ref config_path) = cli_args.config_file {
-        Config::from_file(config_path)?
-            .merge_from_env()?
-            .merge_from_cli(&cli_args)
-    } else {
-        Config::load_with_cli(&cli_args)?
-    };
+    let config = load_config(config_file, mount_point.clone(), None)?;
 
     let mount_point = mount_point.unwrap_or_else(|| config.mount.mount_point.clone());
 
@@ -216,19 +276,7 @@ async fn run_umount(
 }
 
 async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Result<()> {
-    let cli_args = CliArgs {
-        api_url: None,
-        mount_point: None,
-        config_file,
-    };
-
-    let config = if let Some(ref config_path) = cli_args.config_file {
-        Config::from_file(config_path)?
-            .merge_from_env()?
-            .merge_from_cli(&cli_args)
-    } else {
-        Config::load_with_cli(&cli_args)?
-    };
+    let config = load_config(config_file.clone(), None, None)?;
 
     let mount_point = &config.mount.mount_point;
     let is_mounted = is_mount_point(mount_point).unwrap_or(false);
@@ -241,8 +289,7 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
             println!("Configuration:");
             println!(
                 "  Config file:    {}",
-                cli_args
-                    .config_file
+                config_file
                     .as_ref()
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "(default)".to_string())
@@ -357,48 +404,8 @@ fn is_mount_point(path: &PathBuf) -> Result<bool> {
     Ok(false)
 }
 
-fn unmount_filesystem(path: &PathBuf, force: bool) -> Result<()> {
-    use std::process::Command;
-
-    let mut cmd = Command::new("fusermount3");
-    if force {
-        cmd.arg("-zu");
-    } else {
-        cmd.arg("-u");
-    }
-    cmd.arg(path);
-
-    let output = cmd
-        .output()
-        .with_context(|| "Failed to run fusermount3 command")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        // Try fusermount as fallback (older systems)
-        if stderr.contains("command not found") || stderr.contains("No such file") {
-            let mut cmd = Command::new("fusermount");
-            if force {
-                cmd.arg("-zu");
-            } else {
-                cmd.arg("-u");
-            }
-            cmd.arg(path);
-
-            let output = cmd
-                .output()
-                .with_context(|| "Failed to run fusermount command")?;
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                anyhow::bail!("Failed to unmount: {}", stderr);
-            }
-        } else {
-            anyhow::bail!("Failed to unmount: {}", stderr);
-        }
-    }
-
-    Ok(())
+fn unmount_filesystem(path: &std::path::Path, force: bool) -> Result<()> {
+    try_unmount(path, force)
 }
 
 fn get_mount_info(path: &std::path::Path) -> Result<MountInfo> {

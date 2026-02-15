@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, error, instrument, trace, warn};
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +298,33 @@ impl RqbitClient {
         }
     }
 
+    /// Generic GET request that returns JSON
+    async fn get_json<T: serde::de::DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        url: &str,
+    ) -> Result<T> {
+        let response = self
+            .execute_with_retry(endpoint, || self.client.get(url).send())
+            .await?;
+        let response = self.check_response(response).await?;
+        Ok(response.json().await?)
+    }
+
+    /// Generic POST request with JSON body that returns JSON
+    async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        url: &str,
+        body: &B,
+    ) -> Result<T> {
+        let response = self
+            .execute_with_retry(endpoint, || self.client.post(url).json(body).send())
+            .await?;
+        let response = self.check_response(response).await?;
+        Ok(response.json().await?)
+    }
+
     // =========================================================================
     // Torrent Management
     // =========================================================================
@@ -344,16 +371,21 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}", self.base_url, id);
         let endpoint = format!("/torrents/{}", id);
 
-        let response = self
-            .execute_with_retry(&endpoint, || self.client.get(&url).send())
-            .await?;
+        trace!(api_op = "get_torrent", id = id);
 
-        match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
-            _ => {
-                let response = self.check_response(response).await?;
-                let torrent: TorrentInfo = response.json().await?;
+        match self.get_json::<TorrentInfo>(&endpoint, &url).await {
+            Ok(torrent) => {
+                debug!(api_op = "get_torrent", id = id, name = %torrent.name);
                 Ok(torrent)
+            }
+            Err(e) => {
+                // Check if it's a 404 error from the API
+                if let Some(api_err) = e.downcast_ref::<ApiError>() {
+                    if matches!(api_err, ApiError::ApiError { status: 404, .. }) {
+                        return Err(ApiError::TorrentNotFound(id).into());
+                    }
+                }
+                Err(e)
             }
         }
     }
@@ -366,13 +398,12 @@ impl RqbitClient {
             magnet_link: magnet_link.to_string(),
         };
 
-        let response = self
-            .execute_with_retry("/torrents", || self.client.post(&url).json(&request).send())
+        trace!(api_op = "add_torrent_magnet");
+
+        let result = self
+            .post_json::<_, AddTorrentResponse>("/torrents", &url, &request)
             .await?;
-
-        let response = self.check_response(response).await?;
-        let result: AddTorrentResponse = response.json().await?;
-
+        debug!(api_op = "add_torrent_magnet", id = result.id, info_hash = %result.info_hash);
         Ok(result)
     }
 
@@ -384,13 +415,12 @@ impl RqbitClient {
             torrent_link: torrent_url.to_string(),
         };
 
-        let response = self
-            .execute_with_retry("/torrents", || self.client.post(&url).json(&request).send())
+        trace!(api_op = "add_torrent_url", url = %torrent_url);
+
+        let result = self
+            .post_json::<_, AddTorrentResponse>("/torrents", &url, &request)
             .await?;
-
-        let response = self.check_response(response).await?;
-        let result: AddTorrentResponse = response.json().await?;
-
+        debug!(api_op = "add_torrent_url", id = result.id, info_hash = %result.info_hash);
         Ok(result)
     }
 
@@ -400,16 +430,32 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}/stats/v1", self.base_url, id);
         let endpoint = format!("/torrents/{}/stats", id);
 
-        let response = self
-            .execute_with_retry(&endpoint, || self.client.get(&url).send())
-            .await?;
+        trace!(api_op = "get_torrent_stats", id = id);
 
-        match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
-            _ => {
-                let response = self.check_response(response).await?;
-                let stats: TorrentStats = response.json().await?;
+        match self.get_json::<TorrentStats>(&endpoint, &url).await {
+            Ok(stats) => {
+                let progress_pct = if stats.total_bytes > 0 {
+                    (stats.progress_bytes as f64 / stats.total_bytes as f64) * 100.0
+                } else {
+                    0.0
+                };
+                trace!(
+                    api_op = "get_torrent_stats",
+                    id = id,
+                    state = %stats.state,
+                    progress_pct = progress_pct,
+                    finished = stats.finished,
+                );
                 Ok(stats)
+            }
+            Err(e) => {
+                // Check if it's a 404 error from the API
+                if let Some(api_err) = e.downcast_ref::<ApiError>() {
+                    if matches!(api_err, ApiError::ApiError { status: 404, .. }) {
+                        return Err(ApiError::TorrentNotFound(id).into());
+                    }
+                }
+                Err(e)
             }
         }
     }
@@ -644,6 +690,8 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}/{}", self.base_url, id, action);
         let endpoint = format!("/torrents/{}/{}", id, action);
 
+        trace!(api_op = "torrent_action", id = id, action = action);
+
         let response = self
             .execute_with_retry(&endpoint, || self.client.post(&url).send())
             .await?;
@@ -652,6 +700,12 @@ impl RqbitClient {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
+                debug!(
+                    api_op = "torrent_action",
+                    id = id,
+                    action = action,
+                    "Success"
+                );
                 Ok(())
             }
         }

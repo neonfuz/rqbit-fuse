@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Extract helper functions from main.rs (SIMPLIFY-003)
+  - Added `load_config()` helper to consolidate config loading across 3 commands
+  - Added `run_command()` helper for shell command execution with error handling
+  - Added `try_unmount()` helper with fusermount3/fusermount fallback logic
+  - Reduced ~76 lines of duplicated code in main.rs
+  - Simplified `run_mount()`, `run_umount()`, `run_status()` to use helpers
+  - All 90 tests pass, clippy clean
+
+- Create unified request helpers in API client (SIMPLIFY-014)
+  - Added generic `get_json<T>()` helper for GET requests that deserialize JSON responses
+  - Added generic `post_json<B, T>()` helper for POST requests with JSON body and response
+  - Refactored 4 methods to use new helpers: `get_torrent`, `get_torrent_stats`, `add_torrent_magnet`, `add_torrent_url`
+  - Reduced ~25 lines of duplicated request/response handling code
+  - Enhanced logging with trace!/debug! for better observability
+  - All 90 tests pass, no behavioral changes
+
 - Add tracing instrumentation to API client (SIMPLIFY-013)
   - Replaced manual trace!/debug! calls with #[tracing::instrument] attributes
   - Added to 12 public methods: list_torrents, get_torrent, add_torrent_magnet, add_torrent_url

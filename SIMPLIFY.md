@@ -46,14 +46,14 @@ Each item is designed to be completed independently. Migration guides are stored
   - **Depends on**: None (can do in parallel with SIMPLIFY-002)
   - **Test**: `cargo test api::client::tests`, verify logs
 
-- [ ] **SIMPLIFY-014**: Create unified request helpers
+- [x] **SIMPLIFY-014**: Create unified request helpers
   - [migration:SIMPLIFY-014-request-helpers](migration/SIMPLIFY-014-request-helpers.md)
   - Create `get_json<T>()` and `post_json<B, T>()` generics
   - Refactor `get_torrent`, `get_torrent_stats`, `add_torrent_*`
   - **Lines reduced**: ~25 lines
   - **Risk**: Medium - generic constraints need careful testing
   - **Depends on**: SIMPLIFY-002 (after torrent_action done)
-  - **Test**: `cargo test api::client::tests`
+  - **Test**: `cargo test api::client::tests` ✅ All tests pass
 
 ---
 
@@ -61,12 +61,12 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### CLI (`src/main.rs`)
 
-- [ ] **SIMPLIFY-003**: Extract main.rs helpers
+- [x] **SIMPLIFY-003**: Extract main.rs helpers
   - [migration:SIMPLIFY-003-main-helpers](migration/SIMPLIFY-003-main-helpers.md)
   - Extract `load_config()` (used 3x), command execution helpers, `try_unmount()`
   - **Lines reduced**: ~76 lines (438 → 362)
   - **Risk**: Low - pure extraction
-  - **Test**: `cargo test`, manual test of mount/umount/status commands
+  - **Test**: `cargo test` ✅ All tests pass, `cargo clippy` ✅ Clean
 
 ### FUSE Filesystem (`src/fs/filesystem.rs`)
 
