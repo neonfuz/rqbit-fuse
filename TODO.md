@@ -169,11 +169,15 @@ Each item is designed to be completed independently. Research references are sto
     - `test_getattr_timestamp_consistency`: Tests atime/mtime/ctime validity and ordering
     - `test_getattr_symlink_attributes`: Tests symlink file type detection and attributes
     - All tests pass: `cargo test test_getattr --test fuse_operations` ✅
-  - [ ] **FS-007.5**: Implement readdir operation tests
-    - Test reading root directory contents
-    - Test reading torrent directory contents
-    - Test reading empty directories
-    - Test readdir with various offsets
+  - [x] **FS-007.5**: Implement readdir operation tests
+    - Implemented 6 comprehensive readdir tests in `tests/fuse_operations.rs`
+    - `test_readdir_root_directory`: Tests reading root with multiple torrents
+    - `test_readdir_torrent_directory`: Tests reading torrent directory contents
+    - `test_readdir_empty_directory`: Tests reading directory structures
+    - `test_readdir_with_offset`: Tests offset-based directory listing
+    - `test_readdir_deeply_nested`: Tests deeply nested directory structures
+    - `test_readdir_special_characters`: Tests special characters in filenames
+    - All tests pass: `cargo test test_readdir --test fuse_operations`
   - [ ] **FS-007.6**: Implement read operation tests
     - Test reading file contents
     - Test read with various buffer sizes

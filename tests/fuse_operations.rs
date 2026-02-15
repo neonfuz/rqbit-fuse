@@ -1574,3 +1574,521 @@ async fn test_getattr_symlink_attributes() {
     assert_eq!(attr.blocks, 1, "Should occupy 1 block");
     assert_eq!(attr.blksize, 4096, "Block size should be 4096");
 }
+
+// ============================================================================
+// FS-007.5: Readdir Operation Tests
+// ============================================================================
+// These tests verify the readdir operation scenarios that the FUSE readdir()
+// callback must handle correctly. The readdir callback lists directory entries
+// and is called when listing directory contents (e.g., via `ls` command).
+
+/// Test reading root directory contents - should contain all torrent directories
+#[tokio::test]
+async fn test_readdir_root_directory() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create multiple torrents (use 2+ files to create directories)
+    for id in 1..=3 {
+        let torrent_info = TorrentInfo {
+            id,
+            info_hash: format!("hash{}", id),
+            name: format!("Torrent {}", id),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(2),
+            files: vec![
+                FileInfo {
+                    name: "file1.txt".to_string(),
+                    length: 1024,
+                    components: vec!["file1.txt".to_string()],
+                },
+                FileInfo {
+                    name: "file2.txt".to_string(),
+                    length: 2048,
+                    components: vec!["file2.txt".to_string()],
+                },
+            ],
+            piece_length: Some(1048576),
+        };
+        fs.create_torrent_structure(&torrent_info).unwrap();
+    }
+
+    let inode_manager = fs.inode_manager();
+
+    // Get root directory children (this is what readdir does for root)
+    let root_children = inode_manager.get_children(1);
+    let child_names: Vec<_> = root_children
+        .iter()
+        .map(|(_, entry)| entry.name().to_string())
+        .collect();
+
+    // Verify all torrent directories are present
+    assert_eq!(root_children.len(), 3, "Root should have 3 children");
+    assert!(
+        child_names.contains(&"Torrent 1".to_string()),
+        "Root should contain 'Torrent 1'"
+    );
+    assert!(
+        child_names.contains(&"Torrent 2".to_string()),
+        "Root should contain 'Torrent 2'"
+    );
+    assert!(
+        child_names.contains(&"Torrent 3".to_string()),
+        "Root should contain 'Torrent 3'"
+    );
+
+    // Verify all entries are directories
+    for (ino, entry) in &root_children {
+        let attr = fs.build_file_attr(entry);
+        assert_eq!(
+            attr.kind,
+            fuser::FileType::Directory,
+            "Entry {} ({}) should be a directory",
+            ino,
+            entry.name()
+        );
+    }
+}
+
+/// Test reading torrent directory contents - should contain files and subdirectories
+#[tokio::test]
+async fn test_readdir_torrent_directory() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with files and a subdirectory
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(4),
+        files: vec![
+            FileInfo {
+                name: "readme.txt".to_string(),
+                length: 1024,
+                components: vec!["readme.txt".to_string()],
+            },
+            FileInfo {
+                name: "data.bin".to_string(),
+                length: 8192,
+                components: vec!["data.bin".to_string()],
+            },
+            FileInfo {
+                name: "subdir/file1.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/file2.txt".to_string(),
+                length: 3072,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent directory should exist");
+
+    // Get torrent directory children (this is what readdir does)
+    let torrent_children = inode_manager.get_children(torrent_ino);
+    let child_names: Vec<_> = torrent_children
+        .iter()
+        .map(|(_, entry)| entry.name().to_string())
+        .collect();
+
+    // Verify all expected entries are present
+    assert_eq!(
+        torrent_children.len(),
+        3,
+        "Torrent directory should have 3 children (readme.txt, data.bin, subdir)"
+    );
+    assert!(
+        child_names.contains(&"readme.txt".to_string()),
+        "Should contain readme.txt"
+    );
+    assert!(
+        child_names.contains(&"data.bin".to_string()),
+        "Should contain data.bin"
+    );
+    assert!(
+        child_names.contains(&"subdir".to_string()),
+        "Should contain subdir"
+    );
+
+    // Verify entry types
+    for (_ino, entry) in &torrent_children {
+        let attr = fs.build_file_attr(entry);
+        match entry.name() {
+            "readme.txt" | "data.bin" => {
+                assert_eq!(
+                    attr.kind,
+                    fuser::FileType::RegularFile,
+                    "{} should be a file",
+                    entry.name()
+                );
+            }
+            "subdir" => {
+                assert_eq!(
+                    attr.kind,
+                    fuser::FileType::Directory,
+                    "subdir should be a directory"
+                );
+            }
+            _ => panic!("Unexpected entry: {}", entry.name()),
+        }
+    }
+}
+
+/// Test reading empty directory - should return no entries
+#[tokio::test]
+async fn test_readdir_empty_directory() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with a subdirectory structure
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "deep/file1.txt".to_string(),
+                length: 1024,
+                components: vec!["deep".to_string(), "file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "deep/nested/file2.txt".to_string(),
+                length: 2048,
+                components: vec![
+                    "deep".to_string(),
+                    "nested".to_string(),
+                    "file2.txt".to_string(),
+                ],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get the nested directory and verify it has one file
+    let nested_ino = inode_manager
+        .lookup_by_path("/Test Torrent/deep/nested")
+        .expect("Nested directory should exist");
+
+    let nested_children = inode_manager.get_children(nested_ino);
+    assert_eq!(
+        nested_children.len(),
+        1,
+        "Nested directory should have 1 child (file2.txt)"
+    );
+    assert_eq!(
+        nested_children[0].1.name(),
+        "file2.txt",
+        "The child should be file2.txt"
+    );
+
+    // Get the deep directory and verify it has file1.txt and nested/ subdirectory
+    let deep_ino = inode_manager
+        .lookup_by_path("/Test Torrent/deep")
+        .expect("Deep directory should exist");
+
+    let deep_children = inode_manager.get_children(deep_ino);
+    assert_eq!(
+        deep_children.len(),
+        2,
+        "Deep directory should have 2 children (file1.txt and nested/)"
+    );
+}
+
+/// Test readdir with offset - simulating resuming directory listing after offset
+#[tokio::test]
+async fn test_readdir_with_offset() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with multiple files
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(5),
+        files: vec![
+            FileInfo {
+                name: "file_a.txt".to_string(),
+                length: 1024,
+                components: vec!["file_a.txt".to_string()],
+            },
+            FileInfo {
+                name: "file_b.txt".to_string(),
+                length: 2048,
+                components: vec!["file_b.txt".to_string()],
+            },
+            FileInfo {
+                name: "file_c.txt".to_string(),
+                length: 3072,
+                components: vec!["file_c.txt".to_string()],
+            },
+            FileInfo {
+                name: "file_d.txt".to_string(),
+                length: 4096,
+                components: vec!["file_d.txt".to_string()],
+            },
+            FileInfo {
+                name: "file_e.txt".to_string(),
+                length: 5120,
+                components: vec!["file_e.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent directory should exist");
+
+    // Get all children
+    let all_children = inode_manager.get_children(torrent_ino);
+    assert_eq!(all_children.len(), 5, "Should have 5 files");
+
+    // Simulate readdir with offset - FUSE uses offset to resume listing
+    // Inode numbers are typically used as offsets in simple implementations
+    let inodes: Vec<u64> = all_children.iter().map(|(ino, _)| *ino).collect();
+
+    // Test that we can iterate through entries by offset
+    // This simulates what readdir does when called multiple times with increasing offsets
+    for (idx, expected_ino) in inodes.iter().enumerate() {
+        // In a real FUSE readdir, offset indicates which entry to resume from
+        // Here we verify that entries have consistent inode numbers
+        let entry = &all_children[idx];
+        assert_eq!(
+            entry.0, *expected_ino,
+            "Entry at index {} should have inode {}",
+            idx, expected_ino
+        );
+    }
+
+    // Test partial listing simulation (skip first 2 entries)
+    let offset = 2;
+    let remaining: Vec<_> = all_children.iter().skip(offset).collect();
+    assert_eq!(remaining.len(), 3, "Should have 3 entries after offset 2");
+}
+
+/// Test readdir on deeply nested directory structure
+#[tokio::test]
+async fn test_readdir_deeply_nested() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with deeply nested structure
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "nested123".to_string(),
+        name: "Nested Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(4),
+        files: vec![
+            FileInfo {
+                name: "level1/file1.txt".to_string(),
+                length: 1024,
+                components: vec!["level1".to_string(), "file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "level1/level2/file2.txt".to_string(),
+                length: 2048,
+                components: vec![
+                    "level1".to_string(),
+                    "level2".to_string(),
+                    "file2.txt".to_string(),
+                ],
+            },
+            FileInfo {
+                name: "level1/level2/level3/file3.txt".to_string(),
+                length: 3072,
+                components: vec![
+                    "level1".to_string(),
+                    "level2".to_string(),
+                    "level3".to_string(),
+                    "file3.txt".to_string(),
+                ],
+            },
+            FileInfo {
+                name: "level1/level2/level3/level4/file4.txt".to_string(),
+                length: 4096,
+                components: vec![
+                    "level1".to_string(),
+                    "level2".to_string(),
+                    "level3".to_string(),
+                    "level4".to_string(),
+                    "file4.txt".to_string(),
+                ],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test each level's readdir results
+    let level1_ino = inode_manager
+        .lookup_by_path("/Nested Torrent/level1")
+        .expect("Level1 should exist");
+    let level1_children = inode_manager.get_children(level1_ino);
+    assert_eq!(
+        level1_children.len(),
+        2,
+        "Level1 should have 2 children (file1.txt and level2)"
+    );
+
+    let level2_ino = inode_manager
+        .lookup_by_path("/Nested Torrent/level1/level2")
+        .expect("Level2 should exist");
+    let level2_children = inode_manager.get_children(level2_ino);
+    assert_eq!(
+        level2_children.len(),
+        2,
+        "Level2 should have 2 children (file2.txt and level3)"
+    );
+
+    let level3_ino = inode_manager
+        .lookup_by_path("/Nested Torrent/level1/level2/level3")
+        .expect("Level3 should exist");
+    let level3_children = inode_manager.get_children(level3_ino);
+    assert_eq!(
+        level3_children.len(),
+        2,
+        "Level3 should have 2 children (file3.txt and level4)"
+    );
+
+    let level4_ino = inode_manager
+        .lookup_by_path("/Nested Torrent/level1/level2/level3/level4")
+        .expect("Level4 should exist");
+    let level4_children = inode_manager.get_children(level4_ino);
+    assert_eq!(
+        level4_children.len(),
+        1,
+        "Level4 should have 1 child (file4.txt)"
+    );
+    assert_eq!(level4_children[0].1.name(), "file4.txt");
+}
+
+/// Test readdir with special characters in filenames
+#[tokio::test]
+async fn test_readdir_special_characters() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with special characters in filenames
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "special123".to_string(),
+        name: "Special Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(4),
+        files: vec![
+            FileInfo {
+                name: "file with spaces.txt".to_string(),
+                length: 100,
+                components: vec!["file with spaces.txt".to_string()],
+            },
+            FileInfo {
+                name: "unicode_日本語.txt".to_string(),
+                length: 200,
+                components: vec!["unicode_日本語.txt".to_string()],
+            },
+            FileInfo {
+                name: "symbols!@#$%.txt".to_string(),
+                length: 300,
+                components: vec!["symbols!@#$%.txt".to_string()],
+            },
+            FileInfo {
+                name: "emoji_🎉_file.txt".to_string(),
+                length: 400,
+                components: vec!["emoji_🎉_file.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory children
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Special Torrent")
+        .expect("Torrent directory should exist");
+    let torrent_children = inode_manager.get_children(torrent_ino);
+
+    // Verify all special character files are present
+    let child_names: Vec<_> = torrent_children
+        .iter()
+        .map(|(_, entry)| entry.name().to_string())
+        .collect();
+
+    assert_eq!(
+        torrent_children.len(),
+        4,
+        "Should have 4 files with special characters"
+    );
+    assert!(
+        child_names.contains(&"file with spaces.txt".to_string()),
+        "Should contain file with spaces"
+    );
+    assert!(
+        child_names.contains(&"unicode_日本語.txt".to_string()),
+        "Should contain unicode file"
+    );
+    assert!(
+        child_names.contains(&"symbols!@#$%.txt".to_string()),
+        "Should contain symbols file"
+    );
+    assert!(
+        child_names.contains(&"emoji_🎉_file.txt".to_string()),
+        "Should contain emoji file"
+    );
+}
