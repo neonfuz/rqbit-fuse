@@ -241,6 +241,41 @@ pub struct AddTorrentResponse {
     pub info_hash: String,
 }
 
+/// Result of listing torrents, including both successes and failures
+///
+/// This type allows callers to handle partial failures - some torrents may fail
+/// to load while others succeed. Use `is_partial()` to check if any failures
+/// occurred, and `has_successes()` to verify at least some torrents loaded.
+#[derive(Debug, Clone)]
+pub struct ListTorrentsResult {
+    /// Successfully loaded torrents with full details
+    pub torrents: Vec<TorrentInfo>,
+    /// Failed torrent fetches: (id, name, error)
+    pub errors: Vec<(u64, String, ApiError)>,
+}
+
+impl ListTorrentsResult {
+    /// Returns true if there were any failures (partial result)
+    pub fn is_partial(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Returns true if at least one torrent loaded successfully
+    pub fn has_successes(&self) -> bool {
+        !self.torrents.is_empty()
+    }
+
+    /// Returns true if there are no successfully loaded torrents
+    pub fn is_empty(&self) -> bool {
+        self.torrents.is_empty()
+    }
+
+    /// Returns the total number of torrents attempted (successes + failures)
+    pub fn total_attempted(&self) -> usize {
+        self.torrents.len() + self.errors.len()
+    }
+}
+
 /// Request to add torrent from magnet link
 #[derive(Debug, Clone, Serialize)]
 pub struct AddMagnetRequest {

@@ -316,11 +316,16 @@ Each item is designed to be completed independently. Research references are sto
   - Error mapping now uses typed error variants (ApiError, FuseError, std::io::Error)
   - All tests pass, no clippy warnings, code formatted
 
-- [ ] **ERROR-003**: Fix silent failures in list_torrents()
+- [x] **ERROR-003**: Fix silent failures in list_torrents()
   - Depends on: `[spec:error-handling]`
-  - Lines 320-338: Logs but doesn't propagate errors
-  - Return Result with partial success info
-  - Let caller decide how to handle partial failures
+  - Created `ListTorrentsResult` struct in `src/api/types.rs` with:
+    - `torrents: Vec<TorrentInfo>` for successful results
+    - `errors: Vec<(u64, String, ApiError)>` for failed torrents
+    - Helper methods: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
+  - Modified `list_torrents()` in `src/api/client.rs` to return `Result<ListTorrentsResult>`
+  - Updated callers in `src/fs/filesystem.rs` to handle partial failures with logging
+  - Added `test_list_torrents_partial_failure` test to verify behavior
+  - All tests pass, clippy clean
 
 - [ ] **ERROR-004**: Preserve error context
   - Depends on: `[spec:error-handling]`

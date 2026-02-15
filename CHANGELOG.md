@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed silent failures in list_torrents() (ERROR-003)
+  - Added `ListTorrentsResult` struct in `src/api/types.rs` to hold both successes and failures
+  - Errors are now collected in the result's `errors` field instead of being silently dropped
+  - Added helper methods: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
+  - Modified `list_torrents()` in `src/api/client.rs` to return `Result<ListTorrentsResult>`
+  - Updated callers in `src/fs/filesystem.rs` to handle partial failures with proper logging
+  - Added `test_list_torrents_partial_failure` test to verify partial failure handling
+  - All 110 tests pass: `cargo test` ✅
+  - No clippy warnings: `cargo clippy` ✅
+  - Code formatted: `cargo fmt` ✅
+
 - Replaced string matching with typed errors (ERROR-002)
   - Removed fragile `.contains("not found")` and `.contains("range")` patterns
   - Updated `ToFuseError` trait in `src/fs/error.rs` to use proper error downcasting

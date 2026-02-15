@@ -219,10 +219,23 @@ impl TorrentFS {
         api_client: &Arc<RqbitClient>,
         inode_manager: &Arc<InodeManager>,
     ) -> Result<u64> {
-        let torrents = api_client.list_torrents().await?;
+        let result = api_client.list_torrents().await?;
+
+        // Log any partial failures
+        if result.is_partial() {
+            warn!(
+                "Partial torrent discovery: {} succeeded, {} failed",
+                result.torrents.len(),
+                result.errors.len()
+            );
+            for (id, name, err) in &result.errors {
+                warn!("Failed to load torrent {} ({}): {}", id, name, err);
+            }
+        }
+
         let mut new_count: u64 = 0;
 
-        for torrent_info in torrents {
+        for torrent_info in result.torrents {
             // Check if we already have this torrent
             if inode_manager.lookup_torrent(torrent_info.id).is_none() {
                 // New torrent found - create filesystem structure
@@ -1685,26 +1698,38 @@ pub async fn discover_existing_torrents(fs: &TorrentFS) -> Result<()> {
     info!("Discovering existing torrents from rqbit...");
 
     // Get list of all torrents from rqbit
-    let torrents = fs
+    let result = fs
         .api_client
         .list_torrents()
         .await
         .context("Failed to list torrents from rqbit")?;
 
-    if torrents.is_empty() {
+    // Log any partial failures
+    if result.is_partial() {
+        warn!(
+            "Partial torrent discovery: {} succeeded, {} failed",
+            result.torrents.len(),
+            result.errors.len()
+        );
+        for (id, name, err) in &result.errors {
+            warn!("Failed to load torrent {} ({}): {}", id, name, err);
+        }
+    }
+
+    if !result.has_successes() {
         info!("No existing torrents found in rqbit");
         return Ok(());
     }
 
     info!(
         "Found {} existing torrents, populating filesystem...",
-        torrents.len()
+        result.torrents.len()
     );
 
     let mut success_count = 0;
     let mut error_count = 0;
 
-    for torrent_info in torrents {
+    for torrent_info in result.torrents {
         // Check if we already have this torrent (avoid duplicates)
         if fs.inode_manager.lookup_torrent(torrent_info.id).is_some() {
             debug!(

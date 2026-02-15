@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,10 +330,20 @@ impl RqbitClient {
     // =========================================================================
 
     /// List all torrents in the session
-    /// Note: This fetches full details for each torrent since the /torrents endpoint
+    ///
+    /// This fetches full details for each torrent since the /torrents endpoint
     /// returns a simplified structure without the files field.
+    ///
+    /// # Returns
+    /// Returns a `ListTorrentsResult` containing both successfully loaded torrents
+    /// and any errors that occurred. Callers should check `is_partial()` to detect
+    /// if some torrents failed to load.
+    ///
+    /// # Errors
+    /// Returns an error only if the initial list request fails. Individual torrent
+    /// fetch failures are collected in the result's `errors` field.
     #[instrument(skip(self), fields(api_op = "list_torrents"))]
-    pub async fn list_torrents(&self) -> Result<Vec<TorrentInfo>> {
+    pub async fn list_torrents(&self) -> Result<ListTorrentsResult> {
         let url = format!("{}/torrents", self.base_url);
 
         let response = self
@@ -344,11 +354,15 @@ impl RqbitClient {
         let data: TorrentListResponse = response.json().await?;
 
         // Fetch full details for each torrent since /torrents doesn't include files
-        let mut full_torrents = Vec::with_capacity(data.torrents.len());
+        let mut result = ListTorrentsResult {
+            torrents: Vec::with_capacity(data.torrents.len()),
+            errors: Vec::new(),
+        };
+
         for basic_info in data.torrents {
             match self.get_torrent(basic_info.id).await {
                 Ok(full_info) => {
-                    full_torrents.push(full_info);
+                    result.torrents.push(full_info);
                 }
                 Err(e) => {
                     warn!(
@@ -357,12 +371,31 @@ impl RqbitClient {
                         error = %e,
                         "Failed to get full details for torrent"
                     );
-                    // Continue without this torrent rather than failing entirely
+                    // Convert anyhow::Error to ApiError for storage
+                    let api_err = if let Some(api_err) = e.downcast_ref::<ApiError>() {
+                        api_err.clone()
+                    } else {
+                        ApiError::HttpError(e.to_string())
+                    };
+                    result
+                        .errors
+                        .push((basic_info.id, basic_info.name, api_err));
                 }
             }
         }
 
-        Ok(full_torrents)
+        // Log summary if there were partial failures
+        if result.is_partial() {
+            info!(
+                successes = result.torrents.len(),
+                failures = result.errors.len(),
+                "Partial result for list_torrents: {} succeeded, {} failed",
+                result.torrents.len(),
+                result.errors.len()
+            );
+        }
+
+        Ok(result)
     }
 
     /// Get detailed information about a specific torrent
@@ -1009,12 +1042,14 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let torrents = client.list_torrents().await.unwrap();
-        assert_eq!(torrents.len(), 1);
-        assert_eq!(torrents[0].id, 1);
-        assert_eq!(torrents[0].name, "Test Torrent");
-        assert_eq!(torrents[0].info_hash, "abc123");
-        assert_eq!(torrents[0].file_count, Some(2));
+        let result = client.list_torrents().await.unwrap();
+        assert!(!result.is_partial());
+        assert!(result.has_successes());
+        assert_eq!(result.torrents.len(), 1);
+        assert_eq!(result.torrents[0].id, 1);
+        assert_eq!(result.torrents[0].name, "Test Torrent");
+        assert_eq!(result.torrents[0].info_hash, "abc123");
+        assert_eq!(result.torrents[0].file_count, Some(2));
     }
 
     #[tokio::test]
@@ -1033,8 +1068,76 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let torrents = client.list_torrents().await.unwrap();
-        assert!(torrents.is_empty());
+        let result = client.list_torrents().await.unwrap();
+        assert!(!result.has_successes());
+        assert!(!result.is_partial());
+        assert!(result.torrents.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_torrents_partial_failure() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics);
+
+        // Mock the list endpoint returning 2 torrents
+        let list_response = serde_json::json!({
+            "torrents": [
+                {
+                    "id": 1,
+                    "info_hash": "abc123",
+                    "name": "Good Torrent",
+                    "output_folder": "/downloads"
+                },
+                {
+                    "id": 2,
+                    "info_hash": "def456",
+                    "name": "Bad Torrent",
+                    "output_folder": "/downloads"
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(list_response))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the first torrent detail endpoint - succeeds
+        let good_torrent = serde_json::json!({
+            "id": 1,
+            "info_hash": "abc123",
+            "name": "Good Torrent",
+            "output_folder": "/downloads",
+            "file_count": 1,
+            "files": [{"name": "file.txt", "length": 1024, "components": ["file.txt"]}],
+            "piece_length": 1048576
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(good_torrent))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the second torrent detail endpoint - fails with 404
+        Mock::given(method("GET"))
+            .and(path("/torrents/2"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.list_torrents().await.unwrap();
+
+        // Verify partial result
+        assert!(result.is_partial());
+        assert!(result.has_successes());
+        assert_eq!(result.torrents.len(), 1);
+        assert_eq!(result.errors.len(), 1);
+        assert_eq!(result.torrents[0].id, 1);
+        assert_eq!(result.errors[0].0, 2); // id
+        assert_eq!(result.errors[0].1, "Bad Torrent"); // name
     }
 
     #[tokio::test]
@@ -1527,8 +1630,8 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let torrents = client.list_torrents().await.unwrap();
-        assert!(torrents.is_empty());
+        let result = client.list_torrents().await.unwrap();
+        assert!(result.is_empty());
     }
 
     #[tokio::test]
