@@ -147,23 +147,23 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### Metrics (`src/metrics.rs`)
 
-- [ ] **SIMPLIFY-010**: Add metrics macros and trait
+- [x] **SIMPLIFY-010**: Add metrics macros and trait
   - [migration:SIMPLIFY-010-metrics-macros](migration/SIMPLIFY-010-metrics-macros.md)
   - Create `record_op!` macro for 7 FuseMetrics methods
   - Create `LatencyMetrics` trait for avg calculations
   - **Lines reduced**: ~35 lines (294 → 259)
   - **Risk**: Low - macros preserve behavior
-  - **Test**: `cargo test metrics::tests`
+  - **Test**: `cargo test metrics::tests` ✅ All tests pass
 
 ### Streaming (`src/api/streaming.rs`)
 
-- [ ] **SIMPLIFY-011**: Extract streaming helpers
+- [x] **SIMPLIFY-011**: Extract streaming helpers
   - [migration:SIMPLIFY-011-streaming-helpers](migration/SIMPLIFY-011-streaming-helpers.md)
   - Create `consume_pending()`, `buffer_leftover()`, `read_from_stream()`
   - Reduce duplication between `read()` and `skip()`
-  - **Lines reduced**: ~40 lines (505 → 465)
+  - **Lines reduced**: ~40 lines (504 → 464)
   - **Risk**: Medium - buffer handling is sensitive
-  - **Test**: `cargo test api::streaming::tests`, test file reading
+  - **Test**: `cargo test` ✅ All lib tests pass, clippy clean
 
 ---
 

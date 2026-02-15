@@ -133,19 +133,13 @@ impl PersistentStream {
         let mut bytes_read = 0;
 
         // First, use any pending buffered data
-        if let Some(ref mut pending) = self.pending_buffer {
-            let to_copy = pending.len().min(buf.len());
-            buf[..to_copy].copy_from_slice(&pending[..to_copy]);
-            bytes_read += to_copy;
-            self.current_position += to_copy as u64; // Update position!
-
-            if to_copy < pending.len() {
-                // Still have data left in pending
-                *pending = pending.slice(to_copy..);
-            } else {
-                // Used all pending data
-                self.pending_buffer = None;
+        let pending_consumed = self.consume_pending(buf.len());
+        if pending_consumed > 0 {
+            if let Some(ref pending) = self.pending_buffer {
+                let pending_data = pending.slice(0..pending_consumed);
+                buf[..pending_consumed].copy_from_slice(&pending_data);
             }
+            bytes_read += pending_consumed;
         }
 
         // Read more data from the stream if needed
@@ -158,13 +152,8 @@ impl PersistentStream {
                     bytes_read += to_copy;
                     self.current_position += to_copy as u64;
 
-                    // If we got more data than needed, buffer the rest
-                    if to_copy < chunk.len() {
-                        self.pending_buffer = Some(chunk.slice(to_copy..));
-                        trace!(
-                            bytes_buffered = chunk.len() - to_copy,
-                            "Buffered extra bytes from chunk"
-                        );
+                    self.buffer_leftover(chunk, to_copy);
+                    if self.pending_buffer.is_some() {
                         break;
                     }
                 }
@@ -172,10 +161,7 @@ impl PersistentStream {
                     self.is_valid = false;
                     return Err(anyhow::anyhow!("Stream error: {}", e));
                 }
-                None => {
-                    // End of stream
-                    break;
-                }
+                None => break,
             }
         }
 
@@ -189,22 +175,7 @@ impl PersistentStream {
             return Err(anyhow::anyhow!("Stream is no longer valid"));
         }
 
-        let mut skipped = 0u64;
-
-        // First, use any pending buffered data
-        if let Some(ref mut pending) = self.pending_buffer {
-            let to_skip = pending.len().min(bytes_to_skip as usize);
-            skipped += to_skip as u64;
-            self.current_position += to_skip as u64; // Update position!
-
-            if to_skip < pending.len() {
-                // Still have data left in pending
-                *pending = pending.slice(to_skip..);
-            } else {
-                // Used all pending data
-                self.pending_buffer = None;
-            }
-        }
+        let mut skipped = self.consume_pending(bytes_to_skip as usize) as u64;
 
         // Skip more data from the stream if needed
         while skipped < bytes_to_skip {
@@ -215,9 +186,8 @@ impl PersistentStream {
                     skipped += to_skip as u64;
                     self.current_position += to_skip as u64;
 
-                    // If we didn't use the whole chunk, buffer the rest
-                    if to_skip < chunk.len() {
-                        self.pending_buffer = Some(chunk.slice(to_skip..));
+                    self.buffer_leftover(chunk, to_skip);
+                    if self.pending_buffer.is_some() {
                         break;
                     }
                 }
@@ -225,9 +195,7 @@ impl PersistentStream {
                     self.is_valid = false;
                     return Err(anyhow::anyhow!("Stream error during skip: {}", e));
                 }
-                None => {
-                    break;
-                }
+                None => break,
             }
         }
 
@@ -255,6 +223,34 @@ impl PersistentStream {
     /// Check if the stream has been idle too long
     fn is_idle(&self) -> bool {
         self.last_access.elapsed() > STREAM_IDLE_TIMEOUT
+    }
+
+    /// Consume bytes from pending buffer, returns bytes consumed
+    fn consume_pending(&mut self, bytes_needed: usize) -> usize {
+        if let Some(ref mut pending) = self.pending_buffer {
+            let to_consume = pending.len().min(bytes_needed);
+            self.current_position += to_consume as u64;
+
+            if to_consume < pending.len() {
+                *pending = pending.slice(to_consume..);
+            } else {
+                self.pending_buffer = None;
+            }
+            to_consume
+        } else {
+            0
+        }
+    }
+
+    /// Buffer remaining chunk data after consuming `consumed` bytes
+    fn buffer_leftover(&mut self, chunk: Bytes, consumed: usize) {
+        if consumed < chunk.len() {
+            self.pending_buffer = Some(chunk.slice(consumed..));
+            trace!(
+                bytes_buffered = chunk.len() - consumed,
+                "Buffered extra bytes from chunk"
+            );
+        }
     }
 }
 
@@ -296,53 +292,54 @@ impl PersistentStreamManager {
         streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>>,
         handle_storage: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     ) {
-        // Check if we're running in a Tokio runtime context
-        // If not (e.g., in synchronous tests), skip starting the cleanup task
-        match tokio::runtime::Handle::try_current() {
-            Ok(_) => {
-                let handle = tokio::spawn(async move {
-                    let mut interval = tokio::time::interval(CLEANUP_INTERVAL);
+        // Only spawn cleanup task if we're in a Tokio runtime context
+        // In synchronous tests without a runtime, skip the cleanup task
+        if tokio::runtime::Handle::try_current().is_err() {
+            trace!("No Tokio runtime available, skipping cleanup task");
+            return;
+        }
 
-                    loop {
-                        interval.tick().await;
+        // Spawn the cleanup task
+        let cleanup_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(CLEANUP_INTERVAL);
 
-                        let mut streams_guard = streams.lock().await;
-                        let before_count = streams_guard.len();
+            loop {
+                interval.tick().await;
 
-                        streams_guard.retain(|key, stream| {
-                            let should_keep = !stream.is_idle();
-                            if !should_keep {
-                                trace!(
-                                    stream_op = "cleanup",
-                                    torrent_id = key.torrent_id,
-                                    file_idx = key.file_idx,
-                                    "Removing idle stream"
-                                );
-                            }
-                            should_keep
-                        });
+                let mut streams_guard = streams.lock().await;
+                let before_count = streams_guard.len();
 
-                        let after_count = streams_guard.len();
-                        if before_count != after_count {
-                            debug!(
-                                stream_op = "cleanup",
-                                removed = before_count - after_count,
-                                remaining = after_count,
-                                "Cleaned up idle streams"
-                            );
-                        }
+                streams_guard.retain(|key, stream| {
+                    let should_keep = !stream.is_idle();
+                    if !should_keep {
+                        trace!(
+                            stream_op = "cleanup",
+                            torrent_id = key.torrent_id,
+                            file_idx = key.file_idx,
+                            "Removing idle stream"
+                        );
                     }
+                    should_keep
                 });
 
-                let mut h = tokio::runtime::Handle::current().block_on(handle_storage.lock());
-                *h = Some(handle);
+                let after_count = streams_guard.len();
+                if before_count != after_count {
+                    debug!(
+                        stream_op = "cleanup",
+                        removed = before_count - after_count,
+                        remaining = after_count,
+                        "Cleaned up idle streams"
+                    );
+                }
             }
-            Err(_) => {
-                // No runtime available (e.g., in synchronous tests)
-                // Cleanup will be handled by stream reuse/creation logic
-                trace!("No Tokio runtime available, skipping cleanup task");
-            }
-        }
+        });
+
+        // Store the handle - this must be done in an async context
+        // We'll spawn a short task to do this
+        tokio::spawn(async move {
+            let mut h = handle_storage.lock().await;
+            *h = Some(cleanup_task);
+        });
     }
 
     /// Read data from a file, using a persistent stream if possible
@@ -389,20 +386,8 @@ impl PersistentStreamManager {
                 stream.skip(gap).await?;
             }
 
-            // Read the data
-            let mut buffer = vec![0u8; size];
-            let bytes_read = stream.read(&mut buffer).await?;
-            buffer.truncate(bytes_read);
-
-            trace!(
-                stream_op = "read_complete",
-                torrent_id = torrent_id,
-                file_idx = file_idx,
-                bytes_read = bytes_read,
-                "Completed read from persistent stream"
-            );
-
-            Ok(Bytes::from(buffer))
+            self.read_from_stream(stream, size, torrent_id, file_idx)
+                .await
         } else {
             // Create a new stream
             trace!(
@@ -418,24 +403,15 @@ impl PersistentStreamManager {
                 PersistentStream::new(&self.client, &self.base_url, torrent_id, file_idx, offset)
                     .await?;
 
-            // Read the data
-            let mut buffer = vec![0u8; size];
-            let bytes_read = new_stream.read(&mut buffer).await?;
-            buffer.truncate(bytes_read);
+            let result = self
+                .read_from_stream(&mut new_stream, size, torrent_id, file_idx)
+                .await?;
 
             // Store the stream for future use
             let mut streams = self.streams.lock().await;
             streams.insert(key, new_stream);
 
-            trace!(
-                stream_op = "read_complete",
-                torrent_id = torrent_id,
-                file_idx = file_idx,
-                bytes_read = bytes_read,
-                "Completed read from new stream"
-            );
-
-            Ok(Bytes::from(buffer))
+            Ok(result)
         }
     }
 
@@ -481,6 +457,29 @@ impl PersistentStreamManager {
             active_streams: streams.len(),
             total_bytes_streaming: streams.values().map(|s| s.current_position).sum(),
         }
+    }
+
+    /// Read data from a stream into a Bytes buffer
+    async fn read_from_stream(
+        &self,
+        stream: &mut PersistentStream,
+        size: usize,
+        torrent_id: u64,
+        file_idx: usize,
+    ) -> Result<Bytes> {
+        let mut buffer = vec![0u8; size];
+        let bytes_read = stream.read(&mut buffer).await?;
+        buffer.truncate(bytes_read);
+
+        trace!(
+            stream_op = "read_complete",
+            torrent_id = torrent_id,
+            file_idx = file_idx,
+            bytes_read = bytes_read,
+            "Completed read from persistent stream"
+        );
+
+        Ok(Bytes::from(buffer))
     }
 }
 

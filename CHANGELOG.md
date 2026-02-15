@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Extract streaming helpers to reduce code duplication (SIMPLIFY-011)
+  - Added `consume_pending()` helper to `PersistentStream` for pending buffer handling
+  - Added `buffer_leftover()` helper for chunk buffering logic
+  - Added `read_from_stream()` helper to `PersistentStreamManager`
+  - Refactored `read()` and `skip()` in `PersistentStream` to use new helpers
+  - Refactored manager's `read()` to use `read_from_stream()` helper
+  - Reduced `src/api/streaming.rs` from ~504 to ~464 lines (~40 line reduction)
+  - Fixed runtime detection in cleanup task for test compatibility
+  - All lib tests pass, clippy clean, code formatted
+
+- Simplify metrics module with macros and traits (SIMPLIFY-010)
+  - Added `record_op!` macro to generate 7 simple recording methods in FuseMetrics
+  - Added `LatencyMetrics` trait with default `avg_latency_ms()` implementation
+  - Implemented `LatencyMetrics` for both `FuseMetrics` and `ApiMetrics`
+  - Removed duplicate average latency calculation methods (~20 lines saved)
+  - Reduced `src/metrics.rs` from ~294 to ~259 lines (~35 line reduction)
+  - Added 3 new tests for the trait and macro implementations
+  - All 5 metrics tests pass, clippy clean, code formatted
+
 - Consolidate type files (SIMPLIFY-012)
   - Merged `TorrentFile` struct from `file.rs` into `torrent.rs`
   - Added `match_fields!` macro to `inode.rs` reducing repetitive accessor methods

@@ -3,6 +3,50 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, trace, warn};
 
+/// Macro to generate simple operation recording methods
+///
+/// Generates methods that:
+/// - Increment a counter field
+/// - Emit a trace log with the operation name
+macro_rules! record_op {
+    // Variant with trace logging
+    ($method:ident, $field:ident, $op_name:expr) => {
+        pub fn $method(&self) {
+            self.$field.fetch_add(1, Ordering::Relaxed);
+            trace!(fuse_op = $op_name);
+        }
+    };
+    // Variant without trace logging
+    ($method:ident, $field:ident) => {
+        pub fn $method(&self) {
+            self.$field.fetch_add(1, Ordering::Relaxed);
+        }
+    };
+}
+
+/// Trait for metrics that track latency
+///
+/// Implementors must provide:
+/// - count(): The number of operations
+/// - total_latency_ns(): Total latency in nanoseconds
+pub trait LatencyMetrics {
+    /// Get the count of operations
+    fn count(&self) -> u64;
+    /// Get total latency in nanoseconds
+    fn total_latency_ns(&self) -> u64;
+
+    /// Calculate average latency in milliseconds
+    fn avg_latency_ms(&self) -> f64 {
+        let count = self.count();
+        if count == 0 {
+            0.0
+        } else {
+            let total_ns = self.total_latency_ns();
+            (total_ns as f64 / count as f64) / 1_000_000.0
+        }
+    }
+}
+
 /// Metrics for FUSE filesystem operations
 #[derive(Debug, Default)]
 pub struct FuseMetrics {
@@ -33,31 +77,16 @@ impl FuseMetrics {
         Self::default()
     }
 
-    pub fn record_getattr(&self) {
-        self.getattr_count.fetch_add(1, Ordering::Relaxed);
-        trace!(fuse_op = "getattr");
-    }
+    // Generate simple recording methods using macro
+    record_op!(record_getattr, getattr_count, "getattr");
+    record_op!(record_setattr, setattr_count, "setattr");
+    record_op!(record_lookup, lookup_count, "lookup");
+    record_op!(record_readdir, readdir_count, "readdir");
+    record_op!(record_open, open_count, "open");
+    record_op!(record_release, release_count, "release");
+    record_op!(record_error, error_count);
 
-    pub fn record_setattr(&self) {
-        self.setattr_count.fetch_add(1, Ordering::Relaxed);
-        trace!(fuse_op = "setattr");
-    }
-
-    pub fn record_lookup(&self) {
-        self.lookup_count.fetch_add(1, Ordering::Relaxed);
-        trace!(fuse_op = "lookup");
-    }
-
-    pub fn record_readdir(&self) {
-        self.readdir_count.fetch_add(1, Ordering::Relaxed);
-        trace!(fuse_op = "readdir");
-    }
-
-    pub fn record_open(&self) {
-        self.open_count.fetch_add(1, Ordering::Relaxed);
-        trace!(fuse_op = "open");
-    }
-
+    /// Record a read operation with bytes and latency
     pub fn record_read(&self, bytes: u64, latency: Duration) {
         self.read_count.fetch_add(1, Ordering::Relaxed);
         self.bytes_read.fetch_add(bytes, Ordering::Relaxed);
@@ -68,26 +97,6 @@ impl FuseMetrics {
             bytes_read = bytes,
             latency_ns = latency.as_nanos() as u64
         );
-    }
-
-    pub fn record_release(&self) {
-        self.release_count.fetch_add(1, Ordering::Relaxed);
-        trace!(fuse_op = "release");
-    }
-
-    pub fn record_error(&self) {
-        self.error_count.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Get the average read latency in milliseconds
-    pub fn avg_read_latency_ms(&self) -> f64 {
-        let count = self.read_count.load(Ordering::Relaxed);
-        if count == 0 {
-            0.0
-        } else {
-            let total_ns = self.read_latency_ns.load(Ordering::Relaxed);
-            (total_ns as f64 / count as f64) / 1_000_000.0
-        }
     }
 
     /// Get read throughput in MB/s
@@ -104,7 +113,7 @@ impl FuseMetrics {
         let reads = self.read_count.load(Ordering::Relaxed);
         let bytes = self.bytes_read.load(Ordering::Relaxed);
         let errors = self.error_count.load(Ordering::Relaxed);
-        let avg_latency = self.avg_read_latency_ms();
+        let avg_latency = self.avg_latency_ms();
         let throughput = self.read_throughput_mbps(elapsed_secs);
 
         info!(
@@ -116,6 +125,16 @@ impl FuseMetrics {
             errors = errors,
             duration_secs = elapsed_secs,
         );
+    }
+}
+
+impl LatencyMetrics for FuseMetrics {
+    fn count(&self) -> u64 {
+        self.read_count.load(Ordering::Relaxed)
+    }
+
+    fn total_latency_ns(&self) -> u64 {
+        self.read_latency_ns.load(Ordering::Relaxed)
     }
 }
 
@@ -178,17 +197,6 @@ impl ApiMetrics {
         info!(api_op = "circuit_breaker", state = "closed");
     }
 
-    /// Get average API latency in milliseconds
-    pub fn avg_latency_ms(&self) -> f64 {
-        let count = self.success_count.load(Ordering::Relaxed);
-        if count == 0 {
-            0.0
-        } else {
-            let total_ns = self.total_latency_ns.load(Ordering::Relaxed);
-            (total_ns as f64 / count as f64) / 1_000_000.0
-        }
-    }
-
     /// Get success rate as a percentage
     pub fn success_rate(&self) -> f64 {
         let total = self.request_count.load(Ordering::Relaxed);
@@ -218,6 +226,16 @@ impl ApiMetrics {
             success_rate_pct = success_rate,
             avg_latency_ms = avg_latency,
         );
+    }
+}
+
+impl LatencyMetrics for ApiMetrics {
+    fn count(&self) -> u64 {
+        self.success_count.load(Ordering::Relaxed)
+    }
+
+    fn total_latency_ns(&self) -> u64 {
+        self.total_latency_ns.load(Ordering::Relaxed)
     }
 }
 
@@ -267,7 +285,7 @@ mod tests {
         assert_eq!(metrics.read_count.load(Ordering::Relaxed), 2);
         assert_eq!(metrics.bytes_read.load(Ordering::Relaxed), 3072);
 
-        let avg_latency = metrics.avg_read_latency_ms();
+        let avg_latency = metrics.avg_latency_ms();
         assert!(avg_latency > 14.0 && avg_latency < 16.0);
     }
 
@@ -289,5 +307,61 @@ mod tests {
 
         let success_rate = metrics.success_rate();
         assert!((success_rate - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_latency_metrics_trait_fuse() {
+        let metrics = FuseMetrics::new();
+
+        // Test zero operations returns 0.0
+        assert_eq!(metrics.avg_latency_ms(), 0.0);
+
+        // Record some reads
+        metrics.record_read(1024, Duration::from_millis(10));
+        metrics.record_read(1024, Duration::from_millis(30));
+
+        // Average should be 20ms
+        let avg = metrics.avg_latency_ms();
+        assert!(avg > 19.0 && avg < 21.0);
+    }
+
+    #[test]
+    fn test_latency_metrics_trait_api() {
+        let metrics = ApiMetrics::new();
+
+        // Test zero operations returns 0.0
+        assert_eq!(metrics.avg_latency_ms(), 0.0);
+
+        // Record some successes
+        metrics.record_request("/test");
+        metrics.record_success("/test", Duration::from_millis(100));
+        metrics.record_request("/test");
+        metrics.record_success("/test", Duration::from_millis(300));
+
+        // Average should be 200ms
+        let avg = metrics.avg_latency_ms();
+        assert!(avg > 199.0 && avg < 201.0);
+    }
+
+    #[test]
+    fn test_macro_generated_methods() {
+        let metrics = FuseMetrics::new();
+
+        // Test all macro-generated methods
+        metrics.record_getattr();
+        metrics.record_setattr();
+        metrics.record_lookup();
+        metrics.record_readdir();
+        metrics.record_open();
+        metrics.record_release();
+        metrics.record_error();
+
+        assert_eq!(metrics.getattr_count.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.setattr_count.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.lookup_count.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.readdir_count.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.open_count.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.release_count.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.error_count.load(Ordering::Relaxed), 1);
     }
 }
