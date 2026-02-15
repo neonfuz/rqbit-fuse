@@ -700,12 +700,12 @@ impl RqbitClient {
     // Torrent Control
     // =========================================================================
 
-    /// Pause a torrent
-    pub async fn pause_torrent(&self, id: u64) -> Result<()> {
-        let url = format!("{}/torrents/{}/pause", self.base_url, id);
-        let endpoint = format!("/torrents/{}/pause", id);
+    /// Execute a torrent action (pause, start, forget, delete)
+    async fn torrent_action(&self, id: u64, action: &str) -> Result<()> {
+        let url = format!("{}/torrents/{}/{}", self.base_url, id, action);
+        let endpoint = format!("/torrents/{}/{}", id, action);
 
-        trace!(api_op = "pause_torrent", id = id);
+        trace!(api_op = action, id = id);
 
         let response = self
             .execute_with_retry(&endpoint, || self.client.post(&url).send())
@@ -715,73 +715,30 @@ impl RqbitClient {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
-                debug!(api_op = "pause_torrent", id = id, "Paused torrent");
+                debug!(api_op = action, id = id, "{} torrent", action);
                 Ok(())
             }
         }
+    }
+
+    /// Pause a torrent
+    pub async fn pause_torrent(&self, id: u64) -> Result<()> {
+        self.torrent_action(id, "pause").await
     }
 
     /// Resume/start a torrent
     pub async fn start_torrent(&self, id: u64) -> Result<()> {
-        let url = format!("{}/torrents/{}/start", self.base_url, id);
-        let endpoint = format!("/torrents/{}/start", id);
-
-        trace!(api_op = "start_torrent", id = id);
-
-        let response = self
-            .execute_with_retry(&endpoint, || self.client.post(&url).send())
-            .await?;
-
-        match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
-            _ => {
-                self.check_response(response).await?;
-                debug!(api_op = "start_torrent", id = id, "Started torrent");
-                Ok(())
-            }
-        }
+        self.torrent_action(id, "start").await
     }
 
     /// Remove torrent from session (keep files)
     pub async fn forget_torrent(&self, id: u64) -> Result<()> {
-        let url = format!("{}/torrents/{}/forget", self.base_url, id);
-        let endpoint = format!("/torrents/{}/forget", id);
-
-        trace!(api_op = "forget_torrent", id = id);
-
-        let response = self
-            .execute_with_retry(&endpoint, || self.client.post(&url).send())
-            .await?;
-
-        match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
-            _ => {
-                self.check_response(response).await?;
-                debug!(api_op = "forget_torrent", id = id, "Forgot torrent");
-                Ok(())
-            }
-        }
+        self.torrent_action(id, "forget").await
     }
 
     /// Remove torrent from session and delete files
     pub async fn delete_torrent(&self, id: u64) -> Result<()> {
-        let url = format!("{}/torrents/{}/delete", self.base_url, id);
-        let endpoint = format!("/torrents/{}/delete", id);
-
-        trace!(api_op = "delete_torrent", id = id);
-
-        let response = self
-            .execute_with_retry(&endpoint, || self.client.post(&url).send())
-            .await?;
-
-        match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
-            _ => {
-                self.check_response(response).await?;
-                debug!(api_op = "delete_torrent", id = id, "Deleted torrent");
-                Ok(())
-            }
-        }
+        self.torrent_action(id, "delete").await
     }
 
     /// Check if the rqbit server is healthy

@@ -29,7 +29,7 @@ Each item is designed to be completed independently. Migration guides are stored
 
 ### API Client (`src/api/client.rs`)
 
-- [ ] **SIMPLIFY-002**: Unify torrent control methods
+- [x] **SIMPLIFY-002**: Unify torrent control methods
   - [migration:SIMPLIFY-002-torrent-control](migration/SIMPLIFY-002-torrent-control.md)
   - Create `torrent_action()` helper for pause/start/forget/delete
   - Replace 4 nearly identical methods (~72 lines → ~12 lines)

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Unified torrent control methods in API client (SIMPLIFY-002)
+  - Created `torrent_action()` helper to consolidate pause/start/forget/delete
+  - Reduced `src/api/client.rs` from ~72 to ~12 lines for torrent control (~60 line reduction)
+  - All 4 public methods now delegate to the helper: `pause_torrent`, `start_torrent`, `forget_torrent`, `delete_torrent`
+  - Preserves exact API behavior and all 90 tests pass
+
 - Simplified configuration module with macros (SIMPLIFY-001)
   - Added `default_fn!`, `default_impl!`, and `env_var!` macros
   - Reduced `src/config/mod.rs` from 515 to ~347 lines (~168 line reduction)
