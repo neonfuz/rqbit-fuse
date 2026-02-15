@@ -163,6 +163,9 @@ mod tests {
         // Non-existent key
         assert_eq!(cache.get(&"key2".to_string()).await, None);
 
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
         // Stats
         let stats = cache.stats().await;
         assert_eq!(stats.hits, 1);
@@ -178,9 +181,12 @@ mod tests {
         cache.insert("key1".to_string(), 42).await;
         assert_eq!(cache.get(&"key1".to_string()).await, Some(42));
 
-        // Wait for expiration
+        // Wait for expiration (TTL is 100ms, so wait 150ms)
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(cache.get(&"key1".to_string()).await, None);
+
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
 
         let stats = cache.stats().await;
         assert_eq!(stats.misses, 2); // One initial miss + one after expiration
@@ -195,17 +201,32 @@ mod tests {
         cache.insert("key2".to_string(), 2).await;
         cache.insert("key3".to_string(), 3).await;
 
-        // Access key1 to make it recently used
-        let _ = cache.get(&"key1".to_string()).await;
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
 
-        // Insert 4th entry (should evict key2)
+        // Access key1 multiple times to make it frequently used
+        // Moka uses TinyLFU which keeps frequently used entries
+        for _ in 0..5 {
+            let _ = cache.get(&"key1".to_string()).await;
+        }
+        // Access key3 a couple times
+        let _ = cache.get(&"key3".to_string()).await;
+        let _ = cache.get(&"key3".to_string()).await;
+
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Insert 4th entry (should evict least frequently used - key2)
         cache.insert("key4".to_string(), 4).await;
 
-        // key1 and key3 should exist, key2 should be evicted
-        assert!(cache.contains_key(&"key1".to_string()).await);
-        assert!(!cache.contains_key(&"key2".to_string()).await);
-        assert!(cache.contains_key(&"key3".to_string()).await);
-        assert!(cache.contains_key(&"key4".to_string()).await);
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // key1 and key3 should exist (frequently accessed), key2 should be evicted
+        assert!(cache.contains_key(&"key1".to_string()).await, "key1 should exist (frequently used)");
+        assert!(!cache.contains_key(&"key2".to_string()).await, "key2 should be evicted (least frequently used)");
+        assert!(cache.contains_key(&"key3".to_string()).await, "key3 should exist");
+        assert!(cache.contains_key(&"key4".to_string()).await, "key4 should exist");
 
         let stats = cache.stats().await;
         assert_eq!(stats.size, 3);

@@ -2,225 +2,234 @@
 
 ## Data Structures
 
-### Torrent
+### Torrent (src/types/torrent.rs)
 
 ```rust
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Torrent {
     pub id: u64,
-    pub info_hash: String,
     pub name: String,
-    pub output_folder: PathBuf,
-    pub file_count: usize,
-    pub files: Vec<TorrentFile>,
+    pub info_hash: String,
+    pub total_size: u64,
     pub piece_length: u64,
+    pub num_pieces: usize,
 }
 ```
 
-### TorrentFile
+**Note:** The actual implementation uses a simplified metadata structure. Full file information comes from the API's `TorrentInfo` struct.
+
+### TorrentFile (src/types/file.rs)
 
 ```rust
 #[derive(Debug, Clone)]
 pub struct TorrentFile {
-    pub name: String,
+    pub path: Vec<String>,      // Path components (was "components" in earlier design)
     pub length: u64,
-    pub components: Vec<String>,
-    pub file_idx: usize,  // Index within torrent
+    pub offset: u64,            // Byte offset within the torrent
 }
 ```
 
-### InodeEntry
+**Field Changes:**
+- Uses `path` instead of `components` (same purpose, different name)
+- Includes `offset` field for calculating byte positions
+- Does not include `name` or `file_idx` - these are tracked separately in InodeEntry
 
-```rust
-#[derive(Debug)]
-pub enum InodeEntry {
-    Root,
-    Torrent { torrent_id: u64, name: String },
-    File { torrent_id: u64, file_idx: usize, name: String },
-}
-
-impl InodeEntry {
-    pub fn is_dir(&self) -> bool {
-        matches!(self, InodeEntry::Root | InodeEntry::Torrent { .. })
-    }
-    
-    pub fn is_file(&self) -> bool {
-        matches!(self, InodeEntry::File { .. })
-    }
-}
-```
-
-### FileAttr
+### InodeEntry (src/types/inode.rs)
 
 ```rust
 #[derive(Debug, Clone)]
-pub struct FileAttr {
-    pub size: u64,
-    pub mode: u32,
-    pub atime: SystemTime,
-    pub mtime: SystemTime,
-    pub ctime: SystemTime,
+pub enum InodeEntry {
+    Directory {
+        ino: u64,
+        name: String,
+        parent: u64,
+        children: Vec<u64>,
+    },
+    File {
+        ino: u64,
+        name: String,
+        parent: u64,
+        torrent_id: u64,
+        file_index: usize,      // Note: was "file_idx" in earlier design
+        size: u64,
+    },
+    Symlink {
+        ino: u64,
+        name: String,
+        parent: u64,
+        target: String,
+    },
 }
 
-impl FileAttr {
-    pub fn dir() -> Self {
-        Self {
-            mode: libc::S_IFDIR | 0o555,
-            size: 4096,
-            atime: SystemTime::now(),
-            mtime: SystemTime::now(),
-            ctime: SystemTime::now(),
-        }
+impl InodeEntry {
+    pub fn ino(&self) -> u64;
+    pub fn name(&self) -> &str;
+    pub fn parent(&self) -> u64;
+    pub fn is_directory(&self) -> bool;
+    pub fn is_file(&self) -> bool;
+    pub fn is_symlink(&self) -> bool;
+}
+```
+
+**Major Changes from Spec:**
+- Root is a `Directory` with `ino: 1` (not a separate `Root` variant)
+- Torrent directories use `Directory` variant (not separate `Torrent` variant)
+- Each entry tracks its own inode number (`ino` field)
+- Parent-child relationships are explicit with `parent` field
+- Directories maintain a `children: Vec<u64>` list
+- **Symlinks are supported** (not in original spec)
+
+### FileAttr (src/types/attr.rs)
+
+Uses `fuser::FileAttr` directly with helper functions:
+
+```rust
+pub fn default_file_attr(ino: u64, size: u64) -> FileAttr {
+    FileAttr {
+        ino,
+        size,
+        blocks: (size + 511) / 512,
+        atime: SystemTime::now(),
+        mtime: SystemTime::now(),
+        ctime: SystemTime::now(),
+        crtime: SystemTime::now(),
+        kind: FileType::RegularFile,
+        perm: 0o444,        // Read-only
+        nlink: 1,
+        uid: unsafe { libc::getuid() },
+        gid: unsafe { libc::getgid() },
+        rdev: 0,
+        flags: 0,
+        blksize: 512,
     }
-    
-    pub fn file(size: u64) -> Self {
-        Self {
-            mode: libc::S_IFREG | 0o444,
-            size,
-            atime: SystemTime::now(),
-            mtime: SystemTime::now(),
-            ctime: SystemTime::now(),
-        }
+}
+
+pub fn default_dir_attr(ino: u64) -> FileAttr {
+    FileAttr {
+        ino,
+        size: 4096,
+        blocks: 8,
+        atime: SystemTime::now(),
+        mtime: SystemTime::now(),
+        ctime: SystemTime::now(),
+        crtime: SystemTime::now(),
+        kind: FileType::Directory,
+        perm: 0o555,        // Read-only, executable for dirs
+        nlink: 2,
+        uid: unsafe { libc::getuid() },
+        gid: unsafe { libc::getgid() },
+        rdev: 0,
+        flags: 0,
+        blksize: 512,
     }
 }
 ```
+
+**Note:** The implementation uses `fuser::FileAttr` directly rather than a custom struct.
 
 ## Inode Management
 
-### InodeTable
+### InodeManager (src/fs/inode.rs)
 
-Manages mapping between inodes and filesystem entries.
+Manages mapping between inodes and filesystem entries with thread-safe concurrent access.
 
 ```rust
-use dashmap::DashMap;
-
-pub struct InodeTable {
+pub struct InodeManager {
     next_inode: AtomicU64,
     entries: DashMap<u64, InodeEntry>,
-    torrent_inode_map: DashMap<u64, u64>,  // torrent_id -> inode
+    path_to_inode: DashMap<String, u64>,    // Reverse lookup
+    torrent_to_inode: DashMap<u64, u64>,    // torrent_id -> directory inode
 }
 
-impl InodeTable {
+impl InodeManager {
     pub fn new() -> Self {
-        let entries = DashMap::new();
-        entries.insert(1, InodeEntry::Root);  // Root inode
-        
-        Self {
-            next_inode: AtomicU64::new(2),
-            entries,
-            torrent_inode_map: DashMap::new(),
-        }
+        // Creates root directory with ino: 1
     }
     
-    pub fn allocate(&self, entry: InodeEntry) -> u64 {
-        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-        
-        if let InodeEntry::Torrent { torrent_id, .. } = &entry {
-            self.torrent_inode_map.insert(*torrent_id, inode);
-        }
-        
-        self.entries.insert(inode, entry);
-        inode
-    }
+    // Specialized allocation methods
+    pub fn allocate_torrent_directory(
+        &self,
+        torrent_id: u64,
+        name: String,
+        parent: u64,
+    ) -> u64;
     
-    pub fn get(&self, inode: u64) -> Option<InodeEntry> {
-        self.entries.get(&inode).map(|e| e.clone())
-    }
+    pub fn allocate_file(
+        &self,
+        name: String,
+        parent: u64,
+        torrent_id: u64,
+        file_index: usize,
+        size: u64,
+    ) -> u64;
     
-    pub fn lookup_torrent(&self, torrent_id: u64) -> Option<u64> {
-        self.torrent_inode_map.get(&torrent_id).map(|i| *i)
-    }
+    pub fn allocate_symlink(
+        &self,
+        name: String,
+        parent: u64,
+        target: String,
+    ) -> u64;
     
-    pub fn clear_torrents(&self) {
-        self.entries.retain(|_, entry| !matches!(entry, InodeEntry::Torrent { .. } | InodeEntry::File { .. }));
-        self.torrent_inode_map.clear();
-        self.next_inode.store(2, Ordering::SeqCst);
-    }
+    // Lookup methods
+    pub fn get(&self, inode: u64) -> Option<InodeEntry>;
+    pub fn lookup_by_path(&self, path: &str) -> Option<u64>;
+    pub fn lookup_torrent(&self, torrent_id: u64) -> Option<u64>;
+    pub fn get_children(&self, inode: u64) -> Vec<InodeEntry>;
+    pub fn entries(&self) -> Vec<InodeEntry>;
+    pub fn torrent_to_inode(&self, torrent_id: u64) -> Option<u64>;
 }
 ```
+
+**Key Differences from Spec:**
+- Name changed from `InodeTable` to `InodeManager`
+- Uses specialized allocation methods instead of single generic method
+- Maintains `path_to_inode` for reverse path lookups (not in spec)
+- Maintains explicit children lists in directories
+- Supports symlinks
 
 ## FUSE Callbacks Implementation
 
-### init()
+### init() (src/fs/filesystem.rs)
 
 ```rust
 fn init(&mut self, _req: &Request, _config: &mut KernelConfig) -> Result<(), c_int> {
-    // Load torrent list from API
-    let torrents = self.api_client.list_torrents()?;
-    
-    for torrent in torrents {
-        let entry = InodeEntry::Torrent {
-            torrent_id: torrent.id,
-            name: torrent.name.clone(),
-        };
-        let inode = self.inodes.allocate(entry);
-        
-        // Cache torrent files
-        for (idx, file) in torrent.files.iter().enumerate() {
-            let file_entry = InodeEntry::File {
-                torrent_id: torrent.id,
-                file_idx: idx,
-                name: file.name.clone(),
-            };
-            self.inodes.allocate(file_entry);
-        }
-        
-        self.cache.insert_torrent(inode, torrent);
-    }
-    
-    Ok(())
+    // 1. Validates mount point
+    // 2. Checks root inode exists
+    // 3. Starts background status monitoring task
+    // 4. Starts background torrent discovery task
+    // 5. Does NOT load torrents immediately (done lazily by discovery task)
 }
 ```
 
-### lookup()
+**Difference from Spec:** Uses lazy/async approach with background tasks rather than synchronous loading.
+
+### lookup() (src/fs/filesystem.rs)
 
 ```rust
 fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
     let name = name.to_string_lossy();
     
-    match self.inodes.get(parent) {
-        Some(InodeEntry::Root) => {
-            // Looking for a torrent directory
-            if let Some((inode, _)) = self.cache.find_torrent_by_name(&name) {
-                let attr = self.get_attr(inode);
-                reply.entry(&TTL, &attr, 0);
-            } else {
+    // Build full path from parent and name
+    let path = if parent == 1 {
+        format!("/{}", name)
+    } else {
+        match self.inode_manager.get(parent) {
+            Some(parent_entry) => {
+                format!("{}/{}", parent_entry.name(), name)
+            }
+            None => {
                 reply.error(ENOENT);
+                return;
             }
         }
-        Some(InodeEntry::Torrent { torrent_id, .. }) => {
-            // Looking for a file in torrent
-            if let Some((inode, file)) = self.cache.find_file_in_torrent(torrent_id, &name) {
-                let attr = self.get_attr(inode);
-                reply.entry(&TTL, &attr, 0);
-            } else {
-                reply.error(ENOENT);
-            }
-        }
-        _ => {
-            reply.error(ENOENT);
-        }
-    }
-}
-```
-
-### getattr()
-
-```rust
-fn getattr(&mut self, _req: &Request, inode: u64, reply: ReplyAttr) {
-    match self.inodes.get(inode) {
-        Some(InodeEntry::Root) => {
-            let attr = FileAttr::dir();
-            reply.attr(&TTL, &self.to_fuse_attr(inode, attr));
-        }
-        Some(InodeEntry::Torrent { .. }) => {
-            let attr = FileAttr::dir();
-            reply.attr(&TTL, &self.to_fuse_attr(inode, attr));
-        }
-        Some(InodeEntry::File { torrent_id, file_idx, .. }) => {
-            if let Some(file) = self.cache.get_file(torrent_id, file_idx) {
-                let attr = FileAttr::file(file.length);
-                reply.attr(&TTL, &self.to_fuse_attr(inode, attr));
+    };
+    
+    // Lookup by path
+    match self.inode_manager.lookup_by_path(&path) {
+        Some(ino) => {
+            if let Some(entry) = self.inode_manager.get(ino) {
+                let attr = build_file_attr(ino, &entry);
+                reply.entry(&Duration::new(1, 0), &attr, 0);
             } else {
                 reply.error(ENOENT);
             }
@@ -232,7 +241,27 @@ fn getattr(&mut self, _req: &Request, inode: u64, reply: ReplyAttr) {
 }
 ```
 
-### readdir()
+**Difference from Spec:** Uses `inode_manager.lookup_by_path()` instead of cache methods.
+
+### getattr() (src/fs/filesystem.rs)
+
+```rust
+fn getattr(&mut self, _req: &Request, inode: u64, reply: ReplyAttr) {
+    match self.inode_manager.get(inode) {
+        Some(entry) => {
+            let attr = build_file_attr(inode, &entry);
+            reply.attr(&Duration::new(1, 0), &attr);
+        }
+        None => {
+            reply.error(ENOENT);
+        }
+    }
+}
+```
+
+**Difference from Spec:** Derives attributes directly from `InodeEntry` rather than using cache.
+
+### readdir() (src/fs/filesystem.rs)
 
 ```rust
 fn readdir(
@@ -243,47 +272,37 @@ fn readdir(
     offset: i64,
     mut reply: ReplyDirectory,
 ) {
-    match self.inodes.get(inode) {
-        Some(InodeEntry::Root) => {
-            // List all torrents
-            let torrents = self.cache.list_torrents();
+    // Trigger torrent discovery when listing root
+    if inode == 1 {
+        self.trigger_torrent_discovery();
+    }
+    
+    match self.inode_manager.get(inode) {
+        Some(InodeEntry::Directory { children, .. }) => {
             let mut entries = vec![
-                (1, FileType::Directory, "."),
-                (1, FileType::Directory, ".."),
+                (inode, FileType::Directory, "."),
+                (inode, FileType::Directory, ".."),
             ];
             
-            for (inode, torrent) in torrents {
-                entries.push((inode, FileType::Directory, &torrent.name));
+            // Add children
+            for child_ino in children {
+                if let Some(child) = self.inode_manager.get(*child_ino) {
+                    let file_type = match &child {
+                        InodeEntry::Directory { .. } => FileType::Directory,
+                        InodeEntry::File { .. } => FileType::RegularFile,
+                        InodeEntry::Symlink { .. } => FileType::Symlink,
+                    };
+                    entries.push((*child_ino, file_type, child.name()));
+                }
             }
             
+            // Reply with entries
             for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
                 if reply.add(entry.0, (i + 1) as i64, entry.1, entry.2) {
                     break;
                 }
             }
             reply.ok();
-        }
-        Some(InodeEntry::Torrent { torrent_id, .. }) => {
-            // List files in torrent
-            if let Some(files) = self.cache.get_torrent_files(torrent_id) {
-                let mut entries = vec![
-                    (inode, FileType::Directory, "."),
-                    (inode, FileType::Directory, ".."),
-                ];
-                
-                for (file_inode, file) in files {
-                    entries.push((file_inode, FileType::RegularFile, &file.name));
-                }
-                
-                for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
-                    if reply.add(entry.0, (i + 1) as i64, entry.1, entry.2) {
-                        break;
-                    }
-                }
-                reply.ok();
-            } else {
-                reply.error(ENOENT);
-            }
         }
         _ => {
             reply.error(ENOTDIR);
@@ -292,7 +311,12 @@ fn readdir(
 }
 ```
 
-### read()
+**Differences from Spec:**
+- Triggers torrent discovery when listing root
+- Uses `inode_manager.get_children()` pattern
+- Supports symlinks
+
+### read() (src/fs/filesystem.rs)
 
 ```rust
 fn read(
@@ -306,41 +330,61 @@ fn read(
     _lock_owner: Option<u64>,
     reply: ReplyData,
 ) {
-    match self.inodes.get(inode) {
-        Some(InodeEntry::File { torrent_id, file_idx, .. }) => {
+    match self.inode_manager.get(inode) {
+        Some(InodeEntry::File { torrent_id, file_index, size: file_size, .. }) => {
             let offset = offset as u64;
             let size = size as u64;
             
-            // Get file info
-            let file = match self.cache.get_file(torrent_id, file_idx) {
-                Some(f) => f,
-                None => {
-                    reply.error(ENOENT);
-                    return;
-                }
-            };
-            
             // Check bounds
-            if offset >= file.length {
+            if offset >= file_size {
                 reply.data(&[]);
                 return;
             }
             
             // Calculate actual read size
-            let end = (offset + size).min(file.length);
+            let end = (offset + size).min(file_size);
             let read_size = (end - offset) as usize;
             
-            // Make HTTP request with semaphore for concurrency control
-            let data = match self.read_with_backoff(torrent_id, file_idx, offset, read_size) {
-                Ok(data) => data,
-                Err(e) => {
-                    eprintln!("Read error: {}", e);
-                    reply.error(EIO);
-                    return;
-                }
-            };
+            // Clamp to FUSE_MAX_READ (64KB)
+            let read_size = read_size.min(64 * 1024);
             
-            reply.data(&data);
+            // Make HTTP request with persistent streaming
+            let result = self.runtime.block_on(async {
+                let timeout = Duration::from_secs(self.config.performance.read_timeout);
+                match tokio::time::timeout(timeout, async {
+                    // Check piece availability if enabled
+                    if self.config.performance.piece_check_enabled {
+                        if let Err(e) = self.check_piece_availability(torrent_id, file_index, offset, read_size).await {
+                            if self.config.performance.return_eagain_for_unavailable {
+                                return Err(libc::EAGAIN);
+                            }
+                        }
+                    }
+                    
+                    // Read with persistent streaming
+                    self.api_client.read_file_streaming(
+                        torrent_id,
+                        file_index,
+                        offset,
+                        read_size,
+                    ).await
+                }).await {
+                    Ok(Ok(data)) => Ok(data),
+                    Ok(Err(e)) => Err(e),
+                    Err(_) => Err(libc::EAGAIN),  // Timeout
+                }
+            });
+            
+            match result {
+                Ok(data) => {
+                    // Track read for prefetching
+                    self.track_and_prefetch(torrent_id, file_index, offset, read_size);
+                    reply.data(&data);
+                }
+                Err(err) => {
+                    reply.error(err);
+                }
+            }
         }
         _ => {
             reply.error(EISDIR);
@@ -349,201 +393,219 @@ fn read(
 }
 ```
 
-## HTTP Read with Retry
+**Major Differences from Spec:**
+1. Uses `read_file_streaming()` with persistent connections (not simple retry)
+2. Implements read-ahead/prefetching with `track_and_prefetch()`
+3. Piece availability checking with EAGAIN option
+4. Clamps read size to 64KB (FUSE_MAX_READ)
+5. Uses `tokio::time::timeout` for timeout handling
+
+## HTTP Read Implementation
+
+### Persistent Streaming (src/api/streaming.rs)
+
+The actual implementation uses a `PersistentStreamManager` instead of simple retry logic:
 
 ```rust
-use std::time::Duration;
-use tokio::time::sleep;
+pub struct PersistentStreamManager {
+    client: Client,
+    active_streams: DashMap<String, Arc<Mutex<HttpStream>>>,
+}
 
-impl TorrentFs {
-    async fn read_with_backoff(
+pub struct HttpStream {
+    url: String,
+    response: Response,
+    current_offset: u64,
+}
+
+impl PersistentStreamManager {
+    pub async fn read_file_streaming(
         &self,
         torrent_id: u64,
         file_idx: usize,
         offset: u64,
         size: usize,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let max_retries = 3;
-        let mut attempt = 0;
+    ) -> Result<Vec<u8>, ApiError> {
+        let url = format!("{}/torrents/{}/stream/{}", self.api_url, torrent_id, file_idx);
         
-        loop {
-            match self.read_data(torrent_id, file_idx, offset, size).await {
-                Ok(data) => return Ok(data),
-                Err(e) => {
-                    attempt += 1;
-                    if attempt >= max_retries {
-                        return Err(e);
-                    }
-                    let delay = Duration::from_millis(100 * 2_u64.pow(attempt));
-                    sleep(delay).await;
-                }
-            }
-        }
-    }
-    
-    async fn read_data(
-        &self,
-        torrent_id: u64,
-        file_idx: usize,
-        offset: u64,
-        size: usize,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let _permit = self.semaphore.acquire().await?;
+        // Get or create persistent stream
+        let stream = self.get_or_create_stream(&url).await?;
+        let mut stream = stream.lock().await;
         
-        let start = offset;
-        let end = offset + size as u64 - 1;
+        // Seek to offset if needed
+        if offset != stream.current_offset {
+            // Create new connection at requested offset
+            drop(stream);
+            self.close_stream(&url).await;
+            let stream = self.create_stream_at_offset(&url, offset).await?;
+            stream.lock().await
+        } else {
+            stream
+        };
         
-        let url = format!(
-            "{}/torrents/{}/stream/{}",
-            self.config.api_url, torrent_id, file_idx
-        );
+        // Read data
+        let mut buffer = vec![0u8; size];
+        let bytes_read = stream.response.read_exact(&mut buffer).await?;
+        buffer.truncate(bytes_read);
+        stream.current_offset += bytes_read as u64;
         
-        let response = self.client
-            .get(&url)
-            .header("Range", format!("bytes={}-{}", start, end))
-            .timeout(Duration::from_secs(self.config.read_timeout))
-            .send()
-            .await?;
-        
-        if !response.status().is_success() {
-            return Err(format!("HTTP error: {}", response.status()).into());
-        }
-        
-        let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
+        Ok(buffer)
     }
 }
 ```
+
+**Key Features:**
+- Connection reuse for sequential reads
+- Handles rqbit bug: returns 200 OK instead of 206 Partial Content
+- Streaming response handling
+- Circuit breaker integration
 
 ## Cache Implementation
 
+### Generic Cache (src/cache.rs)
+
+The actual implementation is a generic LRU cache:
+
 ```rust
-use std::time::{Duration, Instant};
-use dashmap::DashMap;
-
-pub struct Cache {
-    torrents: DashMap<u64, CachedTorrent>,
-    files: DashMap<(u64, usize), CachedFile>,
-    config: CacheConfig,
+pub struct Cache<K, V> {
+    entries: DashMap<K, Arc<CacheEntry<V>>>,
+    max_entries: usize,
+    lru_counter: AtomicU64,
 }
 
-pub struct CachedTorrent {
-    pub torrent: Torrent,
-    pub cached_at: Instant,
+pub struct CacheEntry<T> {
+    value: T,
+    created_at: Instant,
+    sequence: u64,  // For LRU ordering
 }
 
-pub struct CachedFile {
-    pub file: TorrentFile,
-    pub torrent_id: u64,
-    pub cached_at: Instant,
+pub struct CacheStats {
+    pub hits: AtomicU64,
+    pub misses: AtomicU64,
+    pub evictions: AtomicU64,
+    pub expired: AtomicU64,
 }
 
-pub struct CacheConfig {
-    pub torrent_ttl: Duration,
-    pub file_ttl: Duration,
-}
-
-impl Cache {
-    pub fn new(config: CacheConfig) -> Self {
-        Self {
-            torrents: DashMap::new(),
-            files: DashMap::new(),
-            config,
-        }
+impl<K: Eq + std::hash::Hash, V: Clone> Cache<K, V> {
+    pub fn get(&self, key: &K, ttl: Duration) -> Option<V> {
+        // Check if entry exists and not expired
+        // Update LRU sequence on hit
+        // Return cloned value
     }
     
-    pub fn insert_torrent(&self, inode: u64, torrent: Torrent) {
-        let cached = CachedTorrent {
-            torrent,
-            cached_at: Instant::now(),
-        };
-        self.torrents.insert(inode, cached);
-        
-        // Cache files too
-        for (idx, file) in cached.torrent.files.iter().enumerate() {
-            let cached_file = CachedFile {
-                file: file.clone(),
-                torrent_id: torrent.id,
-                cached_at: Instant::now(),
-            };
-            self.files.insert((torrent.id, idx), cached_file);
-        }
+    pub fn insert(&self, key: K, value: V) {
+        // Insert with TTL check
+        // Evict LRU entries if at capacity
     }
     
-    pub fn get_torrent(&self, inode: u64) -> Option<Torrent> {
-        self.torrents.get(&inode).and_then(|cached| {
-            if cached.cached_at.elapsed() < self.config.torrent_ttl {
-                Some(cached.torrent.clone())
-            } else {
-                None
-            }
-        })
+    pub fn insert_with_ttl(&self, key: K, value: V, ttl: Duration) {
+        // Insert with specific TTL
     }
     
-    pub fn get_file(&self, torrent_id: u64, file_idx: usize) -> Option<TorrentFile> {
-        self.files.get(&(torrent_id, file_idx)).and_then(|cached| {
-            if cached.cached_at.elapsed() < self.config.file_ttl {
-                Some(cached.file.clone())
-            } else {
-                None
-            }
-        })
-    }
-    
-    pub fn find_torrent_by_name(&self, name: &str) -> Option<(u64, Torrent)> {
-        for entry in self.torrents.iter() {
-            if entry.torrent.name == name {
-                return Some((*entry.key(), entry.torrent.clone()));
-            }
-        }
-        None
-    }
-    
-    pub fn list_torrents(&self) -> Vec<(u64, Torrent)> {
-        self.torrents
-            .iter()
-            .filter(|e| e.cached_at.elapsed() < self.config.torrent_ttl)
-            .map(|e| (*e.key(), e.torrent.clone()))
-            .collect()
-    }
-    
-    pub fn clear(&self) {
-        self.torrents.clear();
-        self.files.clear();
-    }
+    pub fn remove(&self, key: &K) -> Option<V>;
+    pub fn clear(&self);
+    pub fn stats(&self) -> CacheStats;
+    pub fn contains_key(&self, key: &K) -> bool;
+    pub fn len(&self) -> usize;
+    pub fn is_empty(&self) -> bool;
 }
 ```
+
+**Major Differences from Spec:**
+- Generic design (not torrent-specific)
+- LRU eviction in addition to TTL
+- Statistics tracking
+- No torrent-specific methods
 
 ## Error Mapping
 
+### ApiError (src/api/types.rs)
+
 ```rust
-impl From<reqwest::Error> for FuseError {
-    fn from(e: reqwest::Error) -> Self {
-        if e.is_timeout() {
-            FuseError::Timeout
-        } else if e.is_connect() {
-            FuseError::ApiUnavailable
-        } else {
-            FuseError::Network(e.to_string())
-        }
-    }
+#[derive(Debug, Error)]
+pub enum ApiError {
+    #[error("HTTP error: {0}")]
+    HttpError(String),
+    
+    #[error("API error: {status} - {message}")]
+    ApiError { status: u16, message: String },
+    
+    #[error("Torrent not found")]
+    TorrentNotFound,
+    
+    #[error("File not found")]
+    FileNotFound,
+    
+    #[error("Invalid range")]
+    InvalidRange,
+    
+    #[error("Retry limit exceeded")]
+    RetryLimitExceeded,
+    
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+    
+    #[error("Connection timeout")]
+    ConnectionTimeout,
+    
+    #[error("Read timeout")]
+    ReadTimeout,
+    
+    #[error("Server disconnected")]
+    ServerDisconnected,
+    
+    #[error("Circuit breaker open")]
+    CircuitBreakerOpen,
+    
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    
+    #[error("Service unavailable")]
+    ServiceUnavailable,
 }
 
-pub fn map_to_fuse_error(e: FuseError) -> c_int {
-    match e {
-        FuseError::NotFound => ENOENT,
-        FuseError::PermissionDenied => EACCES,
-        FuseError::Timeout => EAGAIN,
-        FuseError::ApiUnavailable => EIO,
-        FuseError::Network(_) => EIO,
-        FuseError::InvalidArgument => EINVAL,
-        FuseError::NotADirectory => ENOTDIR,
-        FuseError::IsADirectory => EISDIR,
+impl ApiError {
+    /// Check if error is transient and can be retried
+    pub fn is_transient(&self) -> bool {
+        matches!(self,
+            ApiError::ConnectionTimeout |
+            ApiError::ReadTimeout |
+            ApiError::ServerDisconnected |
+            ApiError::NetworkError(_) |
+            ApiError::CircuitBreakerOpen |
+            ApiError::ServiceUnavailable
+        )
+    }
+    
+    /// Convert to FUSE error code
+    pub fn to_fuse_error(&self) -> c_int {
+        match self {
+            ApiError::TorrentNotFound => libc::ENOENT,
+            ApiError::FileNotFound => libc::ENOENT,
+            ApiError::InvalidRange => libc::EINVAL,
+            ApiError::ConnectionTimeout => libc::EAGAIN,
+            ApiError::ReadTimeout => libc::EAGAIN,
+            ApiError::ServerDisconnected => libc::ENOTCONN,
+            ApiError::NetworkError(_) => libc::ENETUNREACH,
+            ApiError::CircuitBreakerOpen => libc::EAGAIN,
+            ApiError::ServiceUnavailable => libc::EAGAIN,
+            ApiError::ApiError { status: 404, .. } => libc::ENOENT,
+            ApiError::ApiError { status: 403, .. } => libc::EACCES,
+            ApiError::ApiError { status: 503, .. } => libc::EAGAIN,
+            _ => libc::EIO,
+        }
     }
 }
 ```
 
+**Differences from Spec:**
+- More comprehensive error types
+- `is_transient()` method for retry logic
+- HTTP status code to FUSE error mapping
+
 ## Configuration Structure
+
+### Config (src/config/mod.rs)
 
 ```rust
 #[derive(Debug, Clone, Deserialize)]
@@ -552,6 +614,8 @@ pub struct Config {
     pub cache: CacheConfig,
     pub mount: MountConfig,
     pub performance: PerformanceConfig,
+    pub monitoring: MonitoringConfig,    // Not in original spec
+    pub logging: LoggingConfig,          // Not in original spec
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -569,6 +633,7 @@ pub struct CacheConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MountConfig {
+    pub mount_point: PathBuf,    // Not in original spec
     pub allow_other: bool,
     pub auto_unmount: bool,
 }
@@ -578,6 +643,23 @@ pub struct PerformanceConfig {
     pub read_timeout: u64,
     pub max_concurrent_reads: usize,
     pub readahead_size: u64,
+    pub piece_check_enabled: bool,              // Not in original spec
+    pub return_eagain_for_unavailable: bool,    // Not in original spec
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MonitoringConfig {     // Not in original spec
+    pub status_poll_interval: u64,
+    pub stalled_timeout: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoggingConfig {        // Not in original spec
+    pub level: String,
+    pub log_fuse_operations: bool,
+    pub log_api_calls: bool,
+    pub metrics_enabled: bool,
+    pub metrics_interval_secs: u64,
 }
 
 impl Default for Config {
@@ -593,15 +675,97 @@ impl Default for Config {
                 max_entries: 1000,
             },
             mount: MountConfig {
+                mount_point: PathBuf::from("/mnt/torrents"),  // Default from code
                 allow_other: false,
                 auto_unmount: true,
             },
             performance: PerformanceConfig {
                 read_timeout: 30,
                 max_concurrent_reads: 10,
-                readahead_size: 33554432, // 32MB
+                readahead_size: 33554432,
+                piece_check_enabled: true,
+                return_eagain_for_unavailable: false,
+            },
+            monitoring: MonitoringConfig {
+                status_poll_interval: 5,
+                stalled_timeout: 300,
+            },
+            logging: LoggingConfig {
+                level: "info".to_string(),
+                log_fuse_operations: true,
+                log_api_calls: true,
+                metrics_enabled: true,
+                metrics_interval_secs: 60,
             },
         }
     }
 }
 ```
+
+**Additions not in original spec:**
+- `monitoring` section with poll intervals
+- `logging` section with operation logging
+- Additional performance options
+
+## API Client with Circuit Breaker
+
+### RqbitClient (src/api/client.rs)
+
+```rust
+pub struct RqbitClient {
+    client: Client,
+    base_url: String,
+    circuit_breaker: CircuitBreaker,
+    metrics: Arc<ApiMetrics>,
+}
+
+pub struct CircuitBreaker {
+    state: AtomicU8,  // Closed, Open, HalfOpen
+    failure_count: AtomicU32,
+    last_failure_time: Mutex<Option<Instant>>,
+    threshold: u32,
+    timeout: Duration,
+}
+
+impl RqbitClient {
+    // API Methods
+    pub async fn list_torrents(&self) -> Result<Vec<Torrent>, ApiError>;
+    pub async fn get_torrent(&self, id: u64) -> Result<Torrent, ApiError>;
+    pub async fn get_torrent_stats(&self, id: u64) -> Result<TorrentStats, ApiError>;
+    pub async fn read_file(&self, torrent_id: u64, file_idx: usize, offset: u64, size: usize) -> Result<Vec<u8>, ApiError>;
+    pub async fn read_file_streaming(&self, torrent_id: u64, file_idx: usize, offset: u64, size: usize) -> Result<Vec<u8>, ApiError>;
+    pub async fn check_piece_availability(&self, torrent_id: u64) -> Result<Vec<u8>, ApiError>;
+    
+    // Circuit breaker methods
+    async fn call_with_circuit_breaker<T>(&self, operation: impl FnOnce() -> Fut) -> Result<T, ApiError>;
+    fn record_success(&self);
+    fn record_failure(&self);
+}
+```
+
+## Metrics Collection
+
+### Metrics (src/metrics.rs)
+
+```rust
+pub struct FuseMetrics {
+    pub getattr_count: AtomicU64,
+    pub lookup_count: AtomicU64,
+    pub readdir_count: AtomicU64,
+    pub read_count: AtomicU64,
+    pub open_count: AtomicU64,
+    pub release_count: AtomicU64,
+    pub readlink_count: AtomicU64,
+    pub error_count: AtomicU64,
+    pub total_bytes_read: AtomicU64,
+}
+
+pub struct ApiMetrics {
+    pub request_count: AtomicU64,
+    pub retry_count: AtomicU64,
+    pub circuit_breaker_state: AtomicU8,
+    pub response_time_ms: AtomicU64,
+}
+```
+
+Last updated: 2024-02-14
