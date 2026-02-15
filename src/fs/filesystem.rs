@@ -3,10 +3,7 @@ use crate::api::types::{TorrentState, TorrentStatus};
 use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeManager;
-use crate::fs::macros::{
-    fuse_error, fuse_log, fuse_ok, reply_ino_not_found, reply_no_permission, reply_not_directory,
-    reply_not_file,
-};
+use crate::fs::macros::{fuse_error, fuse_log, fuse_ok};
 use crate::metrics::Metrics;
 use crate::types::handle::FileHandleManager;
 use crate::types::inode::InodeEntry;
@@ -540,6 +537,34 @@ impl TorrentFS {
         self.initialized
     }
 
+    /// Reply with ENOENT (inode not found) and record error metric
+    fn reply_ino_not_found<R: Reply>(&self, reply: &mut R, op: &str, ino: u64) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "ENOENT", ino = ino);
+        reply.error(libc::ENOENT);
+    }
+
+    /// Reply with ENOTDIR (not a directory) and record error metric
+    fn reply_not_directory<R: Reply>(&self, reply: &mut R, op: &str, ino: u64) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "ENOTDIR", ino = ino);
+        reply.error(libc::ENOTDIR);
+    }
+
+    /// Reply with EISDIR (is a directory, not a file) and record error metric
+    fn reply_not_file<R: Reply>(&self, reply: &mut R, op: &str, ino: u64) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "EISDIR", ino = ino);
+        reply.error(libc::EISDIR);
+    }
+
+    /// Reply with EACCES (permission denied) and record error metric
+    fn reply_no_permission<R: Reply>(&self, reply: &mut R, op: &str, ino: u64, reason: &str) {
+        self.metrics.fuse.record_error();
+        fuse_error!(self, op, "EACCES", ino = ino, reason = reason);
+        reply.error(libc::EACCES);
+    }
+
     /// Validates the mount point directory.
     /// Checks that:
     /// - The path exists
@@ -822,7 +847,7 @@ impl Filesystem for TorrentFS {
         size: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
-        reply: fuser::ReplyData,
+        mut reply: fuser::ReplyData,
     ) {
         let start_time = Instant::now();
 
@@ -1056,7 +1081,7 @@ impl Filesystem for TorrentFS {
         _req: &fuser::Request<'_>,
         parent: u64,
         name: &std::ffi::OsStr,
-        reply: fuser::ReplyEntry,
+        mut reply: fuser::ReplyEntry,
     ) {
         self.metrics.fuse.record_lookup();
 
@@ -1134,7 +1159,7 @@ impl Filesystem for TorrentFS {
     /// Called when the kernel needs to get attributes for a file or directory.
     /// This is a fundamental operation used by ls, stat, and most file operations.
     #[instrument(skip(self, reply), fields(ino))]
-    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
+    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, mut reply: fuser::ReplyAttr) {
         self.metrics.fuse.record_getattr();
 
         fuse_log!(self, "getattr", ino = ino);
@@ -1164,7 +1189,7 @@ impl Filesystem for TorrentFS {
     /// Called when the kernel needs to open a file for reading.
     /// Returns a file handle that will be used in subsequent read operations.
     #[instrument(skip(self, reply), fields(ino))]
-    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
+    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, mut reply: fuser::ReplyOpen) {
         self.metrics.fuse.record_open();
 
         fuse_log!(self, "open", ino = ino, flags = flags);
@@ -1207,7 +1232,7 @@ impl Filesystem for TorrentFS {
 
     /// Read the target of a symbolic link.
     /// Called when the kernel needs to resolve a symlink target.
-    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
+    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, mut reply: fuser::ReplyData) {
         debug!("readlink: ino={}", ino);
 
         match self.inode_manager.get(ino) {
