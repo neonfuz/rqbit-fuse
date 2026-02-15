@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Improve InodeEntry children lookup performance (TYPES-005)
+  - Changed `children: Vec<u64>` to `children: DashSet<u64>` in InodeEntry::Directory
+  - `add_child()` now uses DashSet::insert() for O(1) instead of O(n) Vec::contains + push
+  - `remove_child()` now uses DashSet::remove() for O(1) instead of O(n) Vec::retain
+  - `get_children()` iterates DashSet with O(1) child lookups
+  - Added manual Serialize/Deserialize implementations to handle DashSet ↔ Vec conversion
+  - All 206 tests pass, clippy clean, code formatted
+
+- Add comprehensive config validation (CONFIG-001)
+  - Added `validate()` method to Config returning `Result<(), ConfigError>`
+  - Validates API URL (non-empty, valid URL format)
+  - Validates cache settings (TTL values, max_entries within reasonable limits)
+  - Validates mount point (absolute path, is directory if exists)
+  - Validates performance settings (read_timeout, max_concurrent_reads, readahead_size)
+  - Validates monitoring settings (poll intervals, stalled timeouts)
+  - Validates logging level (error, warn, info, debug, trace)
+  - Added ValidationIssue struct with field and message for detailed errors
+  - Added 14 comprehensive validation tests
+
+- Remove hardcoded UID/GID (CONFIG-002)
+  - Added uid and gid fields to MountConfig in config module
+  - Defaults to current user's UID/GID using libc::geteuid() and libc::getegid()
+  - Updated build_file_attr() in filesystem.rs to use configurable uid/gid
+  - Added validation for uid/gid values
+  - All tests pass, clippy clean, code formatted
+  - All tests pass, clippy clean, code formatted
+
 - Fix platform-dependent types (TYPES-004)
   - Changed `file_index` from `usize` to `u64` in `InodeEntry::File` variant
   - Updated all internal usages in `filesystem.rs`, `async_bridge.rs`, and `inode.rs`

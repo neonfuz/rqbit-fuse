@@ -79,6 +79,8 @@ pub struct MountConfig {
     pub mount_point: PathBuf,
     pub allow_other: bool,
     pub auto_unmount: bool,
+    pub uid: u32,
+    pub gid: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +118,8 @@ default_fn!(default_max_entries, usize, 1000);
 default_fn!(default_mount_point, PathBuf, PathBuf::from("/mnt/torrents"));
 default_fn!(default_allow_other, bool, false);
 default_fn!(default_auto_unmount, bool, true);
+default_fn!(default_uid, u32, unsafe { libc::geteuid() });
+default_fn!(default_gid, u32, unsafe { libc::getegid() });
 default_fn!(default_read_timeout, u64, 30);
 default_fn!(default_max_concurrent_reads, usize, 10);
 default_fn!(default_readahead_size, u64, 33554432);
@@ -132,7 +136,7 @@ default_fn!(default_none, Option<String>, None);
 
 default_impl!(ApiConfig, url: default_api_url, username: default_none, password: default_none);
 default_impl!(CacheConfig, metadata_ttl: default_metadata_ttl, torrent_list_ttl: default_torrent_list_ttl, piece_ttl: default_piece_ttl, max_entries: default_max_entries);
-default_impl!(MountConfig, mount_point: default_mount_point, allow_other: default_allow_other, auto_unmount: default_auto_unmount);
+default_impl!(MountConfig, mount_point: default_mount_point, allow_other: default_allow_other, auto_unmount: default_auto_unmount, uid: default_uid, gid: default_gid);
 default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable);
 default_impl!(MonitoringConfig, status_poll_interval: default_status_poll_interval, stalled_timeout: default_stalled_timeout);
 default_impl!(LoggingConfig, level: default_log_level, log_fuse_operations: default_log_fuse_operations, log_api_calls: default_log_api_calls, metrics_enabled: default_metrics_enabled, metrics_interval_secs: default_metrics_interval_secs);
@@ -145,6 +149,20 @@ pub enum ConfigError {
     ParseError(String),
     #[error("Invalid config value: {0}")]
     InvalidValue(String),
+    #[error("Validation error: {}", .0.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("; "))]
+    ValidationError(Vec<ValidationIssue>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationIssue {
+    pub field: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for ValidationIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.field, self.message)
+    }
 }
 
 impl Config {
@@ -318,6 +336,251 @@ impl Config {
             .merge_from_env()?
             .merge_from_cli(cli))
     }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let mut issues = Vec::new();
+
+        if let Err(e) = self.validate_api_config() {
+            issues.push(e);
+        }
+        if let Err(e) = self.validate_cache_config() {
+            issues.push(e);
+        }
+        if let Err(e) = self.validate_mount_config() {
+            issues.push(e);
+        }
+        if let Err(e) = self.validate_performance_config() {
+            issues.push(e);
+        }
+        if let Err(e) = self.validate_monitoring_config() {
+            issues.push(e);
+        }
+        if let Err(e) = self.validate_logging_config() {
+            issues.push(e);
+        }
+
+        if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(ConfigError::ValidationError(issues))
+        }
+    }
+
+    fn validate_api_config(&self) -> Result<(), ValidationIssue> {
+        if self.api.url.is_empty() {
+            return Err(ValidationIssue {
+                field: "api.url".to_string(),
+                message: "URL cannot be empty".to_string(),
+            });
+        }
+
+        if let Err(e) = reqwest::Url::parse(&self.api.url) {
+            return Err(ValidationIssue {
+                field: "api.url".to_string(),
+                message: format!("Invalid URL format: {}", e),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_cache_config(&self) -> Result<(), ValidationIssue> {
+        if self.cache.metadata_ttl == 0 {
+            return Err(ValidationIssue {
+                field: "cache.metadata_ttl".to_string(),
+                message: "TTL must be greater than 0".to_string(),
+            });
+        }
+
+        if self.cache.metadata_ttl > 86400 {
+            return Err(ValidationIssue {
+                field: "cache.metadata_ttl".to_string(),
+                message: "TTL exceeds maximum of 86400 seconds (24 hours)".to_string(),
+            });
+        }
+
+        if self.cache.torrent_list_ttl == 0 {
+            return Err(ValidationIssue {
+                field: "cache.torrent_list_ttl".to_string(),
+                message: "TTL must be greater than 0".to_string(),
+            });
+        }
+
+        if self.cache.piece_ttl == 0 {
+            return Err(ValidationIssue {
+                field: "cache.piece_ttl".to_string(),
+                message: "TTL must be greater than 0".to_string(),
+            });
+        }
+
+        if self.cache.max_entries == 0 {
+            return Err(ValidationIssue {
+                field: "cache.max_entries".to_string(),
+                message: "max_entries must be greater than 0".to_string(),
+            });
+        }
+
+        if self.cache.max_entries > 1000000 {
+            return Err(ValidationIssue {
+                field: "cache.max_entries".to_string(),
+                message: "max_entries exceeds maximum of 1000000".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_mount_config(&self) -> Result<(), ValidationIssue> {
+        if !self.mount.mount_point.is_absolute() {
+            return Err(ValidationIssue {
+                field: "mount.mount_point".to_string(),
+                message: "Mount point must be an absolute path".to_string(),
+            });
+        }
+
+        if self.mount.mount_point.exists() && !self.mount.mount_point.is_dir() {
+            return Err(ValidationIssue {
+                field: "mount.mount_point".to_string(),
+                message: "Mount point exists but is not a directory".to_string(),
+            });
+        }
+
+        if u64::from(self.mount.uid) > u64::from(u32::MAX) {
+            return Err(ValidationIssue {
+                field: "mount.uid".to_string(),
+                message: "UID exceeds maximum value".to_string(),
+            });
+        }
+
+        if u64::from(self.mount.gid) > u64::from(u32::MAX) {
+            return Err(ValidationIssue {
+                field: "mount.gid".to_string(),
+                message: "GID exceeds maximum value".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_performance_config(&self) -> Result<(), ValidationIssue> {
+        if self.performance.read_timeout == 0 {
+            return Err(ValidationIssue {
+                field: "performance.read_timeout".to_string(),
+                message: "Read timeout must be greater than 0".to_string(),
+            });
+        }
+
+        if self.performance.read_timeout > 3600 {
+            return Err(ValidationIssue {
+                field: "performance.read_timeout".to_string(),
+                message: "Read timeout exceeds maximum of 3600 seconds (1 hour)".to_string(),
+            });
+        }
+
+        if self.performance.max_concurrent_reads == 0 {
+            return Err(ValidationIssue {
+                field: "performance.max_concurrent_reads".to_string(),
+                message: "max_concurrent_reads must be greater than 0".to_string(),
+            });
+        }
+
+        if self.performance.max_concurrent_reads > 1000 {
+            return Err(ValidationIssue {
+                field: "performance.max_concurrent_reads".to_string(),
+                message: "max_concurrent_reads exceeds maximum of 1000".to_string(),
+            });
+        }
+
+        if self.performance.readahead_size == 0 {
+            return Err(ValidationIssue {
+                field: "performance.readahead_size".to_string(),
+                message: "readahead_size must be greater than 0".to_string(),
+            });
+        }
+
+        if self.performance.readahead_size > 1073741824 {
+            return Err(ValidationIssue {
+                field: "performance.readahead_size".to_string(),
+                message: "readahead_size exceeds maximum of 1GB".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_monitoring_config(&self) -> Result<(), ValidationIssue> {
+        if self.monitoring.status_poll_interval == 0 {
+            return Err(ValidationIssue {
+                field: "monitoring.status_poll_interval".to_string(),
+                message: "status_poll_interval must be greater than 0".to_string(),
+            });
+        }
+
+        if self.monitoring.status_poll_interval > 3600 {
+            return Err(ValidationIssue {
+                field: "monitoring.status_poll_interval".to_string(),
+                message: "status_poll_interval exceeds maximum of 3600 seconds (1 hour)"
+                    .to_string(),
+            });
+        }
+
+        if self.monitoring.stalled_timeout == 0 {
+            return Err(ValidationIssue {
+                field: "monitoring.stalled_timeout".to_string(),
+                message: "stalled_timeout must be greater than 0".to_string(),
+            });
+        }
+
+        if self.monitoring.stalled_timeout > 86400 {
+            return Err(ValidationIssue {
+                field: "monitoring.stalled_timeout".to_string(),
+                message: "stalled_timeout exceeds maximum of 86400 seconds (24 hours)".to_string(),
+            });
+        }
+
+        if self.monitoring.status_poll_interval > self.monitoring.stalled_timeout {
+            return Err(ValidationIssue {
+                field: "monitoring.status_poll_interval".to_string(),
+                message: "status_poll_interval must be less than or equal to stalled_timeout"
+                    .to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_logging_config(&self) -> Result<(), ValidationIssue> {
+        let valid_levels = ["error", "warn", "info", "debug", "trace"];
+        if !valid_levels.contains(&self.logging.level.as_str()) {
+            return Err(ValidationIssue {
+                field: "logging.level".to_string(),
+                message: format!(
+                    "Invalid log level '{}'. Valid levels: {}",
+                    self.logging.level,
+                    valid_levels.join(", ")
+                ),
+            });
+        }
+
+        if self.logging.metrics_interval_secs == 0 && self.logging.metrics_enabled {
+            return Err(ValidationIssue {
+                field: "logging.metrics_interval_secs".to_string(),
+                message:
+                    "metrics_interval_secs must be greater than 0 when metrics_enabled is true"
+                        .to_string(),
+            });
+        }
+
+        if self.logging.metrics_interval_secs > 86400 {
+            return Err(ValidationIssue {
+                field: "logging.metrics_interval_secs".to_string(),
+                message: "metrics_interval_secs exceeds maximum of 86400 seconds (24 hours)"
+                    .to_string(),
+            });
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -436,5 +699,122 @@ max_concurrent_reads = 20
 
         assert_eq!(merged.api.username, Some("testuser".to_string()));
         assert_eq!(merged.api.password, Some("testpass".to_string()));
+    }
+
+    #[test]
+    fn test_validate_default_config() {
+        let config = Config::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_empty_url() {
+        let mut config = Config::default();
+        config.api.url = "".to_string();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ConfigError::ValidationError(_)));
+    }
+
+    #[test]
+    fn test_validate_invalid_url() {
+        let mut config = Config::default();
+        config.api.url = "not-a-url".to_string();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ConfigError::ValidationError(_)));
+    }
+
+    #[test]
+    fn test_validate_zero_metadata_ttl() {
+        let mut config = Config::default();
+        config.cache.metadata_ttl = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_exceeds_max_ttl() {
+        let mut config = Config::default();
+        config.cache.metadata_ttl = 100000;
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_max_entries() {
+        let mut config = Config::default();
+        config.cache.max_entries = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_relative_mount_point() {
+        let mut config = Config::default();
+        config.mount.mount_point = PathBuf::from("relative/path");
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_read_timeout() {
+        let mut config = Config::default();
+        config.performance.read_timeout = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_invalid_log_level() {
+        let mut config = Config::default();
+        config.logging.level = "invalid".to_string();
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_valid_log_levels() {
+        let valid_levels = ["error", "warn", "info", "debug", "trace"];
+        for level in valid_levels {
+            let mut config = Config::default();
+            config.logging.level = level.to_string();
+            assert!(config.validate().is_ok(), "Level {} should be valid", level);
+        }
+    }
+
+    #[test]
+    fn test_validate_poll_greater_than_stalled() {
+        let mut config = Config::default();
+        config.monitoring.status_poll_interval = 100;
+        config.monitoring.stalled_timeout = 50;
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_metrics_disabled_no_interval_required() {
+        let mut config = Config::default();
+        config.logging.metrics_enabled = false;
+        config.logging.metrics_interval_secs = 0;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_max_concurrent_reads() {
+        let mut config = Config::default();
+        config.performance.max_concurrent_reads = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_readahead_size() {
+        let mut config = Config::default();
+        config.performance.readahead_size = 0;
+        let result = config.validate();
+        assert!(result.is_err());
     }
 }

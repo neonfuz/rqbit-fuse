@@ -13,6 +13,7 @@ use crate::types::handle::FileHandleManager;
 use crate::types::inode::InodeEntry;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
+use dashmap::DashSet;
 use fuser::Filesystem;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -476,7 +477,7 @@ impl TorrentFS {
                     ino: 0,
                     name: dir_name.clone(),
                     parent: current_dir_inode,
-                    children: Vec::new(),
+                    children: DashSet::new(),
                     canonical_path: full_path,
                 });
 
@@ -764,6 +765,8 @@ impl TorrentFS {
 
         let now = SystemTime::now();
         let creation_time = UNIX_EPOCH + Duration::from_secs(1_700_000_000); // Fixed creation time
+        let uid = self.config.mount.uid;
+        let gid = self.config.mount.gid;
 
         match entry {
             InodeEntry::Directory { ino, .. } => fuser::FileAttr {
@@ -777,8 +780,8 @@ impl TorrentFS {
                 kind: fuser::FileType::Directory,
                 perm: 0o555, // Read and execute for all, no write (read-only)
                 nlink: 2 + self.inode_manager.get_children(*ino).len() as u32,
-                uid: 0,
-                gid: 0,
+                uid,
+                gid,
                 rdev: 0,
                 flags: 0,
                 blksize: 4096,
@@ -794,8 +797,8 @@ impl TorrentFS {
                 kind: fuser::FileType::RegularFile,
                 perm: 0o444, // Read-only for all
                 nlink: 1,
-                uid: 0,
-                gid: 0,
+                uid,
+                gid,
                 rdev: 0,
                 flags: 0,
                 blksize: 4096,
@@ -811,8 +814,8 @@ impl TorrentFS {
                 kind: fuser::FileType::Symlink,
                 perm: 0o777, // Symlinks always have 777 permissions
                 nlink: 1,
-                uid: 0,
-                gid: 0,
+                uid,
+                gid,
                 rdev: 0,
                 flags: 0,
                 blksize: 4096,
@@ -2035,10 +2038,10 @@ impl TorrentFS {
                     format!("{}/{}", torrent_dir_path, current_path)
                 };
                 let new_dir_inode = self.inode_manager.allocate(InodeEntry::Directory {
-                    ino: 0, // Will be assigned
+                    ino: 0,
                     name: dir_name.clone(),
                     parent: current_dir_inode,
-                    children: Vec::new(),
+                    children: DashSet::new(),
                     canonical_path: full_canonical_path,
                 });
 
@@ -2074,10 +2077,10 @@ impl TorrentFS {
                 // Create new directory
                 let dir_name = sanitize_filename(dir_component);
                 let new_dir_inode = self.inode_manager.allocate(InodeEntry::Directory {
-                    ino: 0, // Will be assigned
+                    ino: 0,
                     name: dir_name.clone(),
                     parent: current_dir_inode,
-                    children: Vec::new(),
+                    children: DashSet::new(),
                     canonical_path: format!("/{}", current_path),
                 });
 

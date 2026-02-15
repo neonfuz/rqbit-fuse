@@ -398,23 +398,35 @@ Each item is designed to be completed independently. Research references are sto
   - Added explicit casts at API boundaries where rqbit expects usize
   - All tests pass, clippy clean, code formatted
 
-- [ ] **TYPES-005**: Improve InodeEntry children lookup
-  - `children: Vec<u64>` has O(n) lookup
-  - Consider HashSet or DashSet for O(1)
-  - Measure impact on directory operations
+- [x] **TYPES-005**: Improve InodeEntry children lookup
+  - Changed `children: Vec<u64>` to `children: DashSet<u64>` for O(1) lookup
+  - `add_child()` now uses `DashSet::insert()` for O(1) instead of Vec::contains + push
+  - `remove_child()` now uses `DashSet::remove()` for O(1) instead of Vec::retain
+  - `get_children()` iterates over DashSet with proper O(1) child lookups
+  - Added manual Serialize/Deserialize implementations to handle DashSet conversion
+  - All tests pass, clippy clean, code formatted
 
 ### Configuration (src/config/mod.rs)
 
-- [ ] **CONFIG-001**: Add comprehensive config validation
-  - Validate URLs (non-empty, valid format)
-  - Validate timeouts (positive, reasonable range)
-  - Validate paths (exist, permissions)
-  - Return detailed validation errors
+- [x] **CONFIG-001**: Add comprehensive config validation
+  - Added `validate()` method to Config that returns `Result<(), ConfigError>`
+  - Validates URLs (non-empty, valid format using reqwest::Url)
+  - Validates timeouts (positive, within reasonable ranges)
+  - Validates mount point (absolute path, is directory if exists)
+  - Validates cache TTLs and max_entries (positive, within max limits)
+  - Validates performance settings (read_timeout, max_concurrent_reads, readahead_size)
+  - Validates monitoring settings (poll intervals, stalled timeouts)
+  - Validates logging level (error, warn, info, debug, trace)
+  - Added ValidationIssue struct for detailed error messages
+  - Added 14 comprehensive validation tests
+  - All tests pass, clippy clean, code formatted
 
-- [ ] **CONFIG-002**: Remove hardcoded UID/GID
-  - Lines 17-18, 36-37: Remove hardcoded 1000
-  - Use current user's UID/GID by default
-  - Make configurable via config file
+- [x] **CONFIG-002**: Remove hardcoded UID/GID
+  - Added `uid` and `gid` fields to MountConfig
+  - Defaults to current user's UID/GID using libc::geteuid() and libc::getegid()
+  - Updated `build_file_attr()` to use configurable uid/gid from config
+  - Added validation for uid/gid values
+  - All tests pass, clippy clean, code formatted
 
 - [ ] **CONFIG-003**: Add documentation to config module
   - Add doc comments to all structs

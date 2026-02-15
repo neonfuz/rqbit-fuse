@@ -1,12 +1,13 @@
+use dashmap::DashSet;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum InodeEntry {
     Directory {
         ino: u64,
         name: String,
         parent: u64,
-        children: Vec<u64>,
+        children: DashSet<u64>,
         canonical_path: String,
     },
     File {
@@ -25,6 +26,172 @@ pub enum InodeEntry {
         target: String,
         canonical_path: String,
     },
+}
+
+impl Serialize for InodeEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        #[serde(tag = "type")]
+        enum SerdeInodeEntry<'a> {
+            Directory {
+                ino: u64,
+                name: &'a str,
+                parent: u64,
+                children: Vec<u64>,
+                canonical_path: &'a str,
+            },
+            File {
+                ino: u64,
+                name: &'a str,
+                parent: u64,
+                torrent_id: u64,
+                file_index: u64,
+                size: u64,
+                canonical_path: &'a str,
+            },
+            Symlink {
+                ino: u64,
+                name: &'a str,
+                parent: u64,
+                target: &'a str,
+                canonical_path: &'a str,
+            },
+        }
+
+        match self {
+            InodeEntry::Directory {
+                ino,
+                name,
+                parent,
+                children,
+                canonical_path,
+            } => SerdeInodeEntry::Directory {
+                ino: *ino,
+                name,
+                parent: *parent,
+                children: children.iter().map(|c| *c).collect(),
+                canonical_path,
+            }
+            .serialize(serializer),
+            InodeEntry::File {
+                ino,
+                name,
+                parent,
+                torrent_id,
+                file_index,
+                size,
+                canonical_path,
+            } => SerdeInodeEntry::File {
+                ino: *ino,
+                name,
+                parent: *parent,
+                torrent_id: *torrent_id,
+                file_index: *file_index,
+                size: *size,
+                canonical_path,
+            }
+            .serialize(serializer),
+            InodeEntry::Symlink {
+                ino,
+                name,
+                parent,
+                target,
+                canonical_path,
+            } => SerdeInodeEntry::Symlink {
+                ino: *ino,
+                name,
+                parent: *parent,
+                target,
+                canonical_path,
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InodeEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(tag = "type")]
+        enum SerdeInodeEntry {
+            Directory {
+                ino: u64,
+                name: String,
+                parent: u64,
+                children: Vec<u64>,
+                canonical_path: String,
+            },
+            File {
+                ino: u64,
+                name: String,
+                parent: u64,
+                torrent_id: u64,
+                file_index: u64,
+                size: u64,
+                canonical_path: String,
+            },
+            Symlink {
+                ino: u64,
+                name: String,
+                parent: u64,
+                target: String,
+                canonical_path: String,
+            },
+        }
+
+        let value = SerdeInodeEntry::deserialize(deserializer)?;
+        match value {
+            SerdeInodeEntry::Directory {
+                ino,
+                name,
+                parent,
+                children,
+                canonical_path,
+            } => Ok(InodeEntry::Directory {
+                ino,
+                name,
+                parent,
+                children: children.into_iter().collect(),
+                canonical_path,
+            }),
+            SerdeInodeEntry::File {
+                ino,
+                name,
+                parent,
+                torrent_id,
+                file_index,
+                size,
+                canonical_path,
+            } => Ok(InodeEntry::File {
+                ino,
+                name,
+                parent,
+                torrent_id,
+                file_index,
+                size,
+                canonical_path,
+            }),
+            SerdeInodeEntry::Symlink {
+                ino,
+                name,
+                parent,
+                target,
+                canonical_path,
+            } => Ok(InodeEntry::Symlink {
+                ino,
+                name,
+                parent,
+                target,
+                canonical_path,
+            }),
+        }
+    }
 }
 
 macro_rules! match_fields {

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
+use dashmap::DashSet;
 use torrent_fuse::cache::Cache;
 use torrent_fuse::fs::inode::InodeManager;
 use torrent_fuse::types::inode::InodeEntry;
@@ -377,10 +378,10 @@ fn test_large_inode_tree_memory() {
 
     for dir_idx in 0..num_dirs {
         let dir = manager.allocate(InodeEntry::Directory {
-            ino: 0, // Will be assigned
+            ino: 0,
             name: format!("dir_{}", dir_idx),
             parent: root,
-            children: Vec::new(),
+            children: DashSet::new(),
             canonical_path: format!("/dir_{}", dir_idx),
         });
         manager.add_child(root, dir);

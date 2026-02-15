@@ -1,5 +1,6 @@
 use crate::types::inode::InodeEntry;
 use dashmap::DashMap;
+use dashmap::DashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Manages inode allocation and mapping between inodes and filesystem entries.
@@ -32,9 +33,9 @@ impl InodeManager {
         // Root inode is always 1
         let root = InodeEntry::Directory {
             ino: 1,
-            name: String::new(), // Root has no name
-            parent: 1,           // Root is its own parent
-            children: Vec::new(),
+            name: String::new(),
+            parent: 1,
+            children: DashSet::new(),
             canonical_path: "/".to_string(),
         };
 
@@ -101,10 +102,10 @@ impl InodeManager {
         };
 
         let entry = InodeEntry::Directory {
-            ino: 0, // Will be assigned
+            ino: 0,
             name,
             parent,
-            children: Vec::new(),
+            children: DashSet::new(),
             canonical_path,
         };
         self.allocate_entry(entry, Some(torrent_id))
@@ -227,7 +228,6 @@ impl InodeManager {
 
     /// Gets all children of a directory inode.
     pub fn get_children(&self, parent_inode: u64) -> Vec<(u64, InodeEntry)> {
-        // First check if it's a directory and use its children list
         if let Some(parent_entry) = self.entries.get(&parent_inode) {
             if let InodeEntry::Directory { children, .. } = &*parent_entry {
                 tracing::debug!(
@@ -235,12 +235,12 @@ impl InodeManager {
                     children_count = children.len(),
                     "get_children: found directory"
                 );
-                // If children list is populated, use it
                 if !children.is_empty() {
                     let result: Vec<_> = children
                         .iter()
-                        .filter_map(|&child_ino| {
-                            self.entries.get(&child_ino).map(|e| (child_ino, e.clone()))
+                        .filter_map(|child_ino| {
+                            let key = *child_ino;
+                            self.entries.get(&key).map(|e| (key, e.clone()))
                         })
                         .collect();
                     tracing::debug!(
@@ -257,8 +257,6 @@ impl InodeManager {
             tracing::warn!(parent = parent_inode, "get_children: parent not found");
         }
 
-        // Fallback: filter by parent field for entries not yet in children list
-        // This handles the case where DashMap writes haven't propagated yet
         let result: Vec<_> = self
             .entries
             .iter()
@@ -407,8 +405,7 @@ impl InodeManager {
         tracing::info!(parent = parent, child = child, "add_child called");
         if let Some(mut entry) = self.entries.get_mut(&parent) {
             if let InodeEntry::Directory { children, .. } = &mut *entry {
-                if !children.contains(&child) {
-                    children.push(child);
+                if children.insert(child) {
                     tracing::info!(
                         parent = parent,
                         child = child,
@@ -434,7 +431,7 @@ impl InodeManager {
     pub fn remove_child(&self, parent: u64, child: u64) {
         if let Some(mut entry) = self.entries.get_mut(&parent) {
             if let InodeEntry::Directory { children, .. } = &mut *entry {
-                children.retain(|&c| c != child);
+                children.remove(&child);
             }
         }
     }
@@ -469,10 +466,10 @@ mod tests {
         let manager = InodeManager::new();
 
         let entry = InodeEntry::Directory {
-            ino: 0, // Will be assigned
+            ino: 0,
             name: "test_dir".to_string(),
             parent: 1,
-            children: vec![],
+            children: DashSet::new(),
             canonical_path: "/test_dir".to_string(),
         };
 
@@ -758,7 +755,7 @@ mod tests {
                 ino: 0,
                 name: format!("level{}", i),
                 parent: current,
-                children: Vec::new(),
+                children: DashSet::new(),
                 canonical_path: if i == 0 {
                     "/level0".to_string()
                 } else {
