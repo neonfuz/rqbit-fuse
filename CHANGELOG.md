@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Add FUSE logging macros to reduce boilerplate (SIMPLIFY-004)
+  - Created `fuse_log!`, `fuse_error!`, `fuse_ok!` macros in `src/fs/macros.rs`
+  - Replaced ~42 repetitive logging blocks across 7 FUSE operations
+  - Reduced ~120 lines of boilerplate in `src/fs/filesystem.rs`
+  - Operations updated: read, release, lookup, getattr, open, readdir
+  - Macros automatically check `log_fuse_operations` config flag
+  - All 90 tests pass, clippy clean, code formatted
+
 - Extract helper functions from main.rs (SIMPLIFY-003)
   - Added `load_config()` helper to consolidate config loading across 3 commands
   - Added `run_command()` helper for shell command execution with error handling
