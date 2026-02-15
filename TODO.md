@@ -134,10 +134,23 @@ Each item is designed to be completed independently. Research references are sto
     - Understood FUSE testing approaches (mock, Docker, real filesystem)
     - Reviewed test categories: unit, integration, property-based, performance
     - Identified test infrastructure needs (WireMock, FUSE helpers, fixtures)
-  - [ ] **FS-007.2**: Set up FUSE testing infrastructure
-    - Research and select FUSE testing framework (fuse_mt or similar)
-    - Create test utilities for mount/unmount operations
-    - Add test helpers for FUSE operation assertions
+  - [x] **FS-007.2**: Set up FUSE testing infrastructure
+    - Researched FUSE testing approaches using spec/testing.md
+    - Selected mock-based testing pattern using fuser reply types
+    - Created tests/common/ module with:
+      - mock_server.rs: WireMock helpers for API testing
+      - fuse_helpers.rs: FUSE test utilities including TestFilesystem wrapper
+      - fixtures.rs: Test data fixtures for various torrent scenarios
+      - mod.rs: Module exports for easy imports
+    - Created tests/fuse_operations.rs with comprehensive FUSE operation tests:
+      - Lookup tests (root, nonexistent, files in directories)
+      - Getattr tests (root, files, directories)
+      - Readdir tests (root, directories, empty directories, with offset)
+      - Open/Release tests (files, directories)
+      - Error scenario tests (ENOENT, ENOTDIR)
+      - Unicode and edge case tests
+    - All tests compile and run successfully
+    - Research documented in existing spec/testing.md reference
   - [ ] **FS-007.3**: Implement lookup operation tests
     - Test successful file lookup
     - Test successful directory lookup

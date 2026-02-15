@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Completed FS-007.2: Set up FUSE testing infrastructure
+  - Created tests/common/ module with WireMock helpers, FUSE utilities, and fixtures
+  - Added mock_server.rs with predefined torrent API responses
+  - Added fuse_helpers.rs with TestFilesystem wrapper for test lifecycle
+  - Added fixtures.rs for various torrent test scenarios (single-file, multi-file, unicode, etc.)
+  - Created tests/fuse_operations.rs with comprehensive FUSE operation tests
+  - Tests cover: lookup, getattr, readdir, open/release, error scenarios
+  - All tests compile and run successfully
+  - Foundation established for FS-007.3-7.8 (specific operation tests)
+
 - Completed FS-007.1: Read testing specification
   - Reviewed comprehensive FUSE testing approaches and strategies
   - Identified test infrastructure requirements for upcoming FUSE operation tests

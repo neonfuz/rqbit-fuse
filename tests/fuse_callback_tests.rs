@@ -124,11 +124,18 @@ impl MockReplyDirectory {
 }
 
 impl fuser::ReplyDirectory for MockReplyDirectory {
-    fn add(&mut self, ino: u64, offset: i64, kind: fuser::FileType, name: &std::ffi::OsStr) -> bool {
+    fn add(
+        &mut self,
+        ino: u64,
+        offset: i64,
+        kind: fuser::FileType,
+        name: &std::ffi::OsStr,
+    ) -> bool {
         if self.full {
             return true;
         }
-        self.entries.push((ino, offset, kind, name.to_string_lossy().to_string()));
+        self.entries
+            .push((ino, offset, kind, name.to_string_lossy().to_string()));
         false
     }
 

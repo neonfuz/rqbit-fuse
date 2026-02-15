@@ -100,7 +100,10 @@ async fn test_torrent_structure_creation_single_file() {
     // Single-file torrent: file is directly under root
     let inode_manager = fs.inode_manager();
     let file = inode_manager.lookup_by_path("/test.txt");
-    assert!(file.is_some(), "Single-file torrent should add file directly to root");
+    assert!(
+        file.is_some(),
+        "Single-file torrent should add file directly to root"
+    );
 }
 
 #[tokio::test]
@@ -143,7 +146,10 @@ async fn test_torrent_structure_creation_multi_file() {
     // Multi-file torrent: creates a directory
     let inode_manager = fs.inode_manager();
     let torrent_dir = inode_manager.lookup_by_path("/Multi File Torrent");
-    assert!(torrent_dir.is_some(), "Multi-file torrent should create a directory");
+    assert!(
+        torrent_dir.is_some(),
+        "Multi-file torrent should create a directory"
+    );
 
     let file1 = inode_manager.lookup_by_path("/Multi File Torrent/file1.txt");
     assert!(file1.is_some(), "File should exist in torrent directory");
@@ -221,7 +227,10 @@ async fn test_inode_lookup_nonexistent_path() {
     assert!(result.is_none(), "Non-existent path should return None");
 
     let result = inode_manager.lookup_by_path("/nonexistent/file.txt");
-    assert!(result.is_none(), "Non-existent nested path should return None");
+    assert!(
+        result.is_none(),
+        "Non-existent nested path should return None"
+    );
 }
 
 #[tokio::test]
@@ -263,16 +272,26 @@ async fn test_get_attributes_for_entries() {
     let root_entry = inode_manager.get(1).expect("Root should exist");
     let root_attr = fs.build_file_attr(&root_entry);
     assert_eq!(root_attr.ino, 1, "Root inode should be 1");
-    assert_eq!(root_attr.kind, fuser::FileType::Directory, "Root should be a directory");
+    assert_eq!(
+        root_attr.kind,
+        fuser::FileType::Directory,
+        "Root should be a directory"
+    );
 
     // Test torrent directory attributes
     let torrent_inode = inode_manager
         .lookup_by_path("/Test Torrent")
         .expect("Torrent dir should exist");
-    let torrent_entry = inode_manager.get(torrent_inode).expect("Entry should exist");
+    let torrent_entry = inode_manager
+        .get(torrent_inode)
+        .expect("Entry should exist");
     let torrent_attr = fs.build_file_attr(&torrent_entry);
     assert_eq!(torrent_attr.ino, torrent_inode, "Inode should match");
-    assert_eq!(torrent_attr.kind, fuser::FileType::Directory, "Should be a directory");
+    assert_eq!(
+        torrent_attr.kind,
+        fuser::FileType::Directory,
+        "Should be a directory"
+    );
 
     // Test file attributes
     let file_inode = inode_manager
@@ -281,7 +300,11 @@ async fn test_get_attributes_for_entries() {
     let file_entry = inode_manager.get(file_inode).expect("Entry should exist");
     let file_attr = fs.build_file_attr(&file_entry);
     assert_eq!(file_attr.ino, file_inode, "Inode should match");
-    assert_eq!(file_attr.kind, fuser::FileType::RegularFile, "Should be a regular file");
+    assert_eq!(
+        file_attr.kind,
+        fuser::FileType::RegularFile,
+        "Should be a regular file"
+    );
     assert_eq!(file_attr.size, 1024, "File size should be 1024 bytes");
 }
 
@@ -331,7 +354,10 @@ async fn test_directory_listing() {
         .iter()
         .map(|(_, entry)| entry.name().to_string())
         .collect();
-    assert!(child_names.contains(&"Test Torrent".to_string()), "Root should contain torrent dir");
+    assert!(
+        child_names.contains(&"Test Torrent".to_string()),
+        "Root should contain torrent dir"
+    );
 
     // Get torrent directory children
     let torrent_inode = inode_manager
@@ -391,13 +417,21 @@ async fn test_nested_directory_structure() {
 
     // Test all paths exist
     assert!(inode_manager.lookup_by_path("/Nested Torrent").is_some());
-    assert!(inode_manager.lookup_by_path("/Nested Torrent/level1").is_some());
-    assert!(inode_manager.lookup_by_path("/Nested Torrent/level1/level2").is_some());
-    assert!(inode_manager.lookup_by_path("/Nested Torrent/level1/level2/level3").is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Nested Torrent/level1")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Nested Torrent/level1/level2")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Nested Torrent/level1/level2/level3")
+        .is_some());
     assert!(inode_manager
         .lookup_by_path("/Nested Torrent/level1/level2/level3/deep_file.txt")
         .is_some());
-    assert!(inode_manager.lookup_by_path("/Nested Torrent/shallow.txt").is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Nested Torrent/shallow.txt")
+        .is_some());
 
     // Verify parent-child relationships
     let level3_inode = inode_manager
@@ -496,7 +530,10 @@ async fn test_single_file_torrent_lookup_by_id() {
 
     // The entry should be a file (not a directory)
     let entry = inode_manager.get(torrent_inode.unwrap()).unwrap();
-    assert!(!entry.is_directory(), "Single-file torrent should map to file inode");
+    assert!(
+        !entry.is_directory(),
+        "Single-file torrent should map to file inode"
+    );
     assert_eq!(entry.name(), "thefile.txt");
 }
 
@@ -566,7 +603,10 @@ async fn test_error_conditions() {
 
     // Get children of non-existent inode
     let children = inode_manager.get_children(99999);
-    assert!(children.is_empty(), "Non-existent inode should have no children");
+    assert!(
+        children.is_empty(),
+        "Non-existent inode should have no children"
+    );
 
     // Get path for non-existent inode
     let path = inode_manager.get_path_for_inode(99999);
@@ -617,7 +657,9 @@ async fn test_torrent_removal_cleanup() {
     // Verify paths exist before removal
     let inode_manager = fs.inode_manager();
     assert!(inode_manager.lookup_by_path("/Test Torrent").is_some());
-    assert!(inode_manager.lookup_by_path("/Test Torrent/file1.txt").is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Test Torrent/file1.txt")
+        .is_some());
 
     // Remove torrent (this is what unlink() callback does for torrent directories)
     fs.remove_torrent_by_id(1).unwrap();
@@ -670,8 +712,12 @@ async fn test_unicode_and_special_characters() {
 
     // Verify unicode paths work
     assert!(inode_manager.lookup_by_path("/Unicode Test 🎉").is_some());
-    assert!(inode_manager.lookup_by_path("/Unicode Test 🎉/中文文件.txt").is_some());
-    assert!(inode_manager.lookup_by_path("/Unicode Test 🎉/日本語ファイル.txt").is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Unicode Test 🎉/中文文件.txt")
+        .is_some());
+    assert!(inode_manager
+        .lookup_by_path("/Unicode Test 🎉/日本語ファイル.txt")
+        .is_some());
     assert!(inode_manager
         .lookup_by_path("/Unicode Test 🎉/file with spaces.txt")
         .is_some());
