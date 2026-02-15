@@ -1,7 +1,9 @@
+pub mod circuit_breaker;
 pub mod client;
 pub mod streaming;
 pub mod types;
 
+pub use circuit_breaker::{CircuitBreaker, CircuitState};
 pub use client::create_api_client;
 pub use streaming::{PersistentStreamManager, StreamManagerStats};
-pub use types::*;
+pub use types::{ApiError, ListTorrentsResult, TorrentInfo, TorrentSummary};

@@ -263,6 +263,51 @@ impl Metrics {
         self.api.log_summary();
         info!("====================================");
     }
+
+    /// Log periodic metrics summary (for background task)
+    pub fn log_periodic(&self) {
+        let elapsed = self.start_time.elapsed().as_secs_f64();
+        info!("--- torrent-fuse Metrics (periodic) ---");
+        self.fuse.log_summary(elapsed);
+        self.api.log_summary();
+        info!("---------------------------------------");
+    }
+
+    /// Get elapsed time since metrics creation
+    pub fn elapsed(&self) -> Duration {
+        self.start_time.elapsed()
+    }
+
+    /// Create a periodic logging background task
+    ///
+    /// Returns a future that logs metrics at the specified interval
+    /// until the shared stop flag is set.
+    ///
+    /// # Arguments
+    /// * `interval_secs` - How often to log metrics
+    /// * `stop` - Arc flag to signal task stop
+    pub fn spawn_periodic_logging(
+        self: &Arc<Self>,
+        interval_secs: u64,
+        stop: Arc<std::sync::atomic::AtomicBool>,
+    ) -> tokio::task::JoinHandle<()> {
+        let metrics = Arc::clone(self);
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+
+            let mut ticker = interval(Duration::from_secs(interval_secs));
+
+            loop {
+                ticker.tick().await;
+
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+
+                metrics.log_periodic();
+            }
+        })
+    }
 }
 
 impl Default for Metrics {

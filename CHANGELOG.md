@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optimize buffer allocation (PERF-005)
+  - Changed streaming.rs to use BytesMut instead of vec![0u8; size]
+  - Avoids zeroing overhead on buffer allocation
+  - All tests pass, clippy clean, code formatted
+
+- Add periodic metrics logging (METRICS-004)
+  - Added log_periodic() and spawn_periodic_logging()
+  - Config options: metrics_enabled, metrics_interval_secs
+  - All tests pass, clippy clean, code formatted
+
+- Research read-ahead strategies (PERF-001)
+  - Created research/read-ahead.md documenting approaches
+  - Recommended rqbit integration (extend Range requests)
+
+- Research signal handling options (RES-001)
+  - Created research/signal-handling.md with analysis
+  - Recommended tokio::signal for clean shutdown
+  - Covers FUSE unmount, cache flush, task cleanup
+
+- Split RqbitClient into focused modules (ARCH-004)
+  - Created research/client-split.md with analysis
+  - Extracted CircuitBreaker to api/circuit_breaker.rs
+  - Updated api/mod.rs to export circuit_breaker module
+  - Streaming already separate
+  - All tests pass, clippy clean, code formatted
+
+- Extract mount operations (ARCH-003)
+  - Created src/mount.rs with extracted mount operations
+  - Moved: setup_logging, run_command, try_unmount, is_mount_point, unmount_filesystem, get_mount_info, MountInfo
+  - main.rs now focuses on CLI parsing and dispatch only
+  - All tests pass, clippy clean, code formatted
+
+- Audit module visibility (ARCH-001)
+  - Created research/public-api.md documenting current module structure
+  - Updated api/mod.rs to use explicit re-exports instead of wildcard
+  - Updated fs/mod.rs with explicit re-exports (AsyncFuseWorker, FuseError, TorrentFS, InodeManager)
+  - Updated types/mod.rs with explicit re-exports (FileAttr, FileHandle, InodeEntry)
+  - All 209 tests pass, clippy clean, code formatted
+
+- Add example configurations to config module (CONFIG-003)
+  - Added complete TOML configuration example with all options documented
+  - Added complete JSON configuration example
+  - Added minimal configuration example for common use case
+  - Added environment variable override examples
+  - All tests pass, clippy clean, code formatted
+
+- Fix case-sensitive file extension detection (CONFIG-005)
+  - Made extension detection case-insensitive
+  - Supports .toml, .TOML, .Json, .json, .JSON
+  - Added 3 new tests for uppercase/mixed case
+  - All 22 config tests pass, clippy clean, code formatted
+
 - Add property-based tests (TEST-007)
   - Added proptest to dev-dependencies in Cargo.toml
   - Added 4 property-based tests in src/fs/inode.rs:

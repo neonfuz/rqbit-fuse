@@ -1,3 +1,4 @@
+use crate::api::circuit_breaker::{CircuitBreaker, CircuitState};
 use crate::api::streaming::PersistentStreamManager;
 use crate::api::types::*;
 use crate::metrics::ApiMetrics;
@@ -7,107 +8,11 @@ use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 
 use futures::stream::StreamExt;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, trace, warn};
-
-/// Circuit breaker states
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CircuitState {
-    /// Normal operation, requests allowed
-    Closed,
-    /// Failure threshold reached, requests blocked
-    Open,
-    /// Testing if service recovered
-    HalfOpen,
-}
-
-/// Circuit breaker for handling cascading failures
-pub struct CircuitBreaker {
-    /// Current state of the circuit
-    state: Arc<RwLock<CircuitState>>,
-    /// Number of consecutive failures
-    failure_count: AtomicU32,
-    /// Threshold before opening circuit
-    failure_threshold: u32,
-    /// Duration to wait before attempting recovery
-    timeout: Duration,
-    /// Time when circuit was opened
-    opened_at: Arc<RwLock<Option<Instant>>>,
-}
-
-impl CircuitBreaker {
-    /// Create a new circuit breaker with default settings
-    pub fn new(failure_threshold: u32, timeout: Duration) -> Self {
-        Self {
-            state: Arc::new(RwLock::new(CircuitState::Closed)),
-            failure_count: AtomicU32::new(0),
-            failure_threshold,
-            timeout,
-            opened_at: Arc::new(RwLock::new(None)),
-        }
-    }
-
-    /// Check if request is allowed
-    pub async fn can_execute(&self) -> bool {
-        let state = *self.state.read().await;
-        match state {
-            CircuitState::Closed => true,
-            CircuitState::Open => {
-                // Check if timeout has elapsed
-                let opened_at = *self.opened_at.read().await;
-                if let Some(time) = opened_at {
-                    if time.elapsed() >= self.timeout {
-                        // Transition to half-open
-                        *self.state.write().await = CircuitState::HalfOpen;
-                        debug!("Circuit breaker transitioning to half-open");
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-            CircuitState::HalfOpen => true,
-        }
-    }
-
-    /// Record a successful request
-    pub async fn record_success(&self) {
-        self.failure_count.store(0, Ordering::SeqCst);
-        let mut state = self.state.write().await;
-        if *state != CircuitState::Closed {
-            debug!("Circuit breaker closing");
-            *state = CircuitState::Closed;
-            *self.opened_at.write().await = None;
-        }
-    }
-
-    /// Record a failed request
-    pub async fn record_failure(&self) {
-        let count = self.failure_count.fetch_add(1, Ordering::SeqCst) + 1;
-        if count >= self.failure_threshold {
-            let mut state = self.state.write().await;
-            if *state == CircuitState::Closed || *state == CircuitState::HalfOpen {
-                warn!(
-                    "Circuit breaker opened after {} consecutive failures",
-                    count
-                );
-                *state = CircuitState::Open;
-                *self.opened_at.write().await = Some(Instant::now());
-            }
-        }
-    }
-
-    /// Get current state
-    pub async fn state(&self) -> CircuitState {
-        *self.state.read().await
-    }
-}
 
 /// HTTP client for interacting with rqbit server
 pub struct RqbitClient {

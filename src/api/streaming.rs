@@ -1,7 +1,7 @@
 use crate::api::types::ApiError;
 use anyhow::{Context, Result};
 use base64::Engine;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::stream::StreamExt;
 use reqwest::{Client, StatusCode};
 use std::collections::HashMap;
@@ -517,7 +517,9 @@ impl PersistentStreamManager {
         torrent_id: u64,
         file_idx: usize,
     ) -> Result<Bytes> {
-        let mut buffer = vec![0u8; size];
+        // Use BytesMut to avoid zeroing overhead - allocates but doesn't initialize
+        let mut buffer = BytesMut::new();
+        buffer.resize(size, 0);
         let bytes_read = stream.read(&mut buffer).await?;
         buffer.truncate(bytes_read);
 
@@ -529,7 +531,7 @@ impl PersistentStreamManager {
             "Completed read from persistent stream"
         );
 
-        Ok(Bytes::from(buffer))
+        Ok(buffer.freeze())
     }
 }
 

@@ -4,5 +4,8 @@ pub mod filesystem;
 pub mod inode;
 pub mod macros;
 
-// Re-export macros for convenience
+pub use async_bridge::AsyncFuseWorker;
+pub use error::FuseError;
+pub use filesystem::TorrentFS;
+pub use inode::InodeManager;
 pub use macros::{fuse_error, fuse_log, fuse_ok};

@@ -210,6 +210,7 @@ pub mod cache;
 pub mod config;
 pub mod fs;
 pub mod metrics;
+pub mod mount;
 pub mod sharded_counter;
 pub mod types;
 

@@ -70,6 +70,148 @@ macro_rules! env_var {
 /// let config = Config::load().expect("Failed to load config");
 /// config.validate().expect("Invalid configuration");
 /// ```
+///
+/// ## Complete TOML Configuration Example
+///
+/// ```toml
+/// # Basic configuration for torrent-fuse
+/// # Copy this to ~/.config/torrent-fuse/config.toml or /etc/torrent-fuse/config.toml
+///
+/// [api]
+/// url = "http://127.0.0.1:3030"
+/// # Optional: HTTP Basic authentication
+/// # username = "admin"
+/// # password = "secret"
+///
+/// [cache]
+/// # How long to cache file metadata (seconds)
+/// metadata_ttl = 60
+/// # How long to cache torrent list (seconds)
+/// torrent_list_ttl = 30
+/// # How long to cache downloaded pieces (seconds)
+/// piece_ttl = 5
+/// # Maximum number of cache entries
+/// max_entries = 1000
+///
+/// [mount]
+/// # Where to mount the FUSE filesystem
+/// mount_point = "/mnt/torrents"
+/// # Allow other users to access the mount
+/// allow_other = false
+/// # Automatically unmount on process exit
+/// auto_unmount = true
+/// # User ID for file ownership (default: current user's EUID)
+/// # uid = 1000
+/// # Group ID for file ownership (default: current user's EGID)
+/// # gid = 1000
+///
+/// [performance]
+/// # Timeout for read operations (seconds)
+/// read_timeout = 30
+/// # Maximum concurrent read operations
+/// max_concurrent_reads = 10
+/// # Read-ahead buffer size (bytes)
+/// readahead_size = 33554432
+/// # Enable piece verification checksums
+/// piece_check_enabled = true
+/// # Return EAGAIN when data is unavailable
+/// return_eagain_for_unavailable = false
+///
+/// [monitoring]
+/// # Interval between status polls (seconds)
+/// status_poll_interval = 5
+/// # Timeout before marking torrent as stalled (seconds)
+/// stalled_timeout = 300
+///
+/// [logging]
+/// # Log level: error, warn, info, debug, trace
+/// level = "info"
+/// # Log all FUSE operations
+/// log_fuse_operations = true
+/// # Log all API calls to rqbit
+/// log_api_calls = true
+/// # Enable metrics collection and logging
+/// metrics_enabled = true
+/// # Interval between metrics logs (seconds)
+/// metrics_interval_secs = 60
+/// ```
+///
+/// ## Complete JSON Configuration Example
+///
+/// ```json
+/// {
+///   "api": {
+///     "url": "http://127.0.0.1:3030",
+///     "username": "admin",
+///     "password": "secret"
+///   },
+///   "cache": {
+///     "metadata_ttl": 60,
+///     "torrent_list_ttl": 30,
+///     "piece_ttl": 5,
+///     "max_entries": 1000
+///   },
+///   "mount": {
+///     "mount_point": "/mnt/torrents",
+///     "allow_other": false,
+///     "auto_unmount": true,
+///     "uid": 1000,
+///     "gid": 1000
+///   },
+///   "performance": {
+///     "read_timeout": 30,
+///     "max_concurrent_reads": 10,
+///     "readahead_size": 33554432,
+///     "piece_check_enabled": true,
+///     "return_eagain_for_unavailable": false
+///   },
+///   "monitoring": {
+///     "status_poll_interval": 5,
+///     "stalled_timeout": 300
+///   },
+///   "logging": {
+///     "level": "info",
+///     "log_fuse_operations": true,
+///     "log_api_calls": true,
+///     "metrics_enabled": true,
+///     "metrics_interval_secs": 60
+///   }
+/// }
+/// ```
+///
+/// ## Minimal Configuration
+///
+/// For most users, only the API URL and mount point are required:
+///
+/// ```toml
+/// [api]
+/// url = "http://127.0.0.1:3030"
+///
+/// [mount]
+/// mount_point = "/tmp/torrents"
+/// ```
+///
+/// ## Environment Variable Overrides
+///
+/// Any config value can be overridden with environment variables:
+///
+/// ```bash
+/// # Set API URL
+/// export TORRENT_FUSE_API_URL="http://localhost:8080"
+///
+/// # Set mount point
+/// export TORRENT_FUSE_MOUNT_POINT="/my/torrents"
+///
+/// # Adjust cache settings
+/// export TORRENT_FUSE_METADATA_TTL=120
+/// export TORRENT_FUSE_MAX_ENTRIES=5000
+///
+/// # Enable debug logging
+/// export TORRENT_FUSE_LOG_LEVEL=debug
+///
+/// # Authentication
+/// export TORRENT_FUSE_AUTH_USERPASS="username:password"
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     /// API connection settings for rqbit daemon.
@@ -312,10 +454,15 @@ impl Config {
     pub fn from_file(path: &PathBuf) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
 
-        if path.extension().map(|e| e == "json").unwrap_or(false) {
-            serde_json::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string()))
-        } else {
-            toml::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string()))
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase());
+        match ext.as_deref() {
+            Some("json") => {
+                serde_json::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string()))
+            }
+            _ => toml::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string())),
         }
     }
 
@@ -820,6 +967,61 @@ max_concurrent_reads = 20
         assert_eq!(config.api.url, "http://localhost:9090");
         assert_eq!(config.cache.metadata_ttl, 90);
         assert_eq!(config.cache.piece_ttl, 10);
+    }
+
+    #[test]
+    fn test_json_uppercase_extension() {
+        let json_content = r#"{
+            "api": {
+                "url": "http://localhost:9091"
+            }
+        }"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(json_content.as_bytes()).unwrap();
+
+        let mut json_path = temp_file.path().to_path_buf();
+        json_path.set_extension("JSON");
+        std::fs::rename(temp_file.path(), &json_path).unwrap();
+
+        let config = Config::from_file(&json_path).unwrap();
+        assert_eq!(config.api.url, "http://localhost:9091");
+    }
+
+    #[test]
+    fn test_toml_uppercase_extension() {
+        let toml_content = r#"
+[api]
+url = "http://localhost:8082"
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(toml_content.as_bytes()).unwrap();
+
+        let mut toml_path = temp_file.path().to_path_buf();
+        toml_path.set_extension("TOML");
+        std::fs::rename(temp_file.path(), &toml_path).unwrap();
+
+        let config = Config::from_file(&toml_path).unwrap();
+        assert_eq!(config.api.url, "http://localhost:8082");
+    }
+
+    #[test]
+    fn test_toml_mixed_case_extension() {
+        let toml_content = r#"
+[api]
+url = "http://localhost:8083"
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(toml_content.as_bytes()).unwrap();
+
+        let mut toml_path = temp_file.path().to_path_buf();
+        toml_path.set_extension("Toml");
+        std::fs::rename(temp_file.path(), &toml_path).unwrap();
+
+        let config = Config::from_file(&toml_path).unwrap();
+        assert_eq!(config.api.url, "http://localhost:8083");
     }
 
     #[test]

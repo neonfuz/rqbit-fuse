@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use torrent_fuse::config::{CliArgs, Config};
+use torrent_fuse::mount::{get_mount_info, is_mount_point, setup_logging, unmount_filesystem};
 
 #[derive(Parser)]
 #[command(name = "torrent-fuse")]
@@ -124,33 +125,6 @@ async fn main() -> Result<()> {
     }
 }
 
-fn setup_logging(verbose: u8, quiet: bool) -> Result<()> {
-    use tracing_subscriber::fmt;
-
-    if quiet {
-        let subscriber = fmt()
-            .with_max_level(tracing::Level::ERROR)
-            .without_time()
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)?;
-    } else {
-        let level = match verbose {
-            0 => tracing::Level::INFO,
-            1 => tracing::Level::DEBUG,
-            _ => tracing::Level::TRACE,
-        };
-
-        let subscriber = fmt().with_max_level(level).with_target(true).finish();
-
-        tracing::subscriber::set_global_default(subscriber)?;
-    }
-
-    Ok(())
-}
-
-/// Load configuration from CLI arguments
-///
-/// Handles the config file -> env -> CLI merge order
 fn load_config(
     config_file: Option<PathBuf>,
     mount_point: Option<PathBuf>,
@@ -175,67 +149,6 @@ fn load_config(
     }
 }
 
-/// Run a shell command and return output on success
-///
-/// # Arguments
-/// * `program` - The program to execute
-/// * `args` - Arguments to pass to the program
-/// * `context` - Context message for error reporting
-///
-/// # Returns
-/// * `Ok(Output)` if command succeeds
-/// * `Err` if command fails to run or returns non-zero exit code
-fn run_command<S: AsRef<std::ffi::OsStr>>(
-    program: &str,
-    args: &[S],
-    context: &str,
-) -> Result<std::process::Output> {
-    let output = std::process::Command::new(program)
-        .args(args)
-        .output()
-        .with_context(|| format!("Failed to run {}", context))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{} failed: {}", context, stderr);
-    }
-
-    Ok(output)
-}
-
-/// Unmount a FUSE filesystem, trying fusermount3 then fusermount
-///
-/// # Arguments
-/// * `path` - Mount point to unmount
-/// * `force` - Whether to force unmount even if busy
-///
-/// # Returns
-/// * `Ok(())` on successful unmount
-/// * `Err` if both fusermount3 and fusermount fail
-fn try_unmount(path: &std::path::Path, force: bool) -> Result<()> {
-    let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if force {
-        vec!["-zu", &path_str]
-    } else {
-        vec!["-u", &path_str]
-    };
-
-    // Try fusermount3 first (modern systems)
-    match run_command("fusermount3", &args, "fusermount3") {
-        Ok(_) => return Ok(()),
-        Err(e) => {
-            let err_str = e.to_string();
-            // Only try fallback if command not found
-            if !err_str.contains("command not found") && !err_str.contains("No such file") {
-                return Err(e);
-            }
-        }
-    }
-
-    // Fallback to fusermount (older systems)
-    run_command("fusermount", &args, "fusermount").map(|_| ())
-}
-
 async fn run_mount(
     mount_point: Option<PathBuf>,
     api_url: Option<String>,
@@ -247,7 +160,6 @@ async fn run_mount(
 ) -> Result<()> {
     let mut config = load_config(config_file, mount_point, api_url, username, password)?;
 
-    // Apply command-line overrides for mount options
     if allow_other {
         config.mount.allow_other = true;
     }
@@ -255,7 +167,6 @@ async fn run_mount(
         config.mount.auto_unmount = true;
     }
 
-    // Validate mount point exists
     if !config.mount.mount_point.exists() {
         tracing::info!(
             "Creating mount point: {}",
@@ -288,12 +199,10 @@ async fn run_umount(
 
     tracing::info!("Unmounting: {}", mount_point.display());
 
-    // Check if the path is actually a mount point
     if !is_mount_point(&mount_point)? {
         anyhow::bail!("{} is not a mount point", mount_point.display());
     }
 
-    // Perform unmount
     unmount_filesystem(&mount_point, force)?;
 
     tracing::info!("Successfully unmounted {}", mount_point.display());
@@ -340,7 +249,7 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
             struct StatusOutput {
                 mounted: bool,
                 config: ConfigOutput,
-                mount_info: Option<MountInfo>,
+                mount_info: Option<MountInfoOutput>,
             }
 
             #[derive(serde::Serialize)]
@@ -350,7 +259,7 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
             }
 
             #[derive(serde::Serialize)]
-            struct MountInfo {
+            struct MountInfoOutput {
                 filesystem: String,
                 size: String,
                 used: String,
@@ -364,12 +273,14 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
                     mount_point: mount_point.display().to_string(),
                 },
                 mount_info: if is_mounted {
-                    get_mount_info(mount_point).ok().map(|info| MountInfo {
-                        filesystem: info.filesystem,
-                        size: info.size,
-                        used: info.used,
-                        available: info.available,
-                    })
+                    get_mount_info(mount_point)
+                        .ok()
+                        .map(|info| MountInfoOutput {
+                            filesystem: info.filesystem,
+                            size: info.size,
+                            used: info.used,
+                            available: info.available,
+                        })
                 } else {
                     None
                 },
@@ -382,88 +293,4 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
     Ok(())
 }
 
-#[derive(Debug)]
-struct MountInfo {
-    filesystem: String,
-    size: String,
-    used: String,
-    available: String,
-}
-
-fn is_mount_point(path: &PathBuf) -> Result<bool> {
-    use std::process::Command;
-
-    let output = Command::new("mount")
-        .output()
-        .with_context(|| "Failed to run mount command")?;
-
-    if !output.status.success() {
-        anyhow::bail!("mount command failed");
-    }
-
-    let mount_output = String::from_utf8_lossy(&output.stdout);
-    let path_str = path.to_string_lossy();
-
-    // Check if the path appears in mount output
-    // This is a simple check that works on most Unix systems
-    for line in mount_output.lines() {
-        if line.contains(&*path_str) {
-            return Ok(true);
-        }
-    }
-
-    // Also check using stat to compare device IDs
-    // If the path and its parent have different device IDs, it's a mount point
-    if cfg!(target_os = "linux") {
-        use std::os::unix::fs::MetadataExt;
-        let path_meta = std::fs::metadata(path)
-            .with_context(|| format!("Failed to stat {}", path.display()))?;
-        let root = PathBuf::from("/");
-        let parent = path.parent().unwrap_or(&root);
-        let parent_meta = std::fs::metadata(parent)
-            .with_context(|| format!("Failed to stat parent of {}", path.display()))?;
-
-        return Ok(path_meta.dev() != parent_meta.dev());
-    }
-
-    Ok(false)
-}
-
-fn unmount_filesystem(path: &std::path::Path, force: bool) -> Result<()> {
-    try_unmount(path, force)
-}
-
-fn get_mount_info(path: &std::path::Path) -> Result<MountInfo> {
-    use std::process::Command;
-
-    // Try df command first
-    let output = Command::new("df")
-        .args(["-h", &path.to_string_lossy()])
-        .output()
-        .with_context(|| "Failed to run df command")?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // Parse df output
-        // Format: Filesystem Size Used Avail Use% Mounted on
-        for line in stdout.lines().skip(1) {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 6 {
-                return Ok(MountInfo {
-                    filesystem: parts[0].to_string(),
-                    size: parts[1].to_string(),
-                    used: parts[2].to_string(),
-                    available: parts[3].to_string(),
-                });
-            }
-        }
-    }
-
-    // Fallback: return basic info
-    Ok(MountInfo {
-        filesystem: "fuse.torrent-fuse".to_string(),
-        size: "unknown".to_string(),
-        used: "unknown".to_string(),
-        available: "unknown".to_string(),
-    })
-}
+use anyhow::Context;
