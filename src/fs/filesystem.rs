@@ -372,7 +372,14 @@ impl TorrentFS {
             torrent_info.files.len()
         );
 
-        // Handle single-file torrents differently - add file directly to root
+        // Create torrent directory for all torrents (both single and multi-file)
+        // This ensures consistent torrent_id -> directory_inode mapping
+        let torrent_dir_inode =
+            inode_manager.allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
+
+        inode_manager.add_child(1, torrent_dir_inode);
+
+        // Handle single-file torrents - place file directly in torrent directory
         if torrent_info.files.len() == 1 {
             let file_info = &torrent_info.files[0];
             let file_name = if file_info.components.is_empty() {
@@ -381,25 +388,22 @@ impl TorrentFS {
                 sanitize_filename(file_info.components.last().unwrap())
             };
 
-            let file_inode =
-                inode_manager.allocate_file(file_name.clone(), 1, torrent_id, 0, file_info.length);
+            let file_inode = inode_manager.allocate_file(
+                file_name.clone(),
+                torrent_dir_inode,
+                torrent_id,
+                0,
+                file_info.length,
+            );
 
-            inode_manager.add_child(1, file_inode);
-            inode_manager
-                .torrent_to_inode()
-                .insert(torrent_id, file_inode);
+            inode_manager.add_child(torrent_dir_inode, file_inode);
 
             debug!(
                 "Created single-file torrent entry {} -> {} (size: {})",
                 file_name, file_inode, file_info.length
             );
         } else {
-            // Multi-file torrent
-            let torrent_dir_inode =
-                inode_manager.allocate_torrent_directory(torrent_id, torrent_name.clone(), 1);
-
-            inode_manager.add_child(1, torrent_dir_inode);
-
+            // Multi-file torrent - directory already created above
             let mut created_dirs: HashMap<String, u64> = HashMap::new();
             created_dirs.insert("".to_string(), torrent_dir_inode);
 

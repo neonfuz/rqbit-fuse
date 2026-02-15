@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed torrent directory mapping for single-file torrents (INODE-003)
+  - Single-file torrents now create a directory like multi-file torrents
+  - Previously mapped torrent_id directly to file inode for single-file torrents
+  - Now consistently maps torrent_id to torrent directory inode for all torrent types
+  - Files are placed inside the torrent directory (consistent filesystem structure)
+  - Path resolution now works correctly for all torrent types
+  - Directory listings show proper torrent contents for both single and multi-file torrents
+  - Modified `create_torrent_structure_static()` in `src/fs/filesystem.rs`
+
+### Fixed
+
 - Made inode table operations atomic (INODE-002)
   - Refactored `allocate_entry()` in `src/fs/inode.rs` to use DashMap entry API
   - Ensured proper insertion order: primary entries first, then indices

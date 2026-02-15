@@ -228,12 +228,14 @@ Each item is designed to be completed independently. Research references are sto
   - No clippy warnings: `cargo clippy` ✅
   - Code formatted: `cargo fmt` ✅
 
-- [ ] **INODE-003**: Fix torrent directory mapping
+- [x] **INODE-003**: Fix torrent directory mapping
   - Depends on: `[spec:inode-design]`
-  - Currently maps torrent_id to file's parent
-  - Should map to torrent directory inode
-  - Fix path resolution for torrent files
-  - Update directory listing to show torrent contents
+  - Fixed: Single-file torrents now create a directory like multi-file torrents
+  - Previously mapped torrent_id directly to file inode for single-file torrents
+  - Now consistently maps torrent_id to torrent directory inode for all torrents
+  - Files are placed inside the torrent directory (consistent structure)
+  - Path resolution now works correctly for all torrent types
+  - Directory listings show proper torrent contents
 
 - [ ] **INODE-004**: Make entries field private
   - Depends on: `[spec:inode-design]`
