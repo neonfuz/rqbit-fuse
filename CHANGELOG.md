@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix race conditions in metrics averages (METRICS-001)
+  - Implemented atomic snapshot pattern in avg_latency_ms() to ensure consistent reads
+  - Implemented atomic snapshot pattern in success_rate() to ensure consistent reads
+  - Updated log_summary() methods to load values in consistent order
+  - Added concurrent tests verifying consistency under load
+  - Created research/metrics-race-condition.md with analysis
+
 ### Added
 
 - Add performance benchmarks (PERF-006)

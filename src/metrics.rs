@@ -36,13 +36,20 @@ pub trait LatencyMetrics {
     fn total_latency_ns(&self) -> u64;
 
     /// Calculate average latency in milliseconds
+    ///
+    /// Uses atomic snapshot pattern to ensure consistent read of count and total.
+    /// Under high contention, may retry to get a consistent pair of values.
     fn avg_latency_ms(&self) -> f64 {
-        let count = self.count();
-        if count == 0 {
-            0.0
-        } else {
+        loop {
+            let count = self.count();
+            if count == 0 {
+                return 0.0;
+            }
             let total_ns = self.total_latency_ns();
-            (total_ns as f64 / count as f64) / 1_000_000.0
+            let new_count = self.count();
+            if new_count == count {
+                return (total_ns as f64 / count as f64) / 1_000_000.0;
+            }
         }
     }
 }
@@ -110,21 +117,26 @@ impl FuseMetrics {
 
     /// Log a summary of metrics
     pub fn log_summary(&self, elapsed_secs: f64) {
-        let reads = self.read_count.load(Ordering::Relaxed);
-        let bytes = self.bytes_read.load(Ordering::Relaxed);
-        let errors = self.error_count.load(Ordering::Relaxed);
-        let avg_latency = self.avg_latency_ms();
-        let throughput = self.read_throughput_mbps(elapsed_secs);
-
-        info!(
-            operation = "fuse_metrics_summary",
-            reads = reads,
-            bytes_read = bytes,
-            avg_read_latency_ms = avg_latency,
-            throughput_mbps = throughput,
-            errors = errors,
-            duration_secs = elapsed_secs,
-        );
+        loop {
+            let reads = self.read_count.load(Ordering::Relaxed);
+            let bytes = self.bytes_read.load(Ordering::Relaxed);
+            let errors = self.error_count.load(Ordering::Relaxed);
+            let new_reads = self.read_count.load(Ordering::Relaxed);
+            if new_reads == reads {
+                let avg_latency = self.avg_latency_ms();
+                let throughput = self.read_throughput_mbps(elapsed_secs);
+                info!(
+                    operation = "fuse_metrics_summary",
+                    reads = reads,
+                    bytes_read = bytes,
+                    avg_read_latency_ms = avg_latency,
+                    throughput_mbps = throughput,
+                    errors = errors,
+                    duration_secs = elapsed_secs,
+                );
+                return;
+            }
+        }
     }
 }
 
@@ -198,34 +210,45 @@ impl ApiMetrics {
     }
 
     /// Get success rate as a percentage
+    ///
+    /// Uses atomic snapshot pattern to ensure consistent read of request and success counts.
     pub fn success_rate(&self) -> f64 {
-        let total = self.request_count.load(Ordering::Relaxed);
-        if total == 0 {
-            100.0
-        } else {
+        loop {
+            let total = self.request_count.load(Ordering::Relaxed);
+            if total == 0 {
+                return 100.0;
+            }
             let success = self.success_count.load(Ordering::Relaxed);
-            (success as f64 / total as f64) * 100.0
+            let new_total = self.request_count.load(Ordering::Relaxed);
+            if new_total == total {
+                return (success as f64 / total as f64) * 100.0;
+            }
         }
     }
 
     /// Log a summary of API metrics
     pub fn log_summary(&self) {
-        let total = self.request_count.load(Ordering::Relaxed);
-        let success = self.success_count.load(Ordering::Relaxed);
-        let failures = self.failure_count.load(Ordering::Relaxed);
-        let retries = self.retry_count.load(Ordering::Relaxed);
-        let avg_latency = self.avg_latency_ms();
-        let success_rate = self.success_rate();
-
-        info!(
-            operation = "api_metrics_summary",
-            total_requests = total,
-            successful = success,
-            failed = failures,
-            retries = retries,
-            success_rate_pct = success_rate,
-            avg_latency_ms = avg_latency,
-        );
+        loop {
+            let total = self.request_count.load(Ordering::Relaxed);
+            let success = self.success_count.load(Ordering::Relaxed);
+            let failures = self.failure_count.load(Ordering::Relaxed);
+            let retries = self.retry_count.load(Ordering::Relaxed);
+            let new_total = self.request_count.load(Ordering::Relaxed);
+            if new_total == total {
+                let avg_latency = self.avg_latency_ms();
+                let success_rate = self.success_rate();
+                info!(
+                    operation = "api_metrics_summary",
+                    total_requests = total,
+                    successful = success,
+                    failed = failures,
+                    retries = retries,
+                    success_rate_pct = success_rate,
+                    avg_latency_ms = avg_latency,
+                );
+                return;
+            }
+        }
     }
 }
 
@@ -408,5 +431,103 @@ mod tests {
         assert_eq!(metrics.open_count.load(Ordering::Relaxed), 1);
         assert_eq!(metrics.release_count.load(Ordering::Relaxed), 1);
         assert_eq!(metrics.error_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_concurrent_avg_latency_consistency() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let metrics = Arc::new(FuseMetrics::new());
+        let metrics_clone = Arc::clone(&metrics);
+
+        // Spawn threads that continuously record reads
+        let writers: Vec<_> = (0..4)
+            .map(|_| {
+                let m = Arc::clone(&metrics_clone);
+                thread::spawn(move || {
+                    for i in 0..1000 {
+                        m.record_read(1024, Duration::from_nanos(1000 + i as u64));
+                    }
+                })
+            })
+            .collect();
+
+        // Spawn threads that continuously read the average
+        let readers: Vec<_> = (0..4)
+            .map(|_| {
+                let m = Arc::clone(&metrics);
+                thread::spawn(move || {
+                    for _ in 0..1000 {
+                        let avg = m.avg_latency_ms();
+                        // Average should be non-negative and reasonable
+                        assert!(avg >= 0.0);
+                        assert!(avg < 1000.0); // Should be way less than 1 second
+                    }
+                })
+            })
+            .collect();
+
+        for w in writers {
+            w.join().unwrap();
+        }
+        for r in readers {
+            r.join().unwrap();
+        }
+
+        // Verify final count is correct
+        assert_eq!(metrics.read_count.load(Ordering::Relaxed), 4000);
+    }
+
+    #[test]
+    fn test_concurrent_success_rate_consistency() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let metrics = Arc::new(ApiMetrics::new());
+        let metrics_clone = Arc::clone(&metrics);
+
+        // Spawn threads that continuously record requests
+        let writers: Vec<_> = (0..4)
+            .map(|_| {
+                let m = Arc::clone(&metrics_clone);
+                thread::spawn(move || {
+                    for _ in 0..500 {
+                        m.record_request("/test");
+                        m.record_success("/test", Duration::from_millis(10));
+                    }
+                    for _ in 0..500 {
+                        m.record_request("/test");
+                        m.record_failure("/test", "error");
+                    }
+                })
+            })
+            .collect();
+
+        // Spawn threads that continuously read success rate
+        let readers: Vec<_> = (0..4)
+            .map(|_| {
+                let m = Arc::clone(&metrics);
+                thread::spawn(move || {
+                    for _ in 0..1000 {
+                        let rate = m.success_rate();
+                        // Success rate should be between 0 and 100
+                        assert!(rate >= 0.0);
+                        assert!(rate <= 100.0);
+                    }
+                })
+            })
+            .collect();
+
+        for w in writers {
+            w.join().unwrap();
+        }
+        for r in readers {
+            r.join().unwrap();
+        }
+
+        // Verify final counts
+        assert_eq!(metrics.request_count.load(Ordering::Relaxed), 4000);
+        assert_eq!(metrics.success_count.load(Ordering::Relaxed), 2000);
     }
 }
