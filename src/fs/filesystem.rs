@@ -539,8 +539,6 @@ impl TorrentFS {
         self.initialized
     }
 
-
-
     /// Validates the mount point directory.
     /// Checks that:
     /// - The path exists
@@ -847,7 +845,13 @@ impl Filesystem for TorrentFS {
             Some(inode) => inode,
             None => {
                 self.metrics.fuse.record_error();
-                fuse_error!(self, "read", "EBADF", fh = fh, reason = "invalid_file_handle");
+                fuse_error!(
+                    self,
+                    "read",
+                    "EBADF",
+                    fh = fh,
+                    reason = "invalid_file_handle"
+                );
                 reply.error(libc::EBADF);
                 return;
             }
