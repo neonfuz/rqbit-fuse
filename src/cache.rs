@@ -1,8 +1,59 @@
 use moka::future::Cache as MokaCache;
+use std::hash::{BuildHasher, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::trace;
+
+/// Number of shards for statistics counters.
+/// Using 64 shards provides good concurrency reduction while keeping memory overhead low.
+/// Each shard is ~16 bytes (2 AtomicU64s), so 64 shards = 1KB per cache instance.
+const STATS_SHARDS: usize = 64;
+
+/// Sharded counter to reduce contention under high concurrency.
+/// Instead of all threads contending on a single atomic counter,
+/// threads update different shards based on their thread ID.
+#[derive(Debug)]
+struct ShardedCounter {
+    shards: Vec<AtomicU64>,
+}
+
+impl ShardedCounter {
+    fn new() -> Self {
+        let mut shards = Vec::with_capacity(STATS_SHARDS);
+        for _ in 0..STATS_SHARDS {
+            shards.push(AtomicU64::new(0));
+        }
+        Self { shards }
+    }
+
+    /// Increment a counter shard based on the current thread.
+    /// Uses a simple hash of the thread ID to select a shard.
+    #[inline]
+    fn increment(&self) {
+        let shard_idx = self.current_shard_index();
+        self.shards[shard_idx].fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Sum all shards to get the total count.
+    fn sum(&self) -> u64 {
+        self.shards
+            .iter()
+            .map(|shard| shard.load(Ordering::Relaxed))
+            .sum()
+    }
+
+    /// Get the current shard index based on thread ID.
+    #[inline]
+    fn current_shard_index(&self) -> usize {
+        // Use the current thread's ID as a hash input
+        // ThreadId doesn't have a stable hash, so we use the pointer value
+        let thread_id = std::thread::current().id();
+        let ptr = &thread_id as *const _ as usize;
+        // Simple multiplicative hashing for good distribution
+        ptr.wrapping_mul(0x9E3779B97F4A7C15) % STATS_SHARDS
+    }
+}
 
 /// Cache statistics for monitoring
 #[derive(Debug, Clone, Default)]
@@ -29,9 +80,10 @@ pub struct CacheStats {
 pub struct Cache<K, V> {
     /// The underlying moka cache
     inner: MokaCache<K, Arc<V>>,
-    /// Statistics counters
-    hits: AtomicU64,
-    misses: AtomicU64,
+    /// Sharded hit counter for reduced contention
+    hits: ShardedCounter,
+    /// Sharded miss counter for reduced contention
+    misses: ShardedCounter,
     /// Default TTL for entries
     default_ttl: Duration,
 }
