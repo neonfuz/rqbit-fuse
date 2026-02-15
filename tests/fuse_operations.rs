@@ -509,18 +509,25 @@ async fn test_file_handle_allocation() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
 
-    // Create multi-file torrent
+    // Create multi-file torrent (needs 2+ files to create a directory)
     let torrent_info = TorrentInfo {
         id: 1,
         info_hash: "abc123".to_string(),
         name: "Test Torrent".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: Some(1),
-        files: vec![FileInfo {
-            name: "test.txt".to_string(),
-            length: 1024,
-            components: vec!["test.txt".to_string()],
-        }],
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "test.txt".to_string(),
+                length: 1024,
+                components: vec!["test.txt".to_string()],
+            },
+            FileInfo {
+                name: "test2.txt".to_string(),
+                length: 2048,
+                components: vec!["test2.txt".to_string()],
+            },
+        ],
         piece_length: Some(1048576),
     };
 
@@ -568,9 +575,16 @@ async fn test_error_conditions() {
 
 #[tokio::test]
 async fn test_torrent_removal_cleanup() {
-    let mock_server = setup_mock_server().await;
+    let mock_server = MockServer::start().await;
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Mock the forget endpoint
+    Mock::given(method("POST"))
+        .and(path("/torrents/1/forget"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
 
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs(config, metrics);
@@ -675,18 +689,25 @@ async fn test_concurrent_operations() {
     let metrics = Arc::new(Metrics::new());
     let fs = Arc::new(create_test_fs(config, metrics));
 
-    // Create multi-file torrent for directory testing
+    // Create multi-file torrent for directory testing (needs 2+ files)
     let torrent_info = TorrentInfo {
         id: 1,
         info_hash: "abc123".to_string(),
         name: "Test Torrent".to_string(),
         output_folder: "/downloads".to_string(),
-        file_count: Some(1),
-        files: vec![FileInfo {
-            name: "test.txt".to_string(),
-            length: 1024,
-            components: vec!["test.txt".to_string()],
-        }],
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "test.txt".to_string(),
+                length: 1024,
+                components: vec!["test.txt".to_string()],
+            },
+            FileInfo {
+                name: "test2.txt".to_string(),
+                length: 2048,
+                components: vec!["test2.txt".to_string()],
+            },
+        ],
         piece_length: Some(1048576),
     };
     fs.create_torrent_structure(&torrent_info).unwrap();
