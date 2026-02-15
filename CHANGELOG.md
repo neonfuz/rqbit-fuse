@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added yielding in large skip operations (STREAM-003)
+  - Added `SKIP_YIELD_INTERVAL` constant (1MB) to prevent blocking async runtime
+  - Modified `PersistentStream::skip()` to yield every 1MB during large skip operations
+  - Tracks bytes skipped since last yield and calls `tokio::task::yield_now().await`
+  - Prevents the skip loop from monopolizing the async runtime when skipping large amounts of data
+  - All streaming tests pass: `cargo test streaming::tests` ✅
+
 - Fixed check-then-act race condition in stream access (STREAM-002)
   - Restructured `PersistentStreamManager::read()` to hold the streams lock continuously
   - Removed race window between checking stream usability and getting mutable reference

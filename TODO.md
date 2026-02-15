@@ -279,10 +279,12 @@ Each item is designed to be completed independently. Research references are sto
     - `test_stream_lock_held_during_skip`: Tests lock held during skip operations
   - All tests pass, no clippy warnings, code formatted
 
-- [ ] **STREAM-003**: Add yielding in large skip operations
+- [x] **STREAM-003**: Add yielding in large skip operations
   - Lines 187-236: Large skips block runtime
-  - Add `.await` yield points every N bytes
-  - Use `tokio::task::yield_now()` or similar
+  - Added `SKIP_YIELD_INTERVAL` constant (1MB) to prevent blocking
+  - Added yielding logic in skip loop using `tokio::task::yield_now().await`
+  - Tracks bytes skipped since last yield and yields every 1MB
+  - All streaming tests pass
 
 - [ ] **STREAM-004**: Implement backward seeking
   - Currently only supports forward seeks

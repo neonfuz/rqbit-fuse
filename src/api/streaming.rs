@@ -21,6 +21,10 @@ const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Cleanup interval for checking idle streams
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
 
+/// Yield to runtime every N bytes during large skip operations
+/// This prevents blocking the async runtime for too long
+const SKIP_YIELD_INTERVAL: u64 = 1024 * 1024; // 1MB
+
 /// Unique identifier for a file stream
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct StreamKey {
@@ -178,6 +182,7 @@ impl PersistentStream {
         let mut skipped = self.consume_pending(bytes_to_skip as usize) as u64;
 
         // Skip more data from the stream if needed
+        let mut bytes_since_yield = 0u64;
         while skipped < bytes_to_skip {
             match self.stream.next().await {
                 Some(Ok(chunk)) => {
@@ -185,10 +190,17 @@ impl PersistentStream {
                     let to_skip = chunk.len().min(remaining as usize);
                     skipped += to_skip as u64;
                     self.current_position += to_skip as u64;
+                    bytes_since_yield += to_skip as u64;
 
                     self.buffer_leftover(chunk, to_skip);
                     if self.pending_buffer.is_some() {
                         break;
+                    }
+
+                    // Yield to runtime every SKIP_YIELD_INTERVAL bytes to prevent blocking
+                    if bytes_since_yield >= SKIP_YIELD_INTERVAL {
+                        tokio::task::yield_now().await;
+                        bytes_since_yield = 0;
                     }
                 }
                 Some(Err(e)) => {
