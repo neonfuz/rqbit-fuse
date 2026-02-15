@@ -40,7 +40,7 @@ Default: `http://127.0.0.1:3030`
 
 **Usage:** Build directory structure, get torrent IDs for operations.
 
-**Cache TTL:** 30 seconds
+**Cache TTL:** 30 seconds (configurable via `torrent_list_ttl`)
 
 ---
 
@@ -74,7 +74,7 @@ Default: `http://127.0.0.1:3030`
 
 **Usage:** Get file list, piece length, verify torrent exists.
 
-**Cache TTL:** 60 seconds
+**Cache TTL:** 60 seconds (configurable via `metadata_ttl`)
 
 ---
 
@@ -101,9 +101,9 @@ Default: `http://127.0.0.1:3030`
 **Usage:** 
 - Check if file is fully downloaded
 - Show download progress
-- For debugging/statistics only (not required for reads)
+- Used for piece availability checking (if `piece_check_enabled` is true)
 
-**Cache TTL:** 5 seconds (updates frequently during download)
+**Cache TTL:** 5 seconds (configurable via `piece_ttl`)
 
 ---
 
@@ -170,22 +170,17 @@ Range: bytes=1048576-1179647
 
 **No caching** - Always fresh data
 
+**Implementation Notes:**
+- Uses `PersistentStreamManager` for connection reuse
+- Handles rqbit bug: may return 200 OK instead of 206 Partial Content
+- Read size clamped to 64KB (FUSE_MAX_READ)
+- Implements read-ahead/prefetching for sequential reads
+
 **Example URLs:**
 ```
 http://127.0.0.1:3030/torrents/0/stream/0
 http://127.0.0.1:3030/torrents/abc123.../stream/1
 ```
-
-**Implementation Details:**
-
-- **Buffer Size:** The HTTP streaming handler uses a 64KB buffer for reading from the file stream
-- **Piece Prioritization:** 
-  - Pieces from different active streams are interleaved for fair download
-  - By default, 32MB ahead of current position is prioritized
-  - Streams are woken when pieces they need become available
-- **State Management:** Works across torrent states:
-  - **Live:** Active downloading/seeding - pieces fetched on demand
-  - **Paused:** Previously downloaded content served from disk
 
 ---
 
@@ -290,11 +285,11 @@ Returns an M3U8 playlist for a specific torrent.
     - `average_piece_download_time`: Average time to download a piece
     - `time_remaining`: Estimated time remaining
 
-**Usage:** Show download progress, check if file is complete, monitor errors.
+**Usage:** Show download progress, check if file is complete, monitor errors, detect stalled downloads.
 
 **Note:** The `live` field is null when the torrent is in an error state. Always check for null before accessing nested fields.
 
-**Cache TTL:** 10 seconds
+**Cache TTL:** 10 seconds (used by background monitoring)
 
 ---
 
@@ -356,7 +351,7 @@ Body: torrent file bytes
 - `POST /torrents/{id_or_infohash}/forget` - Remove from session, keep files
 - `POST /torrents/{id_or_infohash}/delete` - Remove from session, delete files
 
-**Usage:** Cleanup (optional for torrent-fuse).
+**Usage:** Cleanup (optional for torrent-fuse). Can be triggered by removing torrent directory via FUSE unlink (if implemented).
 
 ---
 
@@ -378,13 +373,28 @@ All endpoints return standard HTTP status codes:
 }
 ```
 
+### FUSE Error Mapping
+
+The torrent-fuse implementation maps HTTP errors to FUSE error codes:
+
+| HTTP Status | FUSE Error | Description |
+|-------------|------------|-------------|
+| 200 OK | - | Success |
+| 206 Partial Content | - | Success (range request) |
+| 404 Not Found | `ENOENT` | File/directory not found |
+| 403 Forbidden | `EACCES` | Permission denied |
+| 503 Service Unavailable | `EAGAIN` | Try again later |
+| Timeout | `EAGAIN` | Request timeout |
+| Connection error | `ENOTCONN` / `ENETUNREACH` | Network issues |
+
 ## Rate Limiting
 
-rqbit does not implement rate limiting, but we should be respectful:
+rqbit does not implement rate limiting, but torrent-fuse implements protective measures:
 
-- Limit concurrent requests to `/stream` endpoint
-- Reuse HTTP connections (connection pooling)
-- Cache metadata appropriately
+- **Concurrent request limiting**: Uses semaphore to limit concurrent `/stream` requests
+- **Connection pooling**: Reuses HTTP connections via `PersistentStreamManager`
+- **Circuit breaker**: Prevents cascading failures when rqbit is unavailable
+- **Cache**: Caches metadata appropriately to reduce API load
 
 ## FUSE Read Flow
 
@@ -399,6 +409,12 @@ GET /torrents/{id}/stream/{file_idx}
 Range: bytes=1048576-1179647
     │
     ▼
+PersistentStreamManager checks for existing connection
+    │
+    ├── Reuse connection if at correct offset
+    └── Create new connection if needed
+    │
+    ▼
 rqbit receives request
     │
     ├── Maps bytes to pieces (piece 4-5)
@@ -407,7 +423,10 @@ rqbit receives request
     └── Blocks until pieces available
     │
     ▼
-Return data (131072 bytes)
+Return data (131072 bytes, clamped to 64KB)
+    │
+    ▼
+Update read position for connection reuse
     │
     ▼
 FUSE returns to kernel
@@ -442,15 +461,21 @@ let response = client.get(url)
     .send()
     .await?;
 
-if response.status() == StatusCode::PARTIAL_CONTENT {
-    let bytes = response.bytes().await?;
-    // Return to FUSE
+match response.status() {
+    StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+        // rqbit may return 200 OK even for range requests
+        let bytes = response.bytes().await?;
+        // Return to FUSE
+    }
+    _ => {
+        // Handle error
+    }
 }
 ```
 
 ### Concurrent Reads
 
-Use semaphore to limit concurrent requests:
+Uses semaphore to limit concurrent requests:
 
 ```rust
 use tokio::sync::Semaphore;
@@ -459,7 +484,37 @@ static CONCURRENT_READS: Semaphore = Semaphore::const_new(10);
 
 async fn read_file(...) -> Result<Bytes> {
     let _permit = CONCURRENT_READS.acquire().await?;
-    // Make HTTP request
+    // Make HTTP request with persistent streaming
+}
+```
+
+### Circuit Breaker Pattern
+
+```rust
+pub struct CircuitBreaker {
+    state: AtomicU8,  // Closed=0, Open=1, HalfOpen=2
+    failure_count: AtomicU32,
+    threshold: u32,      // Failures before opening
+    timeout: Duration,   // Time before half-open
+}
+
+// Usage
+async fn call_api(&self) -> Result<T, ApiError> {
+    match self.circuit_breaker.state() {
+        CircuitState::Open => Err(ApiError::CircuitBreakerOpen),
+        _ => {
+            match self.make_request().await {
+                Ok(result) => {
+                    self.circuit_breaker.record_success();
+                    Ok(result)
+                }
+                Err(e) => {
+                    self.circuit_breaker.record_failure();
+                    Err(e)
+                }
+            }
+        }
+    }
 }
 ```
 
@@ -494,3 +549,5 @@ curl -o playlist.m3u8 http://127.0.0.1:3030/torrents/0/playlist
 - `crates/librqbit/src/http_api/handlers/playlist.rs` - Playlist generation
 - `crates/librqbit/src/torrent_state/streaming.rs` - Core streaming logic
 - `crates/librqbit/src/api.rs` - Public API methods
+
+Last updated: 2024-02-14

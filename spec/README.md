@@ -81,17 +81,6 @@ User-facing documentation for installing and using torrent-fuse.
 
 ---
 
-### ✅ Ralph (`ralph.md`)
-Guidelines for writing effective todo tasks and structuring project work.
-
-**Contents:**
-- Task writing best practices
-- How to structure complex tasks
-- Breaking down work into manageable steps
-- Quality standards for task documentation
-
-**Reference this** when writing todo tasks to ensure consistency and completeness.
-
 ## Reading Order
 
 1. **For understanding the project:**
@@ -110,6 +99,11 @@ Guidelines for writing effective todo tasks and structuring project work.
 
 ## File Status
 
-All specifications are complete and ready for implementation.
+Specifications have been updated to match the actual implementation.
 
-Last updated: 2024-02-13
+**Last updated:** 2024-02-14
+
+**Notes:**
+- All specs have been reviewed and updated to reflect actual code
+- Some documented features are not yet implemented (see roadmap.md)
+- Directory structure in architecture.md now matches actual `src/` layout

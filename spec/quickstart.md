@@ -72,8 +72,10 @@ mkdir -p ~/torrents
 
 Mount:
 ```bash
-torrent-fuse mount ~/torrents
+torrent-fuse mount -m ~/torrents
 ```
+
+**Note:** The mount point is specified with `-m` or `--mount-point` flag, not as a positional argument.
 
 ### 4. Browse Files
 
@@ -110,17 +112,38 @@ torrent-fuse status
 
 Output:
 ```
-Mount point: /home/user/torrents
-API URL: http://127.0.0.1:3030
-Torrents: 5
-Cache entries: 23
-Active reads: 2
+torrent-fuse Status
+===================
+
+Configuration:
+  Config file:    ~/.config/torrent-fuse/config.toml
+  API URL:        http://127.0.0.1:3030
+  Mount point:    ~/torrents
+
+Mount Status:
+  Status:         MOUNTED
+  Filesystem:     fuse.torrent-fuse
+  Size:           ...
+  Used:           ...
+  Available:      ...
 ```
+
+For JSON output:
+```bash
+torrent-fuse status --format json
+```
+
+**Note:** The status output shows mount information, not torrent/cache/reads counts as previously documented.
 
 ### 6. Unmount
 
 ```bash
-torrent-fuse unmount ~/torrents
+torrent-fuse umount ~/torrents
+```
+
+With force option:
+```bash
+torrent-fuse umount ~/torrents --force
 ```
 
 Or use fusermount:
@@ -140,45 +163,115 @@ url = "http://127.0.0.1:3030"
 metadata_ttl = 60
 torrent_list_ttl = 30
 piece_ttl = 5
+max_entries = 1000
 
 [mount]
+mount_point = "/mnt/torrents"  # Default is /mnt/torrents
 auto_unmount = true
 
 [performance]
 read_timeout = 30
 max_concurrent_reads = 10
+readahead_size = 33554432
+piece_check_enabled = true
+return_eagain_for_unavailable = false
+
+[monitoring]
+status_poll_interval = 5
+stalled_timeout = 300
+
+[logging]
+level = "info"
+log_fuse_operations = true
+log_api_calls = true
+metrics_enabled = true
+metrics_interval_secs = 60
 ```
+
+### Alternative Config Locations
+
+Config files are searched in this order:
+1. `~/.config/torrent-fuse/config.toml`
+2. `/etc/torrent-fuse/config.toml`
+3. `./torrent-fuse.toml`
+
+### Environment Variables
+
+All config options can be overridden via environment variables:
+- `TORRENT_FUSE_API_URL`
+- `TORRENT_FUSE_MOUNT_POINT`
+- `TORRENT_FUSE_METADATA_TTL`
+- `TORRENT_FUSE_TORRENT_LIST_TTL`
+- `TORRENT_FUSE_PIECE_TTL`
+- `TORRENT_FUSE_MAX_ENTRIES`
+- `TORRENT_FUSE_READ_TIMEOUT`
+- `TORRENT_FUSE_MAX_CONCURRENT_READS`
+- `TORRENT_FUSE_READAHEAD_SIZE`
+- `TORRENT_FUSE_ALLOW_OTHER`
+- `TORRENT_FUSE_AUTO_UNMOUNT`
+- `TORRENT_FUSE_STATUS_POLL_INTERVAL`
+- `TORRENT_FUSE_STALLED_TIMEOUT`
+- `TORRENT_FUSE_PIECE_CHECK_ENABLED`
+- `TORRENT_FUSE_RETURN_EAGAIN`
+- `TORRENT_FUSE_LOG_LEVEL`
+- `TORRENT_FUSE_LOG_FUSE_OPS`
+- `TORRENT_FUSE_LOG_API_CALLS`
+- `TORRENT_FUSE_METRICS_ENABLED`
+- `TORRENT_FUSE_METRICS_INTERVAL`
 
 ## Command Reference
 
 ### Mount
 ```bash
-torrent-fuse mount <PATH> [OPTIONS]
+torrent-fuse mount [OPTIONS]
 
 Options:
-  -u, --api-url <URL>        rqbit API URL [default: http://127.0.0.1:3030]
+  -m, --mount-point <PATH>   Mount point [env: TORRENT_FUSE_MOUNT_POINT]
+  -u, --api-url <URL>        rqbit API URL [env: TORRENT_FUSE_API_URL]
   -c, --config <FILE>        Config file path
-  -o, --allow-other          Allow other users to access the mount
-  -f, --foreground           Run in foreground (don't daemonize)
-  -d, --debug                Enable debug logging
+  -v, --verbose              Increase verbosity (repeatable: INFO -> DEBUG -> TRACE)
+  -q, --quiet                Suppress output except errors
+      --allow-other          Allow other users to access the mount [env: TORRENT_FUSE_ALLOW_OTHER]
+      --auto-unmount         Auto-unmount on process exit [env: TORRENT_FUSE_AUTO_UNMOUNT]
+```
+
+**Examples:**
+```bash
+# Basic mount
+torrent-fuse mount -m ~/torrents
+
+# With custom API URL
+torrent-fuse mount -m ~/torrents -u http://localhost:3030
+
+# With verbose logging
+torrent-fuse mount -m ~/torrents -v -v  # TRACE level
+
+# With config file
+torrent-fuse mount -c ~/my-config.toml
 ```
 
 ### Unmount
 ```bash
-torrent-fuse unmount <PATH>
+torrent-fuse umount <PATH> [OPTIONS]
+
+Options:
+  -f, --force    Force unmount even if busy
 ```
+
+**Note:** The command is `umount` (not `unmount` as in some earlier documentation).
 
 ### Status
 ```bash
-torrent-fuse status [PATH]
+torrent-fuse status [OPTIONS]
+
+Options:
+      --format <FORMAT>  Output format [default: text] [possible values: text, json]
 ```
 
-### List
-```bash
-torrent-fuse list
-```
-
-Shows all mounted torrents with their download status.
+**Not Implemented (documented but not available):**
+- `torrent-fuse list` - Not implemented
+- `torrent-fuse cache clear` - Not implemented
+- `torrent-fuse daemon` - Not implemented
 
 ## Examples
 
@@ -186,7 +279,7 @@ Shows all mounted torrents with their download status.
 
 ```bash
 # Mount
-torrent-fuse mount ~/torrents
+torrent-fuse mount -m ~/torrents
 
 # Play with mpv (starts immediately, downloads on demand)
 mpv ~/torrents/"Big Buck Bunny"/bbb_sunflower_1080p_60fps_normal.mp4
@@ -201,14 +294,14 @@ mpv ~/torrents/"Big Buck Bunny"/bbb_sunflower_1080p_60fps_normal.mp4
 dd if=~/torrents/"Ubuntu ISO"/ubuntu.iso bs=1 skip=1048576 count=1024
 ```
 
-### Background Mount
+### Background Mount with Logging
 
 ```bash
-# Mount in background
-torrent-fuse mount ~/torrents &
+# Mount with debug logging in background
+torrent-fuse mount -m ~/torrents -v -v &
 
 # Later, unmount
-kill %1
+torrent-fuse umount ~/torrents
 ```
 
 ### Systemd Service
@@ -221,14 +314,16 @@ Description=Torrent FUSE filesystem
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/usr/local/bin/torrent-fuse mount /home/user/torrents
-ExecStop=/usr/local/bin/torrent-fuse unmount /home/user/torrents
+Type=simple
+ExecStart=/usr/local/bin/torrent-fuse mount -m /home/user/torrents
+ExecStop=/usr/local/bin/torrent-fuse umount /home/user/torrents
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
 ```
+
+**Note:** Uses `Type=simple` (not `forking`) and `-m` flag for mount point.
 
 Enable and start:
 ```bash
@@ -244,7 +339,7 @@ systemctl --user start torrent-fuse
 The FUSE filesystem crashed or was killed. Unmount and remount:
 ```bash
 fusermount -u ~/torrents
-torrent-fuse mount ~/torrents
+torrent-fuse mount -m ~/torrents
 ```
 
 ### "Connection refused" to API
@@ -260,6 +355,7 @@ This is normal - data is being downloaded. For better performance:
 - Use media players that buffer (mpv, vlc)
 - Copy files instead of reading directly
 - Wait for more pieces to download
+- Increase read-ahead in config
 
 ### Permission denied
 
@@ -269,11 +365,33 @@ torrent-fuse creates read-only filesystem. Cannot write:
 touch ~/torrents/newfile
 ```
 
-### Debug mode
+### Debug Logging
 
-Run in foreground with debug logging:
+Run with verbose logging:
 ```bash
-torrent-fuse mount ~/torrents -f -d
+# Info level
+torrent-fuse mount -m ~/torrents -v
+
+# Debug level
+torrent-fuse mount -m ~/torrents -v -v
+
+# Trace level
+torrent-fuse mount -m ~/torrents -v -v -v
+
+# Or use quiet mode for errors only
+torrent-fuse mount -m ~/torrents -q
+```
+
+**Note:** There are no `-f/--foreground` or `-d/--debug` flags. Use `-v/--verbose` for logging control.
+
+### Check Config
+
+```bash
+# View current configuration
+torrent-fuse status
+
+# View with all settings
+torrent-fuse status --format json | jq
 ```
 
 ## Performance Tips
@@ -282,10 +400,16 @@ torrent-fuse mount ~/torrents -f -d
 2. **Sequential reads**: Read files sequentially when possible
 3. **Wait for initial pieces**: First read may be slow while pieces download
 4. **Pre-download**: Let torrent download some pieces before mounting
+5. **Read-ahead**: The filesystem detects sequential reads and prefetches data
+6. **Persistent connections**: HTTP connections are reused for sequential reads
 
 ## Security
 
 - Filesystem is **read-only**
-- Files are **not executable**
+- Files are **not executable** (mode 0444)
+- Directories are **not writable** (mode 0555)
 - Runs as **regular user** (no root needed)
 - API connection is **local only** by default
+- Circuit breaker prevents cascading failures
+
+Last updated: 2024-02-14
