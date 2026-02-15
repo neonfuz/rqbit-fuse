@@ -121,10 +121,11 @@ Each item is designed to be completed independently. Research references are sto
   - Updated locking patterns to use block_on or try_lock as appropriate
   - Fixed filesystem.rs mutex usages for consistency (lines 139, 151, 216, 228, 274, 286)
 
-- [ ] **FS-006**: Fix path resolution for nested directories
-  - Line 1117-1123: Nested directories resolve incorrectly
-  - Add test cases for multi-level directory structures
-  - Fix and verify correct resolution
+- [x] **FS-006**: Fix path resolution for nested directories
+  - Root cause: `allocate_file()` in `src/fs/inode.rs` was incorrectly updating `torrent_to_inode` with each file's parent directory
+  - This caused the last file's parent (often a subdirectory) to overwrite the actual torrent root directory inode
+  - Fixed by removing the erroneous `torrent_to_inode.insert()` call from `allocate_file()`
+  - All nested directory tests now pass (test_nested_directory_path_resolution, test_deeply_nested_directory_structure, test_multi_file_torrent_structure, test_torrent_removal_with_cleanup)
 
 - [ ] **FS-007**: Add proper FUSE operation tests
   - Depends on: `[spec:testing]`

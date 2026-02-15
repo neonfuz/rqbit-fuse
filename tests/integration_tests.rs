@@ -797,22 +797,16 @@ async fn debug_nested_structure() {
     fs.create_torrent_structure(&torrent_info).unwrap();
 
     let inode_manager = fs.inode_manager();
-    
+
     // Debug: Print all entries
     println!("All entries:");
     for entry in inode_manager.entries().iter() {
         println!("  inode {}: {:?}", entry.key(), entry.value());
     }
-    
-    // Debug: Print all paths
-    println!("All paths:");
-    for path in inode_manager.path_to_inode().iter() {
-        println!("  {} -> inode {}", path.key(), path.value());
-    }
-    
+
     let torrent_inode = inode_manager.lookup_torrent(99).unwrap();
     println!("Torrent inode: {}", torrent_inode);
-    
+
     let torrent_children = inode_manager.get_children(torrent_inode);
     println!("Torrent children count: {}", torrent_children.len());
     for (ino, entry) in &torrent_children {

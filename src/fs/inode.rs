@@ -90,9 +90,7 @@ impl InodeManager {
             file_index,
             size,
         };
-        let inode = self.allocate_entry(entry, None);
-        self.torrent_to_inode.insert(torrent_id, parent);
-        inode
+        self.allocate_entry(entry, None)
     }
 
     /// Allocates a symbolic link inode.

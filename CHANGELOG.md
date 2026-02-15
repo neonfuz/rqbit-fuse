@@ -151,6 +151,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed nested directory path resolution (FS-006)
+  - Bug: `allocate_file()` was incorrectly updating `torrent_to_inode` with each file's parent directory
+  - This caused torrent root inode mapping to be overwritten by subdirectories
+  - Fix: Removed erroneous `torrent_to_inode.insert()` from `allocate_file()`
+  - All nested directory tests now pass (path resolution, deep nesting, multi-file structure)
+
 - Fixed read_states memory leak with TTL-based cleanup (FS-004)
   - Added TTL-based eviction for orphaned file handles (1 hour TTL, checked every 5 minutes)
   - Added memory usage metrics for file handles via `memory_usage()` method
