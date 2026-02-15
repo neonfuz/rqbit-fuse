@@ -766,7 +766,7 @@ pub struct TorrentFS {
     read_states: Arc<Mutex<HashMap<u64, ReadState>>>,
     monitor_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    last_discovery: Arc<Mutex<Instant>>,
+    last_discovery: Arc<AtomicU64>, // ms since Unix epoch for atomic check-and-set
 }
 ```
 
@@ -786,6 +786,13 @@ pub struct TorrentFS {
    ```rust
    monitor_handle: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
    ```
+
+4. **Use AtomicU64 for last_discovery** (fixed FS-008):
+   Changed from `Arc<Mutex<Instant>>` to `Arc<AtomicU64>` storing milliseconds since Unix epoch.
+   This enables lock-free atomic check-and-set operations to prevent race conditions where
+   multiple concurrent `readdir()` calls could all pass the cooldown check before any
+   updated the timestamp. Now uses `compare_exchange` to atomically verify cooldown and
+   claim the discovery slot, ensuring only one task proceeds even with concurrent calls.
 
 ### 5.3 Runtime Integration
 

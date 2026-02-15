@@ -1,5 +1,4 @@
 use moka::future::Cache as MokaCache;
-use std::hash::{BuildHasher, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,8 +10,8 @@ use tracing::trace;
 const STATS_SHARDS: usize = 64;
 
 /// Sharded counter to reduce contention under high concurrency.
-/// Instead of all threads contending on a single atomic counter,
-/// threads update different shards based on their thread ID.
+/// Uses a thread-local counter to select shards, avoiding atomic contention
+/// while working correctly in async contexts where tasks migrate between threads.
 #[derive(Debug)]
 struct ShardedCounter {
     shards: Vec<AtomicU64>,
@@ -27,11 +26,22 @@ impl ShardedCounter {
         Self { shards }
     }
 
-    /// Increment a counter shard based on the current thread.
-    /// Uses a simple hash of the thread ID to select a shard.
+    /// Increment a counter shard using round-robin selection via thread-local counter.
+    /// This avoids contention better than a single atomic while working in async contexts.
     #[inline]
     fn increment(&self) {
-        let shard_idx = self.current_shard_index();
+        // Use a thread-local counter for shard selection
+        // This works in async contexts because we only need distribution, not thread affinity
+        thread_local! {
+            static COUNTER: std::cell::Cell<u64> = std::cell::Cell::new(0);
+        }
+        
+        let shard_idx = COUNTER.with(|c| {
+            let val = c.get();
+            c.set(val.wrapping_add(1));
+            (val as usize) % STATS_SHARDS
+        });
+        
         self.shards[shard_idx].fetch_add(1, Ordering::Relaxed);
     }
 
@@ -41,17 +51,6 @@ impl ShardedCounter {
             .iter()
             .map(|shard| shard.load(Ordering::Relaxed))
             .sum()
-    }
-
-    /// Get the current shard index based on thread ID.
-    #[inline]
-    fn current_shard_index(&self) -> usize {
-        // Use the current thread's ID as a hash input
-        // ThreadId doesn't have a stable hash, so we use the pointer value
-        let thread_id = std::thread::current().id();
-        let ptr = &thread_id as *const _ as usize;
-        // Simple multiplicative hashing for good distribution
-        ptr.wrapping_mul(0x9E3779B97F4A7C15) % STATS_SHARDS
     }
 }
 
@@ -102,8 +101,8 @@ where
 
         Self {
             inner,
-            hits: AtomicU64::new(0),
-            misses: AtomicU64::new(0),
+            hits: ShardedCounter::new(),
+            misses: ShardedCounter::new(),
             default_ttl,
         }
     }
@@ -117,12 +116,12 @@ where
         match self.inner.get(key).await {
             Some(value) => {
                 trace!("Cache hit for key");
-                self.hits.fetch_add(1, Ordering::Relaxed);
+                self.hits.increment();
                 Some((*value).clone())
             }
             None => {
                 trace!("Cache miss for key");
-                self.misses.fetch_add(1, Ordering::Relaxed);
+                self.misses.increment();
                 None
             }
         }
@@ -165,8 +164,8 @@ where
     /// Get cache statistics
     pub async fn stats(&self) -> CacheStats {
         CacheStats {
-            hits: self.hits.load(Ordering::Relaxed),
-            misses: self.misses.load(Ordering::Relaxed),
+            hits: self.hits.sum(),
+            misses: self.misses.sum(),
             evictions: 0, // moka doesn't expose eviction count directly
             expired: 0,   // moka handles expiration internally
             size: self.inner.entry_count() as usize,

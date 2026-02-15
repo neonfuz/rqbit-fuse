@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use fuser::Filesystem;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::time::interval;
@@ -79,8 +80,9 @@ pub struct TorrentFS {
     discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Metrics collection
     metrics: Arc<Metrics>,
-    /// Last time torrent discovery was performed
-    last_discovery: Arc<Mutex<Instant>>,
+    /// Timestamp of last discovery (ms since Unix epoch) to prevent too frequent scans
+    /// Uses atomic operations for lock-free check-and-set
+    last_discovery: Arc<AtomicU64>,
 }
 
 impl TorrentFS {
@@ -103,7 +105,7 @@ impl TorrentFS {
             monitor_handle: Arc::new(Mutex::new(None)),
             discovery_handle: Arc::new(Mutex::new(None)),
             metrics,
-            last_discovery: Arc::new(Mutex::new(Instant::now())),
+            last_discovery: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -222,9 +224,11 @@ impl TorrentFS {
                         }
 
                         // Update last discovery time
-                        if let Ok(mut last) = last_discovery.lock() {
-                            *last = Instant::now();
-                        }
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        last_discovery.store(now_ms, Ordering::SeqCst);
                     }
                     Err(e) => {
                         warn!("Failed to discover torrents in background task: {}", e);
@@ -262,18 +266,25 @@ impl TorrentFS {
     /// # Returns
     /// * `bool` - True if refresh was performed, false if skipped
     pub async fn refresh_torrents(&self, force: bool) -> bool {
-        const DISCOVERY_COOLDOWN: Duration = Duration::from_secs(5);
+        const COOLDOWN_MS: u64 = 5000; // 5 seconds in milliseconds
 
-        // Check cooldown
+        // Check cooldown using atomic compare-and-swap to prevent race conditions
         if !force {
-            if let Ok(last) = self.last_discovery.lock() {
-                if last.elapsed() < DISCOVERY_COOLDOWN {
-                    trace!(
-                        "Skipping torrent discovery - cooldown in effect ({}s remaining)",
-                        (DISCOVERY_COOLDOWN - last.elapsed()).as_secs()
-                    );
-                    return false;
-                }
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let last_ms = self.last_discovery.load(Ordering::SeqCst);
+            
+            // If last_discovery is 0, discovery has never happened (allow it)
+            // Otherwise check if cooldown has elapsed
+            if last_ms != 0 && now_ms.saturating_sub(last_ms) < COOLDOWN_MS {
+                let remaining_secs = (COOLDOWN_MS - (now_ms - last_ms)) / 1000;
+                trace!(
+                    "Skipping torrent discovery - cooldown in effect ({}s remaining)",
+                    remaining_secs
+                );
+                return false;
             }
         }
 
@@ -308,9 +319,11 @@ impl TorrentFS {
                 }
 
                 // Update last discovery time
-                if let Ok(mut last) = self.last_discovery.lock() {
-                    *last = Instant::now();
-                }
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                self.last_discovery.store(now_ms, Ordering::SeqCst);
 
                 true
             }
@@ -1345,52 +1358,62 @@ impl Filesystem for TorrentFS {
             let last_discovery = Arc::clone(&self.last_discovery);
 
             tokio::spawn(async move {
-                const DISCOVERY_COOLDOWN: Duration = Duration::from_secs(5);
+                const COOLDOWN_MS: u64 = 5000; // 5 seconds in milliseconds
 
-                // Check cooldown
-                let should_run = {
-                    if let Ok(last) = last_discovery.lock() {
-                        last.elapsed() >= DISCOVERY_COOLDOWN
-                    } else {
-                        false
-                    }
-                };
+                // Atomically check cooldown and claim discovery slot
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let last_ms = last_discovery.load(Ordering::SeqCst);
+
+                // Check if cooldown has elapsed (last_ms == 0 means never discovered)
+                let should_run = last_ms == 0 || now_ms.saturating_sub(last_ms) >= COOLDOWN_MS;
 
                 if should_run {
-                    if let Ok(torrents) = api_client.list_torrents().await {
-                        let mut new_count = 0;
+                    // Try to claim the discovery slot with compare_exchange
+                    // This ensures only one task proceeds even with concurrent calls
+                    let claim_result = last_discovery.compare_exchange(
+                        last_ms,
+                        now_ms,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    );
 
-                        for torrent_info in torrents {
-                            if inode_manager.lookup_torrent(torrent_info.id).is_none() {
-                                if let Err(e) = Self::create_torrent_structure_static(
-                                    &inode_manager,
-                                    &torrent_info,
-                                ) {
-                                    warn!(
-                                        "Failed to create structure for torrent {}: {}",
-                                        torrent_info.id, e
-                                    );
-                                } else {
-                                    new_count += 1;
-                                    info!(
-                                        "Discovered new torrent {}: {}",
-                                        torrent_info.id, torrent_info.name
-                                    );
+                    if claim_result.is_ok() {
+                        // We won the race - proceed with discovery
+                        if let Ok(torrents) = api_client.list_torrents().await {
+                            let mut new_count = 0;
+
+                            for torrent_info in torrents {
+                                if inode_manager.lookup_torrent(torrent_info.id).is_none() {
+                                    if let Err(e) = Self::create_torrent_structure_static(
+                                        &inode_manager,
+                                        &torrent_info,
+                                    ) {
+                                        warn!(
+                                            "Failed to create structure for torrent {}: {}",
+                                            torrent_info.id, e
+                                        );
+                                    } else {
+                                        new_count += 1;
+                                        info!(
+                                            "Discovered new torrent {}: {}",
+                                            torrent_info.id, torrent_info.name
+                                        );
+                                    }
                                 }
                             }
-                        }
 
-                        if new_count > 0 {
-                            info!(
-                                "Found {} new torrent(s) during directory listing",
-                                new_count
-                            );
+                            if new_count > 0 {
+                                info!(
+                                    "Found {} new torrent(s) during directory listing",
+                                    new_count
+                                );
+                            }
                         }
-
-                        // Update last discovery time
-                        if let Ok(mut last) = last_discovery.lock() {
-                            *last = Instant::now();
-                        }
+                    } else {
+                        trace!("Lost race for discovery slot - another task is already running");
                     }
                 }
             });

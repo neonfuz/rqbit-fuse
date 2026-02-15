@@ -107,6 +107,12 @@ Each item is designed to be completed independently. Research references are sto
   - Use fuse_mt or similar for testing
   - Include error case testing
 
+- [x] **FS-008**: Fix race condition in torrent discovery
+  - Lines 1351-1407: readdir() spawned discovery without atomic check-and-act
+  - Two concurrent calls could both pass cooldown before either updated timestamp
+  - Fixed by using AtomicU64 with compare_exchange for lock-free atomic check-and-set
+  - Only one task proceeds with discovery even with concurrent readdir() calls
+
 ### Inode Management (src/fs/inode.rs)
 
 - [x] **INODE-001**: Research inode table design
