@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Research
+
+- Researched rqbit authentication methods (API-002.1)
+  - Documented HTTP Basic Authentication implementation in rqbit
+  - Identified configuration via `RQBIT_HTTP_BASIC_AUTH_USERPASS` environment variable
+  - Analyzed security implications (single-user, timing attack vulnerability, plaintext storage)
+  - Created comprehensive research document at `research/rqbit-authentication.md`
+  - Provided implementation recommendations for torrent-fuse client-side auth support
+
 ### Fixed
 
 - Removed panics from API client (API-001)

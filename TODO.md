@@ -347,7 +347,7 @@ Each item is designed to be completed independently. Research references are sto
   - All tests pass, clippy clean, code formatted
 
 - [ ] **API-002**: Add authentication support
-  - Research rqbit auth methods
+  - [x] Research rqbit auth methods - [research:rqbit-authentication](research/rqbit-authentication.md)
   - Add auth token/API key support to client
   - Update configuration for credentials
   - Add auth failure error handling
