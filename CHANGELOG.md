@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replace std::sync::Mutex with tokio::sync::Mutex in async contexts (FS-005)
+  - Replaced blocking std::sync::Mutex with async tokio::sync::Mutex in `src/api/streaming.rs`
+  - Updated field declarations, initializations, and function signatures
+  - Fixed locking patterns: use `block_on` for initialization, `try_lock` for cleanup
+  - Fixed related issues in `src/fs/filesystem.rs` for consistency
+  - Prevents blocking operations in async contexts
+
 - Add FUSE logging macros to reduce boilerplate (SIMPLIFY-004)
   - Created `fuse_log!`, `fuse_error!`, `fuse_ok!` macros in `src/fs/macros.rs`
   - Replaced ~42 repetitive logging blocks across 7 FUSE operations

@@ -266,7 +266,7 @@ pub struct PersistentStreamManager {
     /// Using Mutex instead of RwLock because the stream type is not Sync
     streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>>,
     /// Cleanup task handle stored in an Option<tokio::task::JoinHandle>
-    cleanup_handle: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    cleanup_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl PersistentStreamManager {
@@ -275,7 +275,7 @@ impl PersistentStreamManager {
         let streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        let cleanup_handle = Arc::new(std::sync::Mutex::new(None));
+        let cleanup_handle = Arc::new(Mutex::new(None));
 
         let manager = Self {
             client,
@@ -294,7 +294,7 @@ impl PersistentStreamManager {
     fn start_cleanup_task(
         &self,
         streams: Arc<Mutex<HashMap<StreamKey, PersistentStream>>>,
-        handle_storage: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+        handle_storage: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     ) {
         // Check if we're running in a Tokio runtime context
         // If not (e.g., in synchronous tests), skip starting the cleanup task
@@ -334,9 +334,8 @@ impl PersistentStreamManager {
                     }
                 });
 
-                if let Ok(mut h) = handle_storage.lock() {
-                    *h = Some(handle);
-                }
+                let mut h = tokio::runtime::Handle::current().block_on(handle_storage.lock());
+                *h = Some(handle);
             }
             Err(_) => {
                 // No runtime available (e.g., in synchronous tests)
@@ -488,8 +487,8 @@ impl PersistentStreamManager {
 impl Drop for PersistentStreamManager {
     fn drop(&mut self) {
         // Try to abort cleanup task
-        if let Ok(mut handle) = self.cleanup_handle.lock() {
-            if let Some(h) = handle.take() {
+        if let Ok(handle) = self.cleanup_handle.try_lock() {
+            if let Some(h) = handle.as_ref() {
                 h.abort();
             }
         }

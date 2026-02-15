@@ -116,10 +116,10 @@ Each item is designed to be completed independently. Research references are sto
   - No clippy warnings: `cargo clippy` ✅
   - Code formatted: `cargo fmt` ✅
 
-- [ ] **FS-005**: Replace std::sync::Mutex with tokio::sync::Mutex
-  - Find all std::sync::Mutex in async context (lines 73, 77, 79, 83, 101, 102)
-  - Replace with tokio::sync::Mutex
-  - Verify no blocking operations remain
+- [x] **FS-005**: Replace std::sync::Mutex with tokio::sync::Mutex
+  - Replaced std::sync::Mutex with tokio::sync::Mutex in streaming.rs (lines 269, 278, 297)
+  - Updated locking patterns to use block_on or try_lock as appropriate
+  - Fixed filesystem.rs mutex usages for consistency (lines 139, 151, 216, 228, 274, 286)
 
 - [ ] **FS-006**: Fix path resolution for nested directories
   - Line 1117-1123: Nested directories resolve incorrectly

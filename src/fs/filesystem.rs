@@ -136,9 +136,8 @@ impl TorrentFS {
             }
         });
 
-        if let Ok(mut h) = self.monitor_handle.lock() {
-            *h = Some(handle);
-        }
+        let mut h = tokio::runtime::Handle::current().block_on(self.monitor_handle.lock());
+        *h = Some(handle);
 
         info!(
             "Started status monitoring with {} second poll interval",
@@ -148,8 +147,8 @@ impl TorrentFS {
 
     /// Stop the status monitoring task
     fn stop_status_monitoring(&self) {
-        if let Ok(mut handle) = self.monitor_handle.lock() {
-            if let Some(h) = handle.take() {
+        if let Ok(handle) = self.monitor_handle.try_lock() {
+            if let Some(h) = handle.as_ref() {
                 h.abort();
                 info!("Stopped status monitoring");
             }
@@ -214,9 +213,8 @@ impl TorrentFS {
             }
         });
 
-        if let Ok(mut h) = self.discovery_handle.lock() {
-            *h = Some(handle);
-        }
+        let mut h = tokio::runtime::Handle::current().block_on(self.discovery_handle.lock());
+        *h = Some(handle);
 
         info!(
             "Started background torrent discovery with {} second interval",
@@ -226,8 +224,8 @@ impl TorrentFS {
 
     /// Stop the torrent discovery task
     fn stop_torrent_discovery(&self) {
-        if let Ok(mut handle) = self.discovery_handle.lock() {
-            if let Some(h) = handle.take() {
+        if let Ok(handle) = self.discovery_handle.try_lock() {
+            if let Some(h) = handle.as_ref() {
                 h.abort();
                 info!("Stopped torrent discovery");
             }
@@ -273,9 +271,8 @@ impl TorrentFS {
             }
         });
 
-        if let Ok(mut h) = self.cleanup_handle.lock() {
-            *h = Some(handle);
-        }
+        let mut h = tokio::runtime::Handle::current().block_on(self.cleanup_handle.lock());
+        *h = Some(handle);
 
         info!(
             "Started file handle cleanup task with TTL: {:?}",
@@ -285,8 +282,8 @@ impl TorrentFS {
 
     /// Stop the file handle cleanup task
     fn stop_handle_cleanup(&self) {
-        if let Ok(mut handle) = self.cleanup_handle.lock() {
-            if let Some(h) = handle.take() {
+        if let Ok(handle) = self.cleanup_handle.try_lock() {
+            if let Some(h) = handle.as_ref() {
                 h.abort();
                 info!("Stopped file handle cleanup");
             }
