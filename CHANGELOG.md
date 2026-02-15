@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Add tracing instrumentation to API client (SIMPLIFY-013)
+  - Replaced manual trace!/debug! calls with #[tracing::instrument] attributes
+  - Added to 12 public methods: list_torrents, get_torrent, add_torrent_magnet, add_torrent_url
+    get_torrent_stats, get_piece_bitfield, read_file, read_file_streaming,
+    pause_torrent, start_torrent, forget_torrent, delete_torrent
+  - Reduced ~40 lines of manual logging boilerplate
+  - Provides automatic structured logging with function arguments and spans
+  - All 90 tests pass, no behavioral changes
+
 - Unified torrent control methods in API client (SIMPLIFY-002)
   - Created `torrent_action()` helper to consolidate pause/start/forget/delete
   - Reduced `src/api/client.rs` from ~72 to ~12 lines for torrent control (~60 line reduction)

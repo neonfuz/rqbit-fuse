@@ -37,7 +37,7 @@ Each item is designed to be completed independently. Migration guides are stored
   - **Risk**: Low - same logic, just extracted
   - **Test**: `cargo test api::client::tests`
 
-- [ ] **SIMPLIFY-013**: Add tracing instrumentation
+- [x] **SIMPLIFY-013**: Add tracing instrumentation
   - [migration:SIMPLIFY-013-tracing-instrument](migration/SIMPLIFY-013-tracing-instrument.md)
   - Add `#[instrument]` to 12 public methods
   - Remove manual `trace!`/`debug!` calls

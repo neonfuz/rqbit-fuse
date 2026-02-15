@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, instrument, warn};
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -305,10 +305,9 @@ impl RqbitClient {
     /// List all torrents in the session
     /// Note: This fetches full details for each torrent since the /torrents endpoint
     /// returns a simplified structure without the files field.
+    #[instrument(skip(self), fields(api_op = "list_torrents"))]
     pub async fn list_torrents(&self) -> Result<Vec<TorrentInfo>> {
         let url = format!("{}/torrents", self.base_url);
-
-        trace!(api_op = "list_torrents", url = %url);
 
         let response = self
             .execute_with_retry("/torrents", || self.client.get(&url).send())
@@ -326,7 +325,6 @@ impl RqbitClient {
                 }
                 Err(e) => {
                     warn!(
-                        api_op = "list_torrents",
                         id = basic_info.id,
                         name = %basic_info.name,
                         error = %e,
@@ -337,20 +335,14 @@ impl RqbitClient {
             }
         }
 
-        debug!(
-            api_op = "list_torrents",
-            count = full_torrents.len(),
-            "Listed torrents with full details"
-        );
         Ok(full_torrents)
     }
 
     /// Get detailed information about a specific torrent
+    #[instrument(skip(self), fields(api_op = "get_torrent", id))]
     pub async fn get_torrent(&self, id: u64) -> Result<TorrentInfo> {
         let url = format!("{}/torrents/{}", self.base_url, id);
         let endpoint = format!("/torrents/{}", id);
-
-        trace!(api_op = "get_torrent", id = id);
 
         let response = self
             .execute_with_retry(&endpoint, || self.client.get(&url).send())
@@ -361,21 +353,19 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let torrent: TorrentInfo = response.json().await?;
-                debug!(api_op = "get_torrent", id = id, name = %torrent.name);
                 Ok(torrent)
             }
         }
     }
 
     /// Add a torrent from a magnet link
+    #[instrument(skip(self), fields(api_op = "add_torrent_magnet"))]
     pub async fn add_torrent_magnet(&self, magnet_link: &str) -> Result<AddTorrentResponse> {
         let url = format!("{}/torrents", self.base_url);
         let request = AddMagnetRequest {
             magnet_link: magnet_link.to_string(),
         };
 
-        trace!(api_op = "add_torrent_magnet");
-
         let response = self
             .execute_with_retry("/torrents", || self.client.post(&url).json(&request).send())
             .await?;
@@ -383,19 +373,17 @@ impl RqbitClient {
         let response = self.check_response(response).await?;
         let result: AddTorrentResponse = response.json().await?;
 
-        debug!(api_op = "add_torrent_magnet", id = result.id, info_hash = %result.info_hash);
         Ok(result)
     }
 
     /// Add a torrent from a torrent file URL
+    #[instrument(skip(self), fields(api_op = "add_torrent_url", url = %torrent_url))]
     pub async fn add_torrent_url(&self, torrent_url: &str) -> Result<AddTorrentResponse> {
         let url = format!("{}/torrents", self.base_url);
         let request = AddTorrentUrlRequest {
             torrent_link: torrent_url.to_string(),
         };
 
-        trace!(api_op = "add_torrent_url", url = %torrent_url);
-
         let response = self
             .execute_with_retry("/torrents", || self.client.post(&url).json(&request).send())
             .await?;
@@ -403,16 +391,14 @@ impl RqbitClient {
         let response = self.check_response(response).await?;
         let result: AddTorrentResponse = response.json().await?;
 
-        debug!(api_op = "add_torrent_url", id = result.id, info_hash = %result.info_hash);
         Ok(result)
     }
 
     /// Get statistics for a torrent
+    #[instrument(skip(self), fields(api_op = "get_torrent_stats", id))]
     pub async fn get_torrent_stats(&self, id: u64) -> Result<TorrentStats> {
         let url = format!("{}/torrents/{}/stats/v1", self.base_url, id);
         let endpoint = format!("/torrents/{}/stats", id);
-
-        trace!(api_op = "get_torrent_stats", id = id);
 
         let response = self
             .execute_with_retry(&endpoint, || self.client.get(&url).send())
@@ -423,36 +409,16 @@ impl RqbitClient {
             _ => {
                 let response = self.check_response(response).await?;
                 let stats: TorrentStats = response.json().await?;
-                let progress_pct = if stats.total_bytes > 0 {
-                    (stats.progress_bytes as f64 / stats.total_bytes as f64) * 100.0
-                } else {
-                    0.0
-                };
-                let download_speed_mbps = stats
-                    .live
-                    .as_ref()
-                    .map(|live| live.download_speed.mbps)
-                    .unwrap_or(0.0);
-                trace!(
-                    api_op = "get_torrent_stats",
-                    id = id,
-                    state = %stats.state,
-                    progress_pct = progress_pct,
-                    download_speed_mbps = download_speed_mbps,
-                    finished = stats.finished,
-                    error = ?stats.error
-                );
                 Ok(stats)
             }
         }
     }
 
     /// Get piece availability bitfield for a torrent
+    #[instrument(skip(self), fields(api_op = "get_piece_bitfield", id))]
     pub async fn get_piece_bitfield(&self, id: u64) -> Result<PieceBitfield> {
         let url = format!("{}/torrents/{}/haves", self.base_url, id);
         let endpoint = format!("/torrents/{}/haves", id);
-
-        trace!(api_op = "get_piece_bitfield", id = id);
 
         let response = self
             .execute_with_retry(&endpoint, || {
@@ -478,13 +444,6 @@ impl RqbitClient {
 
                 let bits = response.bytes().await?.to_vec();
 
-                trace!(
-                    api_op = "get_piece_bitfield",
-                    id = id,
-                    bytes = bits.len(),
-                    num_pieces = num_pieces
-                );
-
                 Ok(PieceBitfield { bits, num_pieces })
             }
         }
@@ -498,6 +457,7 @@ impl RqbitClient {
     ///
     /// If `range` is None, reads the entire file.
     /// If `range` is Some((start, end)), reads bytes from start to end (inclusive).
+    #[instrument(skip(self), fields(api_op = "read_file", torrent_id, file_idx, range = ?range))]
     pub async fn read_file(
         &self,
         torrent_id: u64,
@@ -522,19 +482,7 @@ impl RqbitClient {
                 .into());
             }
             let range_header = format!("bytes={}-{}", start, end);
-            trace!(
-                api_op = "read_file",
-                torrent_id = torrent_id,
-                file_idx = file_idx,
-                range = %range_header
-            );
             request = request.header("Range", range_header);
-        } else {
-            trace!(
-                api_op = "read_file",
-                torrent_id = torrent_id,
-                file_idx = file_idx
-            );
         }
 
         let response = self
@@ -564,9 +512,6 @@ impl RqbitClient {
 
                 if is_full_response {
                     debug!(
-                        api_op = "read_file",
-                        torrent_id = torrent_id,
-                        file_idx = file_idx,
                         "Server returned 200 OK for range request, will limit to {} bytes",
                         requested_size.unwrap_or(0)
                     );
@@ -633,8 +578,6 @@ impl RqbitClient {
                     }
                 }
 
-                // Note: Removed noisy trace logging here - use metrics if needed
-
                 Ok(Bytes::from(result))
             }
         }
@@ -654,6 +597,10 @@ impl RqbitClient {
     ///
     /// # Returns
     /// * `Result<Bytes>` - The requested data
+    #[instrument(
+        skip(self),
+        fields(api_op = "read_file_streaming", torrent_id, file_idx, offset, size)
+    )]
     pub async fn read_file_streaming(
         &self,
         torrent_id: u64,
@@ -661,14 +608,6 @@ impl RqbitClient {
         offset: u64,
         size: usize,
     ) -> Result<Bytes> {
-        trace!(
-            api_op = "read_file_streaming",
-            torrent_id = torrent_id,
-            file_idx = file_idx,
-            offset = offset,
-            size = size
-        );
-
         self.stream_manager
             .read(torrent_id, file_idx, offset, size)
             .await
@@ -705,8 +644,6 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}/{}", self.base_url, id, action);
         let endpoint = format!("/torrents/{}/{}", id, action);
 
-        trace!(api_op = action, id = id);
-
         let response = self
             .execute_with_retry(&endpoint, || self.client.post(&url).send())
             .await?;
@@ -715,28 +652,31 @@ impl RqbitClient {
             StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
-                debug!(api_op = action, id = id, "{} torrent", action);
                 Ok(())
             }
         }
     }
 
     /// Pause a torrent
+    #[instrument(skip(self), fields(api_op = "pause_torrent", id))]
     pub async fn pause_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "pause").await
     }
 
     /// Resume/start a torrent
+    #[instrument(skip(self), fields(api_op = "start_torrent", id))]
     pub async fn start_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "start").await
     }
 
     /// Remove torrent from session (keep files)
+    #[instrument(skip(self), fields(api_op = "forget_torrent", id))]
     pub async fn forget_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "forget").await
     }
 
     /// Remove torrent from session and delete files
+    #[instrument(skip(self), fields(api_op = "delete_torrent", id))]
     pub async fn delete_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "delete").await
     }
