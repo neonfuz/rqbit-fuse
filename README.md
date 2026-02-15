@@ -57,7 +57,7 @@ Access your torrents through standard filesystem operations—stream videos whil
 3. **rqbit** - Install and run rqbit server:
    ```bash
    cargo install rqbit
-   rqbit server start
+   rqbit server start <download_folder>
    ```
 
 ## Platform Support
@@ -120,12 +120,12 @@ By default, the API runs on `http://127.0.0.1:3030`.
 ### 2. Add a Torrent
 
 ```bash
-rqbit add magnet:?xt=urn:btih:...
+rqbit download magnet:?xt=urn:btih:...
 ```
 
 Or from a URL:
 ```bash
-rqbit add http://example.com/file.torrent
+rqbit download http://example.com/file.torrent
 ```
 
 ### 3. Mount the Filesystem
