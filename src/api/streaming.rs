@@ -144,13 +144,22 @@ impl PersistentStream {
         let mut bytes_read = 0;
 
         // First, use any pending buffered data
-        let pending_consumed = self.consume_pending(buf.len());
-        if pending_consumed > 0 {
-            if let Some(ref pending) = self.pending_buffer {
-                let pending_data = pending.slice(0..pending_consumed);
-                buf[..pending_consumed].copy_from_slice(&pending_data);
+        // IMPORTANT: Copy data BEFORE consuming from pending buffer
+        if let Some(ref pending) = self.pending_buffer {
+            let pending_len = pending.len();
+            if pending_len > 0 {
+                let to_copy = pending_len.min(buf.len());
+                buf[..to_copy].copy_from_slice(&pending[..to_copy]);
+                bytes_read += to_copy;
+                self.current_position += to_copy as u64;
+
+                // Now consume the bytes we just used
+                if to_copy < pending_len {
+                    self.pending_buffer = Some(pending.slice(to_copy..));
+                } else {
+                    self.pending_buffer = None;
+                }
             }
-            bytes_read += pending_consumed;
         }
 
         // Read more data from the stream if needed
