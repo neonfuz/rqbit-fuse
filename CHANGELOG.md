@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Fix platform-dependent types (TYPES-004)
+  - Changed `file_index` from `usize` to `u64` in `InodeEntry::File` variant
+  - Updated all internal usages in `filesystem.rs`, `async_bridge.rs`, and `inode.rs`
+  - Added explicit casts at API boundaries where rqbit expects `usize`
+  - Ensures 32-bit and 64-bit platform compatibility for file indices
+
 - Remove dead code from types module (TYPES-001, TYPES-002)
   - Removed `types/torrent.rs` module (dead code - not imported anywhere)
   - Removed `pub mod torrent;` from `src/types/mod.rs`
