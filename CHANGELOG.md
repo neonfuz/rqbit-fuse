@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `has_piece_range()` method to `PieceBitfield` (IDEA1-001)
+  - Checks if all pieces in a given byte range are available
+  - Calculates piece indices from byte offset and size using piece length
+  - Returns boolean indicating if all pieces in range are downloaded
+  - Includes comprehensive unit tests for complete bitfield, partial bitfield, edge cases, and large piece sizes
+  - Location: `src/api/types.rs:PieceBitfield`
+  - All 5 tests pass: `cargo test test_has_piece_range` ✅
+
 ### Fixed
 
 - Mark EDGE-008 as complete (handle exhaustion test)

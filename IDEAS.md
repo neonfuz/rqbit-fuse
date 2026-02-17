@@ -31,7 +31,7 @@ Return an immediate I/O error (EIO) when:
 
 **Tasks:**
 
-- [ ] **IDEA1-001**: Add `has_piece_range()` method to `PieceBitfield`
+- [x] **IDEA1-001**: Add `has_piece_range()` method to `PieceBitfield`
   - Check if all pieces in a given byte range are available
   - Calculate piece indices from byte offset and size
   - Return boolean indicating if all pieces in range are downloaded
