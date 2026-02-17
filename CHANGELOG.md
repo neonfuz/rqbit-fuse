@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Add EDGE-007 test for reading from released handle
+  - Implemented `test_read_from_released_handle` in `src/types/handle.rs`
+  - Tests that reading from a released handle returns None (EBADF in FUSE layer)
+  - Verifies no panic or crash occurs
+  - All tests pass: `cargo test test_read_from_released_handle` ✅
+
 - Mark EDGE-006 as complete (double release handle test)
   - Test already exists in `src/types/handle.rs:test_file_handle_removal`
   - Verifies double release returns None without panic

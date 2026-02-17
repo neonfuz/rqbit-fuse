@@ -330,6 +330,38 @@ mod tests {
     }
 
     #[test]
+    fn test_read_from_released_handle() {
+        // EDGE-007: Test read from released handle
+        // This simulates the scenario where a file handle is released
+        // but something tries to read from it (which should return EBADF)
+        let manager = FileHandleManager::new();
+
+        // Open file, get handle
+        let fh = manager.allocate(100, libc::O_RDONLY);
+        assert!(manager.contains(fh));
+
+        // Verify we can look up the handle (simulating a valid read operation)
+        let handle = manager.get(fh);
+        assert!(handle.is_some());
+        assert_eq!(handle.unwrap().fh, fh);
+
+        // Release handle (close the file)
+        let removed = manager.remove(fh);
+        assert!(removed.is_some());
+        assert!(!manager.contains(fh));
+
+        // Try to read from released handle (should return None, which translates to EBADF)
+        let handle_after_release = manager.get(fh);
+        assert!(
+            handle_after_release.is_none(),
+            "Reading from a released handle should return None (EBADF in FUSE layer)"
+        );
+
+        // Verify handle count is correct
+        assert_eq!(manager.len(), 0);
+    }
+
+    #[test]
     fn test_file_handle_state_tracking() {
         let manager = FileHandleManager::new();
         let fh = manager.allocate(100, libc::O_RDONLY);
