@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mark EDGE-008 as complete (handle exhaustion test)
+  - Test already exists in `src/types/handle.rs:test_handle_exhaustion`
+  - Tests handle allocation up to max_handles limit (5 for test, 50 for real)
+  - Verifies allocation returns 0 (failure) when limit exceeded
+  - Tests that releasing a handle allows new allocations
+  - All tests pass: `cargo test test_handle_exhaustion` ✅
+
 - Add EDGE-007 test for reading from released handle
   - Implemented `test_read_from_released_handle` in `src/types/handle.rs`
   - Tests that reading from a released handle returns None (EBADF in FUSE layer)

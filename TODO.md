@@ -67,11 +67,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - Verify no panic or crash
   - Implemented: test_read_from_released_handle in src/types/handle.rs
 
-- [ ] **EDGE-008**: Test handle exhaustion
+- [x] **EDGE-008**: Test handle exhaustion
   - Open files until handle limit reached (50 streams)
   - Try to open one more file
   - Should return appropriate error (EMFILE or EAGAIN)
   - Verify proper error message
+  - Implemented: test_handle_exhaustion in src/types/handle.rs with max_handles=5
 
 - [ ] **EDGE-009**: Test handle overflow
   - Simulate handle allocation wrapping past u64::MAX
