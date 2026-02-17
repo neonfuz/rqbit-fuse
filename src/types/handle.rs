@@ -230,6 +230,12 @@ impl FileHandleManager {
         self.len() == 0
     }
 
+    /// Get the next handle value (for testing overflow scenarios).
+    #[cfg(test)]
+    pub fn set_next_handle(&self, value: u64) {
+        self.next_handle.store(value, Ordering::SeqCst);
+    }
+
     /// Get all handles for a specific inode.
     pub fn get_handles_for_inode(&self, inode: u64) -> Vec<u64> {
         let handles = self.handles.lock().unwrap();
