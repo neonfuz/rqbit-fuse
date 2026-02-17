@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add piece availability check for paused torrents (IDEA1-005)
+  - Added `check_pieces_before_read` config option to `PerformanceConfig` (default: true)
+  - Added `CheckPiecesAvailable` variant to `FuseRequest` enum in `async_bridge.rs`
+  - Added `check_pieces_available()` method to `AsyncFuseWorker`
+  - Modified `read()` method in `filesystem.rs` to check piece availability before reading
+  - When torrent is paused and pieces are not available, returns `EIO` error immediately
+  - Prevents blocking reads on unavailable data from paused torrents
+  - All 103 tests pass: `cargo test` ✅
+
 - Add `has_piece_range()` method to `PieceBitfield` (IDEA1-001)
   - Checks if all pieces in a given byte range are available
   - Calculates piece indices from byte offset and size using piece length
