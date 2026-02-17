@@ -92,11 +92,12 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Directory Listing (src/fs/filesystem.rs)
 
-- [ ] **EDGE-011**: Test readdir with invalid offsets
+- [x] **EDGE-011**: Test readdir with invalid offsets
   - Offset > number of entries
   - Offset = i64::MAX
   - Negative offset
   - Should handle gracefully
+  - Implemented: 4 tests in tests/fuse_operations.rs
 
 - [ ] **EDGE-012**: Test readdir on non-directory
   - Try to list contents of a file

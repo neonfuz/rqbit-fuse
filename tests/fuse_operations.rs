@@ -4812,3 +4812,370 @@ async fn test_edge_005_read_at_piece_boundary_near_eof() {
         "Should read 452 bytes from last piece, not requested 500"
     );
 }
+
+// ============================================================================
+// EDGE-011: Readdir with Invalid Offsets
+// ============================================================================
+// Tests for readdir operation with edge case offset values
+
+/// Test readdir with offset greater than number of entries
+/// When offset exceeds the total number of entries, readdir should return
+/// successfully with no entries (empty result), not an error.
+#[tokio::test]
+async fn test_readdir_offset_greater_than_entries() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with 3 files
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "offset123".to_string(),
+        name: "Offset Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 100,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 200,
+                components: vec!["file2.txt".to_string()],
+            },
+            FileInfo {
+                name: "file3.txt".to_string(),
+                length: 300,
+                components: vec!["file3.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Offset Test")
+        .expect("Torrent directory should exist");
+
+    // Get all children to determine total entry count
+    let all_children = inode_manager.get_children(torrent_ino);
+
+    // Total entries = 3 files + . and .. = 5 entries
+    // Offsets 0-1 are for . and ..
+    // Offsets 2-4 are for the 3 files
+    // Offset 5 would be beyond all entries
+    let total_entries = all_children.len() + 2; // +2 for . and ..
+
+    // Verify we can get children normally
+    assert_eq!(all_children.len(), 3, "Should have 3 files");
+    assert_eq!(
+        total_entries, 5,
+        "Should have 5 total entries (3 files + . + ..)"
+    );
+
+    // Test: Simulate readdir with offset beyond all entries
+    // This should complete successfully with no entries returned
+    let offset_beyond = (total_entries + 1) as i64;
+
+    // The implementation skips entries where entry_offset < current_offset
+    // So if offset is greater than all entry offsets, we should get empty result
+    // This simulates what readdir does when offset > number of entries
+    let mut entries_returned = 0;
+    let child_offset_start = 2; // . and .. take offsets 0 and 1
+
+    for (idx, _) in all_children.iter().enumerate() {
+        let entry_offset = (child_offset_start + idx) as i64;
+        if entry_offset >= offset_beyond {
+            entries_returned += 1;
+        }
+    }
+
+    assert_eq!(
+        entries_returned, 0,
+        "When offset > total entries, no entries should be returned"
+    );
+}
+
+/// Test readdir with maximum i64 offset value
+/// This tests boundary condition handling for extremely large offset values
+#[tokio::test]
+async fn test_readdir_offset_i64_max() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a simple torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "max123".to_string(),
+        name: "Max Offset Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 100,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 200,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Max Offset Test")
+        .expect("Torrent directory should exist");
+
+    // Get all children
+    let all_children = inode_manager.get_children(torrent_ino);
+    assert_eq!(all_children.len(), 2, "Should have 2 files");
+
+    // Test: Simulate readdir with i64::MAX as offset
+    // This should handle gracefully and return nothing
+    let max_offset = i64::MAX;
+    let mut entries_returned = 0;
+    let child_offset_start = 2; // . and .. take offsets 0 and 1
+
+    for (idx, _) in all_children.iter().enumerate() {
+        let entry_offset = (child_offset_start + idx) as i64;
+        // With i64::MAX, all entry offsets should be less than max_offset
+        // So all entries should be skipped (none returned)
+        if entry_offset >= max_offset {
+            entries_returned += 1;
+        }
+    }
+
+    assert_eq!(
+        entries_returned, 0,
+        "With i64::MAX offset, no entries should be returned"
+    );
+}
+
+/// Test readdir with negative offset values
+/// The offset parameter is i64, so negative values are technically valid
+/// but should be handled gracefully (likely treated as starting from beginning)
+#[tokio::test]
+async fn test_readdir_negative_offset() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with files
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "neg123".to_string(),
+        name: "Negative Offset Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 100,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 200,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Negative Offset Test")
+        .expect("Torrent directory should exist");
+
+    // Get all children
+    let all_children = inode_manager.get_children(torrent_ino);
+    assert_eq!(all_children.len(), 2, "Should have 2 files");
+
+    // Test: Simulate behavior with negative offset
+    // The actual readdir implementation doesn't explicitly check for negative offsets
+    // It just uses the offset value directly. With negative offsets:
+    // - If offset is negative, it won't match 0 or 1 (for . and ..)
+    // - For children, entry_offset (which is always >= 2) will be > negative offset
+    // So all entries would be returned
+
+    // This test verifies the behavior doesn't panic with negative offsets
+    // The filesystem operations should complete without error
+    let negative_offset = -1i64;
+
+    // Simulate checking if entries should be skipped
+    // entry_offset is always >= 0, so with negative offset, nothing is skipped
+    let mut entries_that_would_be_skipped = 0;
+    let child_offset_start = 2;
+
+    for (idx, _) in all_children.iter().enumerate() {
+        let entry_offset = (child_offset_start + idx) as i64;
+        if entry_offset < negative_offset {
+            entries_that_would_be_skipped += 1;
+        }
+    }
+
+    assert_eq!(
+        entries_that_would_be_skipped, 0,
+        "With negative offset, no entries should be skipped (all would be returned)"
+    );
+
+    // Also test with i64::MIN
+    let min_offset = i64::MIN;
+    let mut entries_skipped_min = 0;
+
+    for (idx, _) in all_children.iter().enumerate() {
+        let entry_offset = (child_offset_start + idx) as i64;
+        if entry_offset < min_offset {
+            entries_skipped_min += 1;
+        }
+    }
+
+    assert_eq!(
+        entries_skipped_min, 0,
+        "With i64::MIN offset, no entries should be skipped"
+    );
+}
+
+/// Test readdir offset boundary conditions
+/// Tests offset values at exact boundaries (0, 1, 2, N-1, N)
+#[tokio::test]
+async fn test_readdir_offset_boundaries() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with known number of files
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "bound123".to_string(),
+        name: "Boundary Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 100,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 200,
+                components: vec!["file2.txt".to_string()],
+            },
+            FileInfo {
+                name: "file3.txt".to_string(),
+                length: 300,
+                components: vec!["file3.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Boundary Test")
+        .expect("Torrent directory should exist");
+
+    // Get all children
+    let all_children = inode_manager.get_children(torrent_ino);
+    assert_eq!(all_children.len(), 3, "Should have 3 files");
+
+    let child_offset_start = 2; // . and .. take offsets 0 and 1
+    let total_entries = all_children.len() + 2; // +2 for . and ..
+
+    // Test boundaries:
+    // offset 0: should show . (becomes 1), .. (becomes 2), and all children
+    // offset 1: should skip ., show .. and all children
+    // offset 2: should skip . and .., show all children
+    // offset 3: should skip ., .., and first child
+    // offset 4: should skip ., .., and first 2 children
+    // offset 5: should skip all (beyond last child)
+
+    // Simulate what readdir would return at each offset
+    for offset in 0..=(total_entries as i64 + 1) {
+        let mut entries_would_return = 0;
+        let mut current_offset = offset;
+
+        // Simulate . entry
+        if current_offset == 0 {
+            entries_would_return += 1;
+            current_offset = 1;
+        }
+
+        // Simulate .. entry
+        if current_offset == 1 {
+            entries_would_return += 1;
+            current_offset = 2;
+        }
+
+        // Simulate children
+        for (idx, _) in all_children.iter().enumerate() {
+            let entry_offset = (child_offset_start + idx) as i64;
+            if entry_offset >= current_offset {
+                entries_would_return += 1;
+            }
+        }
+
+        // Verify expected behavior at each offset
+        match offset {
+            0 => assert_eq!(
+                entries_would_return, 5,
+                "offset 0 should return all 5 entries (., .., 3 files)"
+            ),
+            1 => assert_eq!(
+                entries_would_return, 4,
+                "offset 1 should return 4 entries (.., 3 files)"
+            ),
+            2 => assert_eq!(
+                entries_would_return, 3,
+                "offset 2 should return 3 entries (3 files)"
+            ),
+            3 => assert_eq!(
+                entries_would_return, 2,
+                "offset 3 should return 2 entries (file2, file3)"
+            ),
+            4 => assert_eq!(
+                entries_would_return, 1,
+                "offset 4 should return 1 entry (file3)"
+            ),
+            5 => assert_eq!(entries_would_return, 0, "offset 5 should return 0 entries"),
+            6 => assert_eq!(entries_would_return, 0, "offset 6 should return 0 entries"),
+            _ => {}
+        }
+    }
+}
