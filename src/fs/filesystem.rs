@@ -1027,8 +1027,14 @@ impl Filesystem for TorrentFS {
         // Check piece availability for paused torrents
         if self.config.performance.check_pieces_before_read {
             if let Some(status) = self.torrent_statuses.get(&torrent_id) {
-                // Only check pieces if torrent is paused
-                if status.state == crate::api::types::TorrentState::Paused {
+                // Skip piece check for completed torrents - they have all pieces available
+                if status.is_complete() {
+                    trace!(
+                        fuse_op = "read",
+                        torrent_id = torrent_id,
+                        "Skipping piece check for completed torrent"
+                    );
+                } else if status.state == crate::api::types::TorrentState::Paused {
                     // Calculate the actual read size
                     let actual_size = std::cmp::min(size as u64, file_size.saturating_sub(offset));
 

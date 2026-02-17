@@ -75,10 +75,11 @@ Return an immediate I/O error (EIO) when:
     - Returns `EIO` error immediately when pieces are not available
     - Configurable via `check_pieces_before_read` in `PerformanceConfig`
 
-- [ ] **IDEA1-006**: Add piece check bypass for completed torrents
+- [x] **IDEA1-006**: Add piece check bypass for completed torrents
   - If torrent status shows `finished=true`, skip piece checking
   - Optimization to avoid unnecessary API calls for completed torrents
   - Location: `src/fs/filesystem.rs`
+  - Implemented: Added check for `status.is_complete()` before checking if paused, skipping API call for completed torrents
 
 #### Phase 3: Configuration and Testing
 

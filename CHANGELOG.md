@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add piece check bypass for completed torrents (IDEA1-006)
+  - Added optimization to skip piece availability API calls for completed torrents
+  - Checks `status.is_complete()` before performing piece check for paused torrents
+  - Completed torrents have all pieces available, so no need to verify via API
+  - Reduces unnecessary API calls and improves read performance for finished torrents
+  - Location: `src/fs/filesystem.rs:read()` around line 1030
+  - All 103 tests pass: `cargo test` ✅
+
 - Add piece availability check for paused torrents (IDEA1-005)
   - Added `check_pieces_before_read` config option to `PerformanceConfig` (default: true)
   - Added `CheckPiecesAvailable` variant to `FuseRequest` enum in `async_bridge.rs`
