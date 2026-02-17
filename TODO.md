@@ -31,10 +31,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should return success with empty data, not error
   - Implemented: 3 tests in tests/fuse_operations.rs
 
-- [ ] **EDGE-003**: Test negative offset handling
+- [x] **EDGE-003**: Test negative offset handling
   - Read with offset = -1 (i64::MAX as u64 overflow)
   - Read with offset = i64::MIN
   - Should handle gracefully without panic
+  - Implemented: 3 tests in tests/fuse_operations.rs covering negative offsets, i64::MIN, and overflow scenarios
 
 - [ ] **EDGE-004**: Test read beyond EOF
   - Request more bytes than remaining in file
