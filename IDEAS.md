@@ -37,7 +37,7 @@ Return an immediate I/O error (EIO) when:
   - Return boolean indicating if all pieces in range are downloaded
   - Location: `src/api/types.rs:PieceBitfield`
 
-- [ ] **IDEA1-002**: Add `get_torrent_status_with_bitfield()` method to `RqbitClient`
+- [x] **IDEA1-002**: Add `get_torrent_status_with_bitfield()` method to `RqbitClient`
   - Fetch both torrent stats and piece bitfield in one call
   - Cache the result with short TTL (5 seconds)
   - Return struct containing both stats and bitfield

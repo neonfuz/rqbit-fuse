@@ -8,11 +8,19 @@ use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 
 use futures::stream::StreamExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, trace, warn};
+
+/// Combined torrent status and piece bitfield information
+#[derive(Debug, Clone)]
+pub struct TorrentStatusWithBitfield {
+    pub stats: TorrentStats,
+    pub bitfield: PieceBitfield,
+}
 
 /// HTTP client for interacting with rqbit server
 pub struct RqbitClient {
@@ -33,6 +41,10 @@ pub struct RqbitClient {
     list_torrents_cache: Arc<RwLock<Option<(Instant, ListTorrentsResult)>>>,
     /// TTL for list_torrents cache
     list_torrents_cache_ttl: Duration,
+    /// Cache for torrent status with bitfield (torrent_id -> (cached_at, result))
+    status_bitfield_cache: Arc<RwLock<HashMap<u64, (Instant, TorrentStatusWithBitfield)>>>,
+    /// TTL for status bitfield cache
+    status_bitfield_cache_ttl: Duration,
 }
 
 impl RqbitClient {
@@ -92,6 +104,8 @@ impl RqbitClient {
             auth_credentials,
             list_torrents_cache: Arc::new(RwLock::new(None)),
             list_torrents_cache_ttl: Duration::from_secs(30),
+            status_bitfield_cache: Arc::new(RwLock::new(HashMap::new())),
+            status_bitfield_cache_ttl: Duration::from_secs(5),
         })
     }
 
@@ -132,6 +146,8 @@ impl RqbitClient {
             auth_credentials,
             list_torrents_cache: Arc::new(RwLock::new(None)),
             list_torrents_cache_ttl: Duration::from_secs(30),
+            status_bitfield_cache: Arc::new(RwLock::new(HashMap::new())),
+            status_bitfield_cache_ttl: Duration::from_secs(5),
         })
     }
 
@@ -560,6 +576,49 @@ impl RqbitClient {
                 Ok(PieceBitfield { bits, num_pieces })
             }
         }
+    }
+
+    /// Get both torrent stats and piece bitfield in a single call with caching
+    ///
+    /// This method fetches both the torrent statistics and piece bitfield in parallel,
+    /// caches the result for 5 seconds, and returns them together. This is useful
+    /// for checking piece availability before attempting to read from a torrent.
+    ///
+    /// # Arguments
+    /// * `id` - The torrent ID
+    ///
+    /// # Returns
+    /// A `TorrentStatusWithBitfield` struct containing both stats and bitfield
+    #[instrument(skip(self), fields(api_op = "get_torrent_status_with_bitfield", id))]
+    pub async fn get_torrent_status_with_bitfield(&self, id: u64) -> Result<TorrentStatusWithBitfield> {
+        // Check cache first
+        {
+            let cache = self.status_bitfield_cache.read().await;
+            if let Some((cached_at, cached_result)) = cache.get(&id) {
+                if cached_at.elapsed() < self.status_bitfield_cache_ttl {
+                    debug!(api_op = "get_torrent_status_with_bitfield", id = id, "cache hit");
+                    return Ok(cached_result.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch fresh data in parallel
+        debug!(api_op = "get_torrent_status_with_bitfield", id = id, "cache miss, fetching fresh data");
+
+        let stats_future = self.get_torrent_stats(id);
+        let bitfield_future = self.get_piece_bitfield(id);
+
+        let (stats, bitfield) = tokio::try_join!(stats_future, bitfield_future)?;
+
+        let result = TorrentStatusWithBitfield { stats, bitfield };
+
+        // Cache the result
+        {
+            let mut cache = self.status_bitfield_cache.write().await;
+            cache.insert(id, (Instant::now(), result.clone()));
+        }
+
+        Ok(result)
     }
 
     // =========================================================================
