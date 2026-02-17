@@ -80,6 +80,8 @@ pub struct FuseMetrics {
     pub read_latency_ns: AtomicU64,
     /// Total number of piece availability checks that failed
     pub pieces_unavailable_errors: AtomicU64,
+    /// Total number of torrents removed from filesystem
+    pub torrents_removed: AtomicU64,
 }
 
 impl FuseMetrics {
@@ -100,6 +102,7 @@ impl FuseMetrics {
         pieces_unavailable_errors,
         "pieces_unavailable"
     );
+    record_op!(record_torrent_removed, torrents_removed, "torrent_removed");
 
     /// Record a read operation with bytes and latency
     pub fn record_read(&self, bytes: u64, latency: Duration) {
@@ -130,6 +133,7 @@ impl FuseMetrics {
             let bytes = self.bytes_read.load(Ordering::Relaxed);
             let errors = self.error_count.load(Ordering::Relaxed);
             let pieces_unavailable = self.pieces_unavailable_errors.load(Ordering::Relaxed);
+            let torrents_removed = self.torrents_removed.load(Ordering::Relaxed);
             let new_reads = self.read_count.load(Ordering::Relaxed);
             if new_reads == reads {
                 let avg_latency = self.avg_latency_ms();
@@ -142,6 +146,7 @@ impl FuseMetrics {
                     throughput_mbps = throughput,
                     errors = errors,
                     pieces_unavailable_errors = pieces_unavailable,
+                    torrents_removed = torrents_removed,
                     duration_secs = elapsed_secs,
                 );
                 return;

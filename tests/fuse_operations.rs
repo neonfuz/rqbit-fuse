@@ -2114,6 +2114,69 @@ async fn test_readdir_empty_directory() {
     );
 }
 
+// ============================================================================
+// EDGE-014: Test empty directory listing
+// ============================================================================
+
+/// Test empty directory listing - should return no entries (just "." and ".." in FUSE)
+#[tokio::test]
+async fn test_edge_014_empty_directory_listing() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create an empty directory using the inode manager directly
+    // This simulates a directory with no files in it
+    let inode_manager = fs.inode_manager();
+    let empty_dir_ino = inode_manager.allocate_torrent_directory(1, "empty_dir".to_string(), 1);
+
+    // Verify the directory was created
+    let empty_dir_entry = inode_manager.get(empty_dir_ino);
+    assert!(empty_dir_entry.is_some(), "Empty directory should exist");
+
+    let entry = empty_dir_entry.unwrap();
+    assert!(entry.is_directory(), "Should be a directory");
+    assert_eq!(entry.name(), "empty_dir", "Name should be 'empty_dir'");
+
+    // Get children of the empty directory
+    // In the internal representation, this should return an empty list
+    // (FUSE adds "." and ".." entries separately in the readdir callback)
+    let children = inode_manager.get_children(empty_dir_ino);
+    assert!(
+        children.is_empty(),
+        "Empty directory should have no children (got {} children)",
+        children.len()
+    );
+
+    // Verify directory attributes can be built without error
+    let attr = fs.build_file_attr(&entry);
+    assert_eq!(attr.kind, fuser::FileType::Directory);
+    assert_eq!(attr.ino, empty_dir_ino);
+    assert_eq!(attr.size, 0, "Directory size should be 0");
+    assert_eq!(attr.perm, 0o555, "Directory permissions should be 555");
+    // nlink should be 2 for empty directory (2 + 0 children)
+    assert_eq!(attr.nlink, 2, "Empty directory nlink should be 2");
+
+    // Verify the directory can be looked up by path
+    let lookup_result = inode_manager.lookup_by_path("/empty_dir");
+    assert!(
+        lookup_result.is_some(),
+        "Empty directory should be findable by path"
+    );
+    assert_eq!(lookup_result.unwrap(), empty_dir_ino);
+
+    // Test that parent directory listing includes the empty directory
+    let root_children = inode_manager.get_children(1);
+    let empty_dir_in_root = root_children.iter().find(|(ino, _)| *ino == empty_dir_ino);
+    assert!(
+        empty_dir_in_root.is_some(),
+        "Empty directory should appear in parent listing"
+    );
+}
+
 /// Test readdir with offset - simulating resuming directory listing after offset
 #[tokio::test]
 async fn test_readdir_with_offset() {

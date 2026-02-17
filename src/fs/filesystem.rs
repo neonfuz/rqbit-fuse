@@ -50,6 +50,8 @@ pub struct TorrentFS {
     file_handles: Arc<FileHandleManager>,
     /// Cache of torrent statuses for monitoring
     torrent_statuses: Arc<DashMap<u64, TorrentStatus>>,
+    /// Set of known torrent IDs for detecting removals
+    known_torrents: Arc<DashSet<u64>>,
     /// Handle to the status monitoring task
     monitor_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Handle to the torrent discovery task
@@ -112,6 +114,7 @@ impl TorrentFS {
             initialized: false,
             file_handles: Arc::new(FileHandleManager::new()),
             torrent_statuses: Arc::new(DashMap::new()),
+            known_torrents: Arc::new(DashSet::new()),
             monitor_handle: Arc::new(Mutex::new(None)),
             discovery_handle: Arc::new(Mutex::new(None)),
             cleanup_handle: Arc::new(Mutex::new(None)),
@@ -310,6 +313,79 @@ impl TorrentFS {
         }
 
         Ok(new_count)
+    }
+
+    /// Detect torrents that have been removed from rqbit.
+    /// Compares current torrent list with known torrents to find removed ones.
+    ///
+    /// # Arguments
+    /// * `current_torrent_ids` - List of torrent IDs currently in rqbit
+    ///
+    /// # Returns
+    /// * `Vec<u64>` - List of torrent IDs that have been removed
+    fn detect_removed_torrents(&self, current_torrent_ids: &[u64]) -> Vec<u64> {
+        let current: std::collections::HashSet<u64> = current_torrent_ids.iter().copied().collect();
+        let known: std::collections::HashSet<u64> =
+            self.known_torrents.iter().map(|e| *e).collect();
+
+        // Torrents that were known but not in current list
+        let removed: Vec<u64> = known.difference(&current).copied().collect();
+
+        if !removed.is_empty() {
+            debug!("Detected {} removed torrent(s)", removed.len());
+        }
+
+        removed
+    }
+
+    /// Remove a torrent and all its associated data from the filesystem.
+    /// Closes streams, removes file handles, and cleans up inodes.
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent to remove
+    async fn remove_torrent_from_fs(&self, torrent_id: u64) {
+        info!("Removing torrent {} from filesystem", torrent_id);
+
+        // Get the torrent's root inode
+        if let Some(inode) = self.inode_manager.lookup_torrent(torrent_id) {
+            // Close all file handles for this torrent
+            let removed_handles = self.file_handles.remove_by_torrent(torrent_id);
+            if removed_handles > 0 {
+                debug!(
+                    "Closed {} file handles for torrent {}",
+                    removed_handles, torrent_id
+                );
+            }
+
+            // Remove the inode tree for this torrent
+            if !self.inode_manager.remove_inode(inode) {
+                warn!(
+                    "Failed to remove inode {} for torrent {}",
+                    inode, torrent_id
+                );
+            }
+
+            // Remove from torrent statuses
+            self.torrent_statuses.remove(&torrent_id);
+
+            // Remove from known torrents
+            self.known_torrents.remove(&torrent_id);
+
+            // Record metric
+            self.metrics.fuse.record_torrent_removed();
+
+            info!(
+                "Successfully removed torrent {} from filesystem",
+                torrent_id
+            );
+        } else {
+            warn!(
+                "Torrent {} not found in filesystem, skipping removal",
+                torrent_id
+            );
+            // Still remove from known_torrents to keep state consistent
+            self.known_torrents.remove(&torrent_id);
+        }
     }
 
     /// Start the background file handle cleanup task
@@ -1414,8 +1490,11 @@ impl Filesystem for TorrentFS {
                     return;
                 }
 
+                // Get torrent_id from the entry
+                let torrent_id = entry.torrent_id().unwrap_or(0);
+
                 // Allocate a unique file handle
-                let fh = self.file_handles.allocate(ino, flags);
+                let fh = self.file_handles.allocate(ino, torrent_id, flags);
 
                 // Check if handle allocation failed (limit reached)
                 if fh == 0 {

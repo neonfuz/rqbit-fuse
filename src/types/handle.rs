@@ -56,6 +56,8 @@ pub struct FileHandle {
     pub fh: u64,
     /// The inode number this handle refers to
     pub inode: u64,
+    /// The torrent ID this file belongs to
+    pub torrent_id: u64,
     /// Open flags used when opening the file
     pub flags: i32,
     /// Optional state for tracking read patterns
@@ -66,10 +68,11 @@ pub struct FileHandle {
 
 impl FileHandle {
     /// Create a new file handle
-    pub fn new(fh: u64, inode: u64, flags: i32) -> Self {
+    pub fn new(fh: u64, inode: u64, torrent_id: u64, flags: i32) -> Self {
         Self {
             fh,
             inode,
+            torrent_id,
             flags,
             state: None,
             created_at: Instant::now(),
@@ -159,7 +162,7 @@ impl FileHandleManager {
 
     /// Allocate a new file handle for an open file.
     /// Returns a unique handle ID, or 0 if handle limit is reached.
-    pub fn allocate(&self, inode: u64, flags: i32) -> u64 {
+    pub fn allocate(&self, inode: u64, torrent_id: u64, flags: i32) -> u64 {
         // Check if we're at the handle limit
         if self.max_handles > 0 {
             let handles = self.handles.lock().unwrap();
@@ -178,7 +181,7 @@ impl FileHandleManager {
             fh
         };
 
-        let handle = FileHandle::new(fh, inode, flags);
+        let handle = FileHandle::new(fh, inode, torrent_id, flags);
 
         let mut handles = self.handles.lock().unwrap();
         handles.insert(fh, handle);
@@ -295,6 +298,24 @@ impl FileHandleManager {
             .filter(|handle| handle.is_expired(ttl))
             .count()
     }
+
+    /// Remove all file handles for a specific torrent.
+    /// Returns the number of handles removed.
+    pub fn remove_by_torrent(&self, torrent_id: u64) -> usize {
+        let mut handles = self.handles.lock().unwrap();
+        let handles_to_remove: Vec<u64> = handles
+            .iter()
+            .filter(|(_, h)| h.torrent_id == torrent_id)
+            .map(|(fh, _)| *fh)
+            .collect();
+
+        let count = handles_to_remove.len();
+        for fh in handles_to_remove {
+            handles.remove(&fh);
+        }
+
+        count
+    }
 }
 
 impl Default for FileHandleManager {
@@ -312,15 +333,15 @@ mod tests {
         let manager = FileHandleManager::new();
 
         // Allocate first handle
-        let fh1 = manager.allocate(100, libc::O_RDONLY);
+        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
         assert_eq!(fh1, 1);
 
         // Allocate second handle for same inode
-        let fh2 = manager.allocate(100, libc::O_RDONLY);
+        let fh2 = manager.allocate(100, 1, libc::O_RDONLY);
         assert_eq!(fh2, 2);
 
         // Allocate handle for different inode
-        let fh3 = manager.allocate(200, libc::O_RDONLY);
+        let fh3 = manager.allocate(200, 1, libc::O_RDONLY);
         assert_eq!(fh3, 3);
 
         // Verify handles are unique
@@ -335,12 +356,14 @@ mod tests {
         let inode = 100u64;
         let flags = libc::O_RDONLY;
 
-        let fh = manager.allocate(inode, flags);
+        let torrent_id = 1u64;
+        let fh = manager.allocate(inode, torrent_id, flags);
 
         // Lookup should succeed
         let handle = manager.get(fh).unwrap();
         assert_eq!(handle.fh, fh);
         assert_eq!(handle.inode, inode);
+        assert_eq!(handle.torrent_id, torrent_id);
         assert_eq!(handle.flags, flags);
 
         // Lookup non-existent handle
@@ -350,7 +373,7 @@ mod tests {
     #[test]
     fn test_file_handle_removal() {
         let manager = FileHandleManager::new();
-        let fh = manager.allocate(100, libc::O_RDONLY);
+        let fh = manager.allocate(100, 1, libc::O_RDONLY);
 
         // Remove should return the handle
         let removed = manager.remove(fh).unwrap();
@@ -371,7 +394,7 @@ mod tests {
         let manager = FileHandleManager::new();
 
         // Open file, get handle
-        let fh = manager.allocate(100, libc::O_RDONLY);
+        let fh = manager.allocate(100, 1, libc::O_RDONLY);
         assert!(manager.contains(fh));
 
         // Verify we can look up the handle (simulating a valid read operation)
@@ -398,7 +421,7 @@ mod tests {
     #[test]
     fn test_file_handle_state_tracking() {
         let manager = FileHandleManager::new();
-        let fh = manager.allocate(100, libc::O_RDONLY);
+        let fh = manager.allocate(100, 1, libc::O_RDONLY);
 
         // Update state
         manager.update_state(fh, 0, 1024);
@@ -424,9 +447,9 @@ mod tests {
         let manager = FileHandleManager::new();
 
         // Open same file multiple times
-        let fh1 = manager.allocate(100, libc::O_RDONLY);
-        let fh2 = manager.allocate(100, libc::O_RDONLY);
-        let fh3 = manager.allocate(200, libc::O_RDONLY);
+        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
+        let fh2 = manager.allocate(100, 1, libc::O_RDONLY);
+        let fh3 = manager.allocate(200, 1, libc::O_RDONLY);
 
         let handles_for_100 = manager.get_handles_for_inode(100);
         assert_eq!(handles_for_100.len(), 2);
@@ -442,7 +465,7 @@ mod tests {
     #[test]
     fn test_prefetching_state() {
         let manager = FileHandleManager::new();
-        let fh = manager.allocate(100, libc::O_RDONLY);
+        let fh = manager.allocate(100, 1, libc::O_RDONLY);
 
         assert!(!manager.get(fh).unwrap().is_prefetching());
 
@@ -464,7 +487,7 @@ mod tests {
         // Allocate handles up to the limit
         let mut handles = Vec::new();
         for i in 0..MAX_HANDLES {
-            let fh = manager.allocate(100 + i as u64, libc::O_RDONLY);
+            let fh = manager.allocate(100 + i as u64, 1, libc::O_RDONLY);
             assert!(fh > 0, "Handle {} should be allocated successfully", i);
             handles.push(fh);
         }
@@ -478,7 +501,7 @@ mod tests {
         );
 
         // Try to allocate one more - should return 0
-        let extra_fh = manager.allocate(200, libc::O_RDONLY);
+        let extra_fh = manager.allocate(200, 1, libc::O_RDONLY);
         assert_eq!(extra_fh, 0, "Should return 0 when handle limit is exceeded");
 
         // Verify count hasn't changed
@@ -498,7 +521,7 @@ mod tests {
         );
 
         // Now we should be able to allocate again
-        let new_fh = manager.allocate(300, libc::O_RDONLY);
+        let new_fh = manager.allocate(300, 1, libc::O_RDONLY);
         assert!(
             new_fh > 0,
             "Should be able to allocate after releasing a handle"
@@ -520,7 +543,7 @@ mod tests {
 
         // Allocate many handles
         for i in 0..100 {
-            let fh = manager.allocate(100 + i as u64, libc::O_RDONLY);
+            let fh = manager.allocate(100 + i as u64, 1, libc::O_RDONLY);
             assert!(fh > 0, "Handle {} should be allocated", i);
         }
 
@@ -540,10 +563,10 @@ mod tests {
         manager.set_next_handle(u64::MAX - 2);
 
         // Allocate a few handles to trigger overflow
-        let fh1 = manager.allocate(100, libc::O_RDONLY);
-        let fh2 = manager.allocate(101, libc::O_RDONLY);
-        let fh3 = manager.allocate(102, libc::O_RDONLY);
-        let fh4 = manager.allocate(103, libc::O_RDONLY);
+        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
+        let fh2 = manager.allocate(101, 1, libc::O_RDONLY);
+        let fh3 = manager.allocate(102, 1, libc::O_RDONLY);
+        let fh4 = manager.allocate(103, 1, libc::O_RDONLY);
 
         // Verify handle 0 is never allocated
         assert_ne!(fh1, 0, "Handle should never be 0");
@@ -586,7 +609,7 @@ mod tests {
         let manager = FileHandleManager::new();
 
         // Create a handle
-        let fh = manager.allocate(100, libc::O_RDONLY);
+        let fh = manager.allocate(100, 1, libc::O_RDONLY);
         assert!(fh > 0, "Handle should be allocated successfully");
         assert_eq!(manager.len(), 1, "Should have 1 handle");
 
@@ -636,14 +659,14 @@ mod tests {
         let ttl = Duration::from_millis(50);
 
         // Create first handle
-        let fh1 = manager.allocate(100, libc::O_RDONLY);
+        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
         assert!(fh1 > 0);
 
         // Wait a bit
         std::thread::sleep(Duration::from_millis(30));
 
         // Create second handle
-        let fh2 = manager.allocate(200, libc::O_RDONLY);
+        let fh2 = manager.allocate(200, 1, libc::O_RDONLY);
         assert!(fh2 > 0);
 
         // At this point:
@@ -692,7 +715,7 @@ mod tests {
     #[test]
     fn test_handle_is_expired_method() {
         // Test the FileHandle::is_expired() method directly
-        let handle = FileHandle::new(1, 100, libc::O_RDONLY);
+        let handle = FileHandle::new(1, 100, 1, libc::O_RDONLY);
 
         // Handle just created should not be expired with any reasonable TTL
         assert!(!handle.is_expired(Duration::from_secs(3600)));

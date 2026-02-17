@@ -110,10 +110,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should resolve correctly
   - Implemented: Added special handling for "." and ".." in lookup() callback and 5 comprehensive tests
 
-- [ ] **EDGE-014**: Test empty directory listing
+- [x] **EDGE-014**: Test empty directory listing
   - Create empty directory, list contents
-  - Should return "." and ".." only
+  - Should return "." and ".." only  
   - Verify no crash or error
+  - Implemented: test_edge_014_empty_directory_listing in tests/fuse_operations.rs
 
 - [ ] **EDGE-015**: Test directory with many files
   - Create directory with 1000+ files
