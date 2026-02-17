@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix EDGE-005 piece boundary test expectation
+  - Fixed incorrect expected value in test spanning multiple pieces
+  - Test case (100, 3000, 3) expected 3 pieces but actually spans 4 pieces
+  - Updated expectation from 3 to 4 to match correct calculation
+  - All 5 EDGE-005 tests now pass: `cargo test edge_005` ✅
+
 ### Added
 
 - Add edge case tests for zero-byte reads (EDGE-002)

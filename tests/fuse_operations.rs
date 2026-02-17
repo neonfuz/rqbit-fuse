@@ -4565,7 +4565,7 @@ async fn test_edge_005_read_spanning_multiple_piece_boundaries() {
         (1020, 100, 2),     // Span pieces 0-1 (starts near end of piece 0)
         (1020, 1028, 2),    // Span pieces 0-1 (1020 to 2048, ends just at piece 2 boundary)
         (2044, 100, 2),     // Span pieces 1-2 (starts near end of piece 1)
-        (100, 3000, 3),     // Span pieces 0-2 (from 100 to 3100, covers 3 pieces)
+        (100, 3000, 4),     // Span pieces 0-3 (from 100 to 3100, covers 4 pieces: 0,1,2,3)
     ];
 
     for (start_offset, read_size, expected_pieces) in test_cases {

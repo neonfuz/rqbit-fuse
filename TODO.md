@@ -43,7 +43,7 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should return available bytes or empty, not error
   - Implemented: 4 tests in tests/fuse_operations.rs
 
-- [ ] **EDGE-005**: Test piece boundary reads
+- [x] **EDGE-005**: Test piece boundary reads
   - Read starting exactly at piece boundary
   - Read ending exactly at piece boundary
   - Read spanning multiple piece boundaries
