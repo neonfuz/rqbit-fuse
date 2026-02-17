@@ -590,20 +590,31 @@ impl RqbitClient {
     /// # Returns
     /// A `TorrentStatusWithBitfield` struct containing both stats and bitfield
     #[instrument(skip(self), fields(api_op = "get_torrent_status_with_bitfield", id))]
-    pub async fn get_torrent_status_with_bitfield(&self, id: u64) -> Result<TorrentStatusWithBitfield> {
+    pub async fn get_torrent_status_with_bitfield(
+        &self,
+        id: u64,
+    ) -> Result<TorrentStatusWithBitfield> {
         // Check cache first
         {
             let cache = self.status_bitfield_cache.read().await;
             if let Some((cached_at, cached_result)) = cache.get(&id) {
                 if cached_at.elapsed() < self.status_bitfield_cache_ttl {
-                    debug!(api_op = "get_torrent_status_with_bitfield", id = id, "cache hit");
+                    debug!(
+                        api_op = "get_torrent_status_with_bitfield",
+                        id = id,
+                        "cache hit"
+                    );
                     return Ok(cached_result.clone());
                 }
             }
         }
 
         // Cache miss or expired - fetch fresh data in parallel
-        debug!(api_op = "get_torrent_status_with_bitfield", id = id, "cache miss, fetching fresh data");
+        debug!(
+            api_op = "get_torrent_status_with_bitfield",
+            id = id,
+            "cache miss, fetching fresh data"
+        );
 
         let stats_future = self.get_torrent_stats(id);
         let bitfield_future = self.get_piece_bitfield(id);

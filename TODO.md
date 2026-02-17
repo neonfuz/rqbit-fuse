@@ -80,10 +80,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should not allocate handle 0
   - Implemented: `test_handle_overflow` in src/types/handle.rs with overflow protection in allocate() method
 
-- [ ] **EDGE-010**: Test TTL expiration of handles
+- [x] **EDGE-010**: Test TTL expiration of handles
   - Create handle, wait for TTL (1 hour), access handle
   - Should be cleaned up and return error
   - Test with artificially shortened TTL for test speed
+  - Implemented: 3 tests covering basic TTL expiration, multiple handles with staggered creation, and direct is_expired() method testing
 
 ---
 

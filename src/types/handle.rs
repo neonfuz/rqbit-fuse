@@ -578,4 +578,133 @@ mod tests {
         // Verify handle count
         assert_eq!(manager.len(), 4, "Should have 4 handles allocated");
     }
+
+    #[test]
+    fn test_handle_ttl_expiration() {
+        // EDGE-010: Test TTL expiration of handles
+        // Verify that handles are properly cleaned up when their TTL expires
+        let manager = FileHandleManager::new();
+
+        // Create a handle
+        let fh = manager.allocate(100, libc::O_RDONLY);
+        assert!(fh > 0, "Handle should be allocated successfully");
+        assert_eq!(manager.len(), 1, "Should have 1 handle");
+
+        // Use a very short TTL for testing (1 millisecond)
+        let ttl = Duration::from_millis(1);
+
+        // Immediately after creation, handle should not be expired
+        assert_eq!(
+            manager.count_expired(ttl),
+            0,
+            "Handle should not be expired immediately after creation"
+        );
+
+        // Verify we can access the handle
+        assert!(
+            manager.get(fh).is_some(),
+            "Should be able to access handle before TTL expires"
+        );
+
+        // Wait for TTL to expire (sleep for slightly longer than TTL)
+        std::thread::sleep(Duration::from_millis(10));
+
+        // Now the handle should be expired
+        assert_eq!(
+            manager.count_expired(ttl),
+            1,
+            "Handle should be expired after TTL"
+        );
+
+        // Remove expired handles
+        let removed_count = manager.remove_expired_handles(ttl);
+        assert_eq!(removed_count, 1, "Should remove 1 expired handle");
+
+        // Verify handle is no longer accessible
+        assert!(
+            manager.get(fh).is_none(),
+            "Should not be able to access expired handle"
+        );
+        assert!(!manager.contains(fh), "Expired handle should not exist");
+        assert_eq!(manager.len(), 0, "Should have 0 handles after cleanup");
+    }
+
+    #[test]
+    fn test_handle_ttl_with_multiple_handles() {
+        // Test TTL expiration with multiple handles created at different times
+        let manager = FileHandleManager::new();
+        let ttl = Duration::from_millis(50);
+
+        // Create first handle
+        let fh1 = manager.allocate(100, libc::O_RDONLY);
+        assert!(fh1 > 0);
+
+        // Wait a bit
+        std::thread::sleep(Duration::from_millis(30));
+
+        // Create second handle
+        let fh2 = manager.allocate(200, libc::O_RDONLY);
+        assert!(fh2 > 0);
+
+        // At this point:
+        // - fh1 is ~30ms old (not yet expired with 50ms TTL)
+        // - fh2 is brand new
+        assert_eq!(
+            manager.count_expired(ttl),
+            0,
+            "No handles should be expired yet"
+        );
+
+        // Wait for fh1 to expire but not fh2
+        std::thread::sleep(Duration::from_millis(30));
+
+        // Now fh1 should be expired (~60ms old) but fh2 should not (~30ms old)
+        assert_eq!(
+            manager.count_expired(ttl),
+            1,
+            "Only first handle should be expired"
+        );
+        assert!(
+            manager.get(fh1).unwrap().is_expired(ttl),
+            "First handle should be expired"
+        );
+        assert!(
+            !manager.get(fh2).unwrap().is_expired(ttl),
+            "Second handle should not be expired"
+        );
+
+        // Remove expired handles
+        let removed = manager.remove_expired_handles(ttl);
+        assert_eq!(removed, 1, "Should remove only the expired handle");
+
+        // Verify state
+        assert!(
+            manager.get(fh1).is_none(),
+            "Expired handle should be removed"
+        );
+        assert!(
+            manager.get(fh2).is_some(),
+            "Non-expired handle should remain"
+        );
+        assert_eq!(manager.len(), 1, "Should have 1 handle remaining");
+    }
+
+    #[test]
+    fn test_handle_is_expired_method() {
+        // Test the FileHandle::is_expired() method directly
+        let handle = FileHandle::new(1, 100, libc::O_RDONLY);
+
+        // Handle just created should not be expired with any reasonable TTL
+        assert!(!handle.is_expired(Duration::from_secs(3600)));
+        assert!(!handle.is_expired(Duration::from_secs(1)));
+
+        // Wait a tiny bit
+        std::thread::sleep(Duration::from_millis(5));
+
+        // Should be expired with very short TTL
+        assert!(handle.is_expired(Duration::from_millis(1)));
+
+        // Should not be expired with longer TTL
+        assert!(!handle.is_expired(Duration::from_millis(100)));
+    }
 }
