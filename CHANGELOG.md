@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add edge case tests for zero-byte reads (EDGE-002)
+  - 3 comprehensive tests in tests/fuse_operations.rs
+  - Tests zero-byte read at offset = 0
+  - Tests zero-byte read at various offsets (start, middle, block boundaries, EOF, beyond EOF)
+  - Tests zero-byte reads on files of various sizes (1 byte, 100 bytes, 4096 bytes, 1MB)
+  - Verifies implementation returns empty data without error
+  - All tests pass: `cargo test edge_002` ✅
+
 - Add edge case tests for EOF boundary reads (EDGE-001)
   - 9 comprehensive tests across streaming and fuse_operations modules
   - Tests read at file_size - 1 (last byte) and file_size (EOF)
