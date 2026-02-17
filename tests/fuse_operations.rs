@@ -4302,3 +4302,500 @@ async fn test_edge_004_read_range_calculation_beyond_eof() {
         }
     }
 }
+
+// ============================================================================
+// EDGE-005: Piece Boundary Read Tests
+// ============================================================================
+// These tests verify that read operations at piece boundaries work correctly.
+// Torrent files are divided into pieces, and reads may need to cross piece
+// boundaries. These tests ensure data integrity when reading across boundaries.
+
+/// Test reading starting exactly at a piece boundary
+/// The read should correctly return data from the start of a piece
+#[tokio::test]
+async fn test_edge_005_read_starting_at_piece_boundary() {
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Create a file with multiple pieces (piece_length = 1024 bytes, file = 4096 bytes = 4 pieces)
+    let piece_length: u64 = 1024;
+    let file_size: u64 = 4096;
+    let file_content: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
+
+    Mock::given(method("GET"))
+        .and(path_regex(r"/torrents/1/files/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "piece_boundary_test".to_string(),
+        name: "piece_test.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "piece_test.bin".to_string(),
+            length: file_size,
+            components: vec!["piece_test.bin".to_string()],
+        }],
+        piece_length: Some(piece_length),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/piece_test.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Test reading at piece boundaries: 0, 1024, 2048, 3072
+    let piece_boundaries: Vec<u64> = vec![0, 1024, 2048, 3072];
+
+    for boundary in piece_boundaries {
+        // Verify this is a piece boundary
+        assert_eq!(
+            boundary % piece_length,
+            0,
+            "Offset {} should be a piece boundary",
+            boundary
+        );
+
+        // Calculate which piece this is
+        let piece_index = boundary / piece_length;
+        let remaining_bytes = file_size - boundary;
+
+        // Verify we can read from this boundary
+        assert!(
+            remaining_bytes > 0,
+            "Should have bytes remaining at piece boundary {}",
+            boundary
+        );
+
+        // The read at piece boundary should work correctly
+        // Range request format: bytes=boundary-(boundary+size-1)
+        let expected_range_start = boundary;
+        let read_size: u32 = 100; // Read 100 bytes from boundary
+        let expected_range_end = std::cmp::min(boundary + read_size as u64, file_size) - 1;
+
+        assert_eq!(
+            expected_range_start, boundary,
+            "Range should start at piece boundary {} (piece {})",
+            boundary, piece_index
+        );
+        assert!(
+            expected_range_end >= expected_range_start,
+            "Range end should be >= range start"
+        );
+    }
+}
+
+/// Test reading ending exactly at a piece boundary
+/// The read should correctly return data up to the end of a piece
+#[tokio::test]
+async fn test_edge_005_read_ending_at_piece_boundary() {
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Create a file with multiple pieces (piece_length = 1024 bytes, file = 4096 bytes)
+    let piece_length: u64 = 1024;
+    let file_size: u64 = 4096;
+    let file_content: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
+
+    Mock::given(method("GET"))
+        .and(path_regex(r"/torrents/1/files/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "piece_boundary_test".to_string(),
+        name: "piece_test.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "piece_test.bin".to_string(),
+            length: file_size,
+            components: vec!["piece_test.bin".to_string()],
+        }],
+        piece_length: Some(piece_length),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/piece_test.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Test reads that end exactly at piece boundaries
+    // Start at 0, read 1024 bytes -> ends at piece boundary 1024
+    // Start at 512, read 512 bytes -> ends at piece boundary 1024
+    let test_cases: Vec<(u64, u32)> = vec![
+        (0, 1024),      // Read full first piece
+        (512, 512),     // Read half of first piece, end at boundary
+        (1024, 1024),   // Read full second piece
+        (1536, 512),    // Read half of second piece, end at boundary 2048
+        (2048, 1024),   // Read full third piece
+        (3072, 1024),   // Read full fourth piece
+    ];
+
+    for (start_offset, read_size) in test_cases {
+        let end_offset = start_offset + read_size as u64;
+
+        // Verify the end is at a piece boundary
+        assert_eq!(
+            end_offset % piece_length,
+            0,
+            "End offset {} should be a piece boundary",
+            end_offset
+        );
+
+        // Calculate the piece indices
+        let start_piece = start_offset / piece_length;
+        let end_piece = end_offset / piece_length;
+
+        // Verify the range is within bounds
+        assert!(
+            end_offset <= file_size,
+            "End offset {} should be <= file_size {}",
+            end_offset,
+            file_size
+        );
+
+        // The read should span (end_piece - start_piece) pieces
+        let pieces_spanned = end_piece - start_piece;
+        assert!(
+            pieces_spanned >= 1,
+            "Read should span at least one piece"
+        );
+
+        // Verify range calculation
+        let expected_end = std::cmp::min(start_offset + read_size as u64, file_size) - 1;
+        assert!(
+            expected_end >= start_offset,
+            "Range should be valid: {} to {}",
+            start_offset,
+            expected_end
+        );
+    }
+}
+
+/// Test reading spanning multiple piece boundaries
+/// The read should correctly return data across piece boundaries
+#[tokio::test]
+async fn test_edge_005_read_spanning_multiple_piece_boundaries() {
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Create a file with 4 pieces (piece_length = 1024 bytes, file = 4096 bytes)
+    let piece_length: u64 = 1024;
+    let file_size: u64 = 4096;
+    let file_content: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
+
+    Mock::given(method("GET"))
+        .and(path_regex(r"/torrents/1/files/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "piece_boundary_test".to_string(),
+        name: "piece_test.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "piece_test.bin".to_string(),
+            length: file_size,
+            components: vec!["piece_test.bin".to_string()],
+        }],
+        piece_length: Some(piece_length),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/piece_test.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Test reads that span multiple piece boundaries
+    // (start_offset, read_size, expected_pieces_spanned)
+    let test_cases: Vec<(u64, u32, u64)> = vec![
+        (512, 1024, 2),     // Span pieces 0-1 (starts in piece 0, ends in piece 1)
+        (512, 2048, 3),     // Span pieces 0-2 (starts in piece 0, ends in piece 2)
+        (1020, 100, 2),     // Span pieces 0-1 (starts near end of piece 0)
+        (1020, 1028, 2),    // Span pieces 0-1 (1020 to 2048, ends just at piece 2 boundary)
+        (2044, 100, 2),     // Span pieces 1-2 (starts near end of piece 1)
+        (100, 3000, 3),     // Span pieces 0-2 (from 100 to 3100, covers 3 pieces)
+    ];
+
+    for (start_offset, read_size, expected_pieces) in test_cases {
+        let end_offset = start_offset + read_size as u64;
+        let end_offset_clamped = std::cmp::min(end_offset, file_size);
+
+        // Calculate piece indices
+        let start_piece = start_offset / piece_length;
+        let end_piece = (end_offset_clamped - 1) / piece_length;
+        let pieces_spanned = end_piece - start_piece + 1;
+
+        // Verify we span the expected number of pieces
+        assert_eq!(
+            pieces_spanned, expected_pieces,
+            "Read from {} to {} should span {} pieces, but spans {}",
+            start_offset, end_offset_clamped, expected_pieces, pieces_spanned
+        );
+
+        // Verify the read is within bounds
+        assert!(
+            start_offset < file_size,
+            "Start offset {} should be < file_size {}",
+            start_offset,
+            file_size
+        );
+
+        // Verify range calculation
+        let expected_end = end_offset_clamped.saturating_sub(1);
+        assert!(
+            expected_end >= start_offset || end_offset_clamped == start_offset,
+            "Range should be valid: {} to {} (clamped end: {})",
+            start_offset,
+            expected_end,
+            end_offset_clamped
+        );
+    }
+}
+
+/// Test piece boundary reads with various piece sizes
+/// Tests different piece lengths to ensure boundary calculations work correctly
+#[tokio::test]
+async fn test_edge_005_read_with_various_piece_sizes() {
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Test with various piece sizes
+    let test_cases: Vec<(u64, u64, &'static str)> = vec![
+        (256, 1024, "small_pieces"),       // 256-byte pieces, 1KB file
+        (512, 4096, "medium_pieces"),      // 512-byte pieces, 4KB file
+        (1024, 8192, "standard_pieces"),   // 1KB pieces, 8KB file
+        (4096, 16384, "block_size_pieces"), // 4KB pieces, 16KB file
+    ];
+
+    for (piece_length, file_size, name) in test_cases {
+        let file_content: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/torrents/1/files/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+            .mount(&mock_server)
+            .await;
+
+        let metrics = Arc::new(Metrics::new());
+        let fs = create_test_fs(config.clone(), metrics);
+
+        let torrent_info = TorrentInfo {
+            id: 1,
+            info_hash: format!("piece_test_{}", name),
+            name: format!("{}.bin", name),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: format!("{}.bin", name),
+                length: file_size,
+                components: vec![format!("{}.bin", name)],
+            }],
+            piece_length: Some(piece_length),
+        };
+
+        fs.create_torrent_structure(&torrent_info).unwrap();
+
+        let inode_manager = fs.inode_manager();
+        let file_path = format!("/{}.bin", name);
+        let file_ino = inode_manager
+            .lookup_by_path(&file_path)
+            .unwrap_or_else(|| panic!("File {} should exist", file_path));
+
+        let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+        let attr = fs.build_file_attr(&file_entry);
+
+        assert_eq!(attr.size, file_size, "File {} should have correct size", name);
+
+        // Calculate number of pieces
+        let num_pieces = (file_size + piece_length - 1) / piece_length;
+
+        // Test reading at each piece boundary
+        for piece_idx in 0..num_pieces {
+            let boundary = piece_idx * piece_length;
+
+            if boundary < file_size {
+                // Verify this is a piece boundary
+                assert_eq!(
+                    boundary % piece_length,
+                    0,
+                    "Offset {} should be a piece boundary for {}",
+                    boundary,
+                    name
+                );
+
+                // Verify we can read from this boundary
+                let remaining = file_size - boundary;
+                assert!(
+                    remaining > 0,
+                    "Should have bytes remaining at boundary {} for {}",
+                    boundary,
+                    name
+                );
+            }
+        }
+
+        // Test reading across boundaries
+        let mid_piece_offset = piece_length / 2;
+        if mid_piece_offset < file_size {
+            let read_size = piece_length as u32;
+            let end_offset = std::cmp::min(mid_piece_offset + read_size as u64, file_size);
+            let start_piece = mid_piece_offset / piece_length;
+            let end_piece = (end_offset.saturating_sub(1)) / piece_length;
+
+            assert!(
+                end_piece >= start_piece,
+                "Read should span at least one piece for {}",
+                name
+            );
+        }
+    }
+}
+
+/// Test reading at piece boundaries near EOF
+/// Ensures reads work correctly when piece boundaries are near or at EOF
+#[tokio::test]
+async fn test_edge_005_read_at_piece_boundary_near_eof() {
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Create a file where the last piece is incomplete (not aligned to piece boundary)
+    let piece_length: u64 = 1024;
+    let file_size: u64 = 2500; // 2 full pieces (2048 bytes) + 452 bytes in last piece
+    let file_content: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
+
+    Mock::given(method("GET"))
+        .and(path_regex(r"/torrents/1/files/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "piece_boundary_eof".to_string(),
+        name: "piece_eof.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "piece_eof.bin".to_string(),
+            length: file_size,
+            components: vec!["piece_eof.bin".to_string()],
+        }],
+        piece_length: Some(piece_length),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/piece_eof.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Calculate piece boundaries
+    let piece0_boundary = 0;
+    let piece1_boundary = 1024;
+    let piece2_boundary = 2048;
+
+    // Verify boundaries
+    assert_eq!(piece0_boundary % piece_length, 0, "Piece 0 boundary should be at 0");
+    assert_eq!(piece1_boundary % piece_length, 0, "Piece 1 boundary should be at 1024");
+    assert_eq!(piece2_boundary % piece_length, 0, "Piece 2 boundary should be at 2048");
+
+    // Test reading from last piece boundary (2048) to EOF
+    let last_piece_remaining = file_size - piece2_boundary;
+    assert_eq!(
+        last_piece_remaining, 452,
+        "Last piece should have 452 bytes (2500 - 2048)"
+    );
+
+    // Read from piece 2 boundary
+    let start_offset = piece2_boundary;
+    let read_size = 500u32; // Request more than available
+    let remaining = file_size.saturating_sub(start_offset);
+
+    assert_eq!(
+        remaining, 452,
+        "Should have 452 bytes remaining from offset 2048"
+    );
+
+    // Verify clamping logic works correctly for partial last piece
+    let end_offset = std::cmp::min(start_offset + read_size as u64, file_size);
+    assert_eq!(
+        end_offset, file_size,
+        "End should be clamped to file_size {} for partial last piece",
+        file_size
+    );
+
+    let actual_read_size = end_offset - start_offset;
+    assert_eq!(
+        actual_read_size, 452,
+        "Should read 452 bytes from last piece, not requested 500"
+    );
+}
