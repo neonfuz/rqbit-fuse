@@ -1304,6 +1304,14 @@ impl Filesystem for TorrentFS {
                 // Allocate a unique file handle
                 let fh = self.file_handles.allocate(ino, flags);
 
+                // Check if handle allocation failed (limit reached)
+                if fh == 0 {
+                    self.metrics.fuse.record_error();
+                    fuse_error!(self, "open", "EMFILE", reason = "handle_limit_reached");
+                    reply.error(libc::EMFILE);
+                    return;
+                }
+
                 fuse_ok!(self, "open", ino = ino, fh = fh);
                 reply.opened(fh, 0);
             }
