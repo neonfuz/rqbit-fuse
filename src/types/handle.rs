@@ -170,6 +170,14 @@ impl FileHandleManager {
         }
 
         let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
+
+        // Handle overflow: if we wrapped to 0, skip it and get next
+        let fh = if fh == 0 {
+            self.next_handle.fetch_add(1, Ordering::SeqCst)
+        } else {
+            fh
+        };
+
         let handle = FileHandle::new(fh, inode, flags);
 
         let mut handles = self.handles.lock().unwrap();
@@ -517,5 +525,57 @@ mod tests {
         }
 
         assert_eq!(manager.len(), 100, "Should have 100 handles");
+    }
+
+    #[test]
+    fn test_handle_overflow() {
+        // EDGE-009: Test handle allocation wrapping past u64::MAX
+        // When the handle counter overflows, it should:
+        // 1. Skip handle 0 (reserved/invalid)
+        // 2. Maintain handle uniqueness
+
+        let manager = FileHandleManager::new();
+
+        // Set next_handle to u64::MAX - 2 to test overflow behavior
+        manager.set_next_handle(u64::MAX - 2);
+
+        // Allocate a few handles to trigger overflow
+        let fh1 = manager.allocate(100, libc::O_RDONLY);
+        let fh2 = manager.allocate(101, libc::O_RDONLY);
+        let fh3 = manager.allocate(102, libc::O_RDONLY);
+        let fh4 = manager.allocate(103, libc::O_RDONLY);
+
+        // Verify handle 0 is never allocated
+        assert_ne!(fh1, 0, "Handle should never be 0");
+        assert_ne!(fh2, 0, "Handle should never be 0");
+        assert_ne!(fh3, 0, "Handle should never be 0");
+        assert_ne!(fh4, 0, "Handle should never be 0");
+
+        // Verify the sequence: u64::MAX-2, u64::MAX-1, u64::MAX, 1 (skipping 0)
+        assert_eq!(fh1, u64::MAX - 2, "First handle should be u64::MAX - 2");
+        assert_eq!(fh2, u64::MAX - 1, "Second handle should be u64::MAX - 1");
+        assert_eq!(fh3, u64::MAX, "Third handle should be u64::MAX");
+        assert_eq!(fh4, 1, "Fourth handle should wrap to 1 (skipping 0)");
+
+        // Verify all handles are unique
+        let handles = vec![fh1, fh2, fh3, fh4];
+        let unique_handles: std::collections::HashSet<_> = handles.iter().cloned().collect();
+        assert_eq!(
+            unique_handles.len(),
+            handles.len(),
+            "All handles should be unique"
+        );
+
+        // Verify all handles are valid (can be looked up)
+        for fh in &handles {
+            assert!(
+                manager.contains(*fh),
+                "Handle {} should exist in manager",
+                fh
+            );
+        }
+
+        // Verify handle count
+        assert_eq!(manager.len(), 4, "Should have 4 handles allocated");
     }
 }

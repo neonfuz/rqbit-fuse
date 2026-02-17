@@ -4457,12 +4457,12 @@ async fn test_edge_005_read_ending_at_piece_boundary() {
     // Start at 0, read 1024 bytes -> ends at piece boundary 1024
     // Start at 512, read 512 bytes -> ends at piece boundary 1024
     let test_cases: Vec<(u64, u32)> = vec![
-        (0, 1024),      // Read full first piece
-        (512, 512),     // Read half of first piece, end at boundary
-        (1024, 1024),   // Read full second piece
-        (1536, 512),    // Read half of second piece, end at boundary 2048
-        (2048, 1024),   // Read full third piece
-        (3072, 1024),   // Read full fourth piece
+        (0, 1024),    // Read full first piece
+        (512, 512),   // Read half of first piece, end at boundary
+        (1024, 1024), // Read full second piece
+        (1536, 512),  // Read half of second piece, end at boundary 2048
+        (2048, 1024), // Read full third piece
+        (3072, 1024), // Read full fourth piece
     ];
 
     for (start_offset, read_size) in test_cases {
@@ -4490,10 +4490,7 @@ async fn test_edge_005_read_ending_at_piece_boundary() {
 
         // The read should span (end_piece - start_piece) pieces
         let pieces_spanned = end_piece - start_piece;
-        assert!(
-            pieces_spanned >= 1,
-            "Read should span at least one piece"
-        );
+        assert!(pieces_spanned >= 1, "Read should span at least one piece");
 
         // Verify range calculation
         let expected_end = std::cmp::min(start_offset + read_size as u64, file_size) - 1;
@@ -4560,12 +4557,12 @@ async fn test_edge_005_read_spanning_multiple_piece_boundaries() {
     // Test reads that span multiple piece boundaries
     // (start_offset, read_size, expected_pieces_spanned)
     let test_cases: Vec<(u64, u32, u64)> = vec![
-        (512, 1024, 2),     // Span pieces 0-1 (starts in piece 0, ends in piece 1)
-        (512, 2048, 3),     // Span pieces 0-2 (starts in piece 0, ends in piece 2)
-        (1020, 100, 2),     // Span pieces 0-1 (starts near end of piece 0)
-        (1020, 1028, 2),    // Span pieces 0-1 (1020 to 2048, ends just at piece 2 boundary)
-        (2044, 100, 2),     // Span pieces 1-2 (starts near end of piece 1)
-        (100, 3000, 4),     // Span pieces 0-3 (from 100 to 3100, covers 4 pieces: 0,1,2,3)
+        (512, 1024, 2),  // Span pieces 0-1 (starts in piece 0, ends in piece 1)
+        (512, 2048, 3),  // Span pieces 0-2 (starts in piece 0, ends in piece 2)
+        (1020, 100, 2),  // Span pieces 0-1 (starts near end of piece 0)
+        (1020, 1028, 2), // Span pieces 0-1 (1020 to 2048, ends just at piece 2 boundary)
+        (2044, 100, 2),  // Span pieces 1-2 (starts near end of piece 1)
+        (100, 3000, 4),  // Span pieces 0-3 (from 100 to 3100, covers 4 pieces: 0,1,2,3)
     ];
 
     for (start_offset, read_size, expected_pieces) in test_cases {
@@ -4617,9 +4614,9 @@ async fn test_edge_005_read_with_various_piece_sizes() {
 
     // Test with various piece sizes
     let test_cases: Vec<(u64, u64, &'static str)> = vec![
-        (256, 1024, "small_pieces"),       // 256-byte pieces, 1KB file
-        (512, 4096, "medium_pieces"),      // 512-byte pieces, 4KB file
-        (1024, 8192, "standard_pieces"),   // 1KB pieces, 8KB file
+        (256, 1024, "small_pieces"),        // 256-byte pieces, 1KB file
+        (512, 4096, "medium_pieces"),       // 512-byte pieces, 4KB file
+        (1024, 8192, "standard_pieces"),    // 1KB pieces, 8KB file
         (4096, 16384, "block_size_pieces"), // 4KB pieces, 16KB file
     ];
 
@@ -4660,7 +4657,11 @@ async fn test_edge_005_read_with_various_piece_sizes() {
         let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
         let attr = fs.build_file_attr(&file_entry);
 
-        assert_eq!(attr.size, file_size, "File {} should have correct size", name);
+        assert_eq!(
+            attr.size, file_size,
+            "File {} should have correct size",
+            name
+        );
 
         // Calculate number of pieces
         let num_pieces = (file_size + piece_length - 1) / piece_length;
@@ -4764,9 +4765,21 @@ async fn test_edge_005_read_at_piece_boundary_near_eof() {
     let piece2_boundary = 2048;
 
     // Verify boundaries
-    assert_eq!(piece0_boundary % piece_length, 0, "Piece 0 boundary should be at 0");
-    assert_eq!(piece1_boundary % piece_length, 0, "Piece 1 boundary should be at 1024");
-    assert_eq!(piece2_boundary % piece_length, 0, "Piece 2 boundary should be at 2048");
+    assert_eq!(
+        piece0_boundary % piece_length,
+        0,
+        "Piece 0 boundary should be at 0"
+    );
+    assert_eq!(
+        piece1_boundary % piece_length,
+        0,
+        "Piece 1 boundary should be at 1024"
+    );
+    assert_eq!(
+        piece2_boundary % piece_length,
+        0,
+        "Piece 2 boundary should be at 2048"
+    );
 
     // Test reading from last piece boundary (2048) to EOF
     let last_piece_remaining = file_size - piece2_boundary;
