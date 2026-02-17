@@ -78,6 +78,8 @@ pub struct FuseMetrics {
     pub error_count: AtomicU64,
     /// Total time spent in read operations (nanoseconds)
     pub read_latency_ns: AtomicU64,
+    /// Total number of piece availability checks that failed
+    pub pieces_unavailable_errors: AtomicU64,
 }
 
 impl FuseMetrics {
@@ -93,6 +95,7 @@ impl FuseMetrics {
     record_op!(record_open, open_count, "open");
     record_op!(record_release, release_count, "release");
     record_op!(record_error, error_count);
+    record_op!(record_pieces_unavailable, pieces_unavailable_errors, "pieces_unavailable");
 
     /// Record a read operation with bytes and latency
     pub fn record_read(&self, bytes: u64, latency: Duration) {
@@ -122,6 +125,7 @@ impl FuseMetrics {
             let reads = self.read_count.load(Ordering::Relaxed);
             let bytes = self.bytes_read.load(Ordering::Relaxed);
             let errors = self.error_count.load(Ordering::Relaxed);
+            let pieces_unavailable = self.pieces_unavailable_errors.load(Ordering::Relaxed);
             let new_reads = self.read_count.load(Ordering::Relaxed);
             if new_reads == reads {
                 let avg_latency = self.avg_latency_ms();
@@ -133,6 +137,7 @@ impl FuseMetrics {
                     avg_read_latency_ms = avg_latency,
                     throughput_mbps = throughput,
                     errors = errors,
+                    pieces_unavailable_errors = pieces_unavailable,
                     duration_secs = elapsed_secs,
                 );
                 return;

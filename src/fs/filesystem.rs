@@ -73,6 +73,16 @@ impl TorrentFS {
         &self.config.mount.mount_point
     }
 
+    /// Get a reference to the async worker.
+    pub fn async_worker(&self) -> &Arc<AsyncFuseWorker> {
+        &self.async_worker
+    }
+
+    /// Get a reference to the config.
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
     /// Creates a new TorrentFS instance with the given configuration.
     /// Note: This does not initialize the filesystem - call mount() to do so.
     ///
@@ -1049,6 +1059,7 @@ impl Filesystem for TorrentFS {
                         ) {
                             Ok(false) => {
                                 // Pieces not available - return I/O error
+                                self.metrics.fuse.record_pieces_unavailable();
                                 fuse_error!(
                                     self,
                                     "read",

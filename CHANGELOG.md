@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add metrics for piece check failures (IDEA1-010)
+  - Added `pieces_unavailable_errors` counter to `FuseMetrics`
+  - Tracks how often reads are rejected due to unavailable pieces on paused torrents
+  - Integrated into filesystem read path - increments when EIO is returned for missing pieces
+  - Added to metrics summary log output
+  - Location: `src/metrics.rs`
+  - All tests pass: `cargo test` ✅
+
+- Added accessor methods to `TorrentFS` for testing
+  - Added `async_worker()` method to access the async worker
+  - Added `config()` method to access the configuration
+  - Enables integration tests to verify piece checking functionality
+  - Location: `src/fs/filesystem.rs`
+
 - Add piece check bypass for completed torrents (IDEA1-006)
   - Added optimization to skip piece availability API calls for completed torrents
   - Checks `status.is_complete()` before performing piece check for paused torrents
