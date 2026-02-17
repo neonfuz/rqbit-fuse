@@ -62,12 +62,18 @@ Return an immediate I/O error (EIO) when:
   - Map to `libc::EIO` in `to_fuse_error()`
   - Location: `src/api/types.rs`
 
-- [ ] **IDEA1-005**: Modify `read()` method to check piece availability before streaming
+- [x] **IDEA1-005**: Modify `read()` method to check piece availability before streaming
   - After getting file metadata, check if torrent is paused
   - If paused, check if requested byte range has all pieces available
   - If any piece is missing, return `DataUnavailable` error immediately
   - Add config option `check_pieces_before_read` (default: true)
   - Location: `src/fs/filesystem.rs:read()` around line 1008
+  - Implementation details:
+    - Added new `CheckPiecesAvailable` request type to `FuseRequest` enum in `async_bridge.rs`
+    - Added `check_pieces_available()` method to `AsyncFuseWorker` 
+    - The async worker fetches torrent info to get `piece_length` internally
+    - Returns `EIO` error immediately when pieces are not available
+    - Configurable via `check_pieces_before_read` in `PerformanceConfig`
 
 - [ ] **IDEA1-006**: Add piece check bypass for completed torrents
   - If torrent status shows `finished=true`, skip piece checking

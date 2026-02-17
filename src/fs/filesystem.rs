@@ -1024,6 +1024,62 @@ impl Filesystem for TorrentFS {
             }
         }
 
+        // Check piece availability for paused torrents
+        if self.config.performance.check_pieces_before_read {
+            if let Some(status) = self.torrent_statuses.get(&torrent_id) {
+                // Only check pieces if torrent is paused
+                if status.state == crate::api::types::TorrentState::Paused {
+                    // Calculate the actual read size
+                    let actual_size = std::cmp::min(size as u64, file_size.saturating_sub(offset));
+
+                    if actual_size > 0 {
+                        // Check if pieces are available
+                        let timeout = Duration::from_secs(5);
+                        match self.async_worker.check_pieces_available(
+                            torrent_id,
+                            offset,
+                            actual_size,
+                            timeout,
+                        ) {
+                            Ok(false) => {
+                                // Pieces not available - return I/O error
+                                fuse_error!(
+                                    self,
+                                    "read",
+                                    "EIO",
+                                    reason = "pieces_not_available",
+                                    torrent_id = torrent_id,
+                                    offset = offset,
+                                    size = actual_size
+                                );
+                                reply.error(libc::EIO);
+                                return;
+                            }
+                            Ok(true) => {
+                                // Pieces available - continue with read
+                                trace!(
+                                    fuse_op = "read",
+                                    torrent_id = torrent_id,
+                                    offset = offset,
+                                    size = actual_size,
+                                    "All pieces available for paused torrent"
+                                );
+                            }
+                            Err(e) => {
+                                // Error checking pieces - log but continue (fail open)
+                                warn!(
+                                    fuse_op = "read",
+                                    torrent_id = torrent_id,
+                                    error = %e,
+                                    "Failed to check piece availability, continuing with read"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Perform the read using the async worker to avoid blocking async in sync callbacks
         // This eliminates the deadlock risk from block_in_place + block_on pattern
         let timeout_duration = Duration::from_secs(self.config.performance.read_timeout);

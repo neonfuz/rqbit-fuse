@@ -116,6 +116,8 @@ macro_rules! env_var {
 /// piece_check_enabled = true
 /// # Return EAGAIN when data is unavailable
 /// return_eagain_for_unavailable = false
+/// # Check piece availability before reading from paused torrents
+/// check_pieces_before_read = true
 ///
 /// [monitoring]
 /// # Interval between status polls (seconds)
@@ -163,7 +165,8 @@ macro_rules! env_var {
 ///     "max_concurrent_reads": 10,
 ///     "readahead_size": 33554432,
 ///     "piece_check_enabled": true,
-///     "return_eagain_for_unavailable": false
+///     "return_eagain_for_unavailable": false,
+///     "check_pieces_before_read": true
 ///   },
 ///   "monitoring": {
 ///     "status_poll_interval": 5,
@@ -324,6 +327,7 @@ pub struct MountConfig {
 /// * `piece_check_enabled` - Enable piece verification checksums (default: true)
 /// * `return_eagain_for_unavailable` - Return EAGAIN when data is unavailable (default: false)
 /// * `prefetch_enabled` - Enable prefetching (default: false)
+/// * `check_pieces_before_read` - Check piece availability before reading from paused torrents (default: true)
 ///
 /// # Environment Variables
 ///
@@ -333,6 +337,7 @@ pub struct MountConfig {
 /// - `TORRENT_FUSE_PIECE_CHECK_ENABLED` - Enable piece verification
 /// - `TORRENT_FUSE_RETURN_EAGAIN` - Return EAGAIN for unavailable data
 /// - `TORRENT_FUSE_PREFETCH_ENABLED` - Enable prefetching
+/// - `TORRENT_FUSE_CHECK_PIECES_BEFORE_READ` - Check piece availability before read
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerformanceConfig {
@@ -342,6 +347,7 @@ pub struct PerformanceConfig {
     pub piece_check_enabled: bool,
     pub return_eagain_for_unavailable: bool,
     pub prefetch_enabled: bool,
+    pub check_pieces_before_read: bool,
 }
 
 /// Configuration for monitoring and status polling.
@@ -432,6 +438,7 @@ default_fn!(default_readahead_size, u64, 33554432);
 default_fn!(default_piece_check_enabled, bool, true);
 default_fn!(default_return_eagain_for_unavailable, bool, false);
 default_fn!(default_prefetch_enabled, bool, false);
+default_fn!(default_check_pieces_before_read, bool, true);
 default_fn!(default_status_poll_interval, u64, 5);
 default_fn!(default_stalled_timeout, u64, 300);
 default_fn!(default_log_level, String, "info".to_string());
@@ -447,7 +454,7 @@ default_fn!(default_max_inodes, usize, 100000);
 default_impl!(ApiConfig, url: default_api_url, username: default_none, password: default_none);
 default_impl!(CacheConfig, metadata_ttl: default_metadata_ttl, torrent_list_ttl: default_torrent_list_ttl, piece_ttl: default_piece_ttl, max_entries: default_max_entries);
 default_impl!(MountConfig, mount_point: default_mount_point, allow_other: default_allow_other, auto_unmount: default_auto_unmount, uid: default_uid, gid: default_gid);
-default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable, prefetch_enabled: default_prefetch_enabled);
+default_impl!(PerformanceConfig, read_timeout: default_read_timeout, max_concurrent_reads: default_max_concurrent_reads, readahead_size: default_readahead_size, piece_check_enabled: default_piece_check_enabled, return_eagain_for_unavailable: default_return_eagain_for_unavailable, prefetch_enabled: default_prefetch_enabled, check_pieces_before_read: default_check_pieces_before_read);
 default_impl!(MonitoringConfig, status_poll_interval: default_status_poll_interval, stalled_timeout: default_stalled_timeout);
 default_impl!(LoggingConfig, level: default_log_level, log_fuse_operations: default_log_fuse_operations, log_api_calls: default_log_api_calls, metrics_enabled: default_metrics_enabled, metrics_interval_secs: default_metrics_interval_secs);
 default_impl!(ResourceLimitsConfig, max_cache_bytes: default_max_cache_bytes, max_open_streams: default_max_open_streams, max_inodes: default_max_inodes);
@@ -588,6 +595,11 @@ impl Config {
         env_var!(
             "TORRENT_FUSE_PREFETCH_ENABLED",
             self.performance.prefetch_enabled,
+            str::parse
+        );
+        env_var!(
+            "TORRENT_FUSE_CHECK_PIECES_BEFORE_READ",
+            self.performance.check_pieces_before_read,
             str::parse
         );
         env_var!("TORRENT_FUSE_LOG_LEVEL", self.logging.level);

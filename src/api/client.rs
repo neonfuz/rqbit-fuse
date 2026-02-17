@@ -648,7 +648,10 @@ impl RqbitClient {
     /// * `Ok(true)` - All pieces in the range are available
     /// * `Ok(false)` - At least one piece in the range is not available
     /// * `Err(ApiError)` - Failed to fetch torrent status
-    #[instrument(skip(self), fields(api_op = "check_range_available", torrent_id, offset, size))]
+    #[instrument(
+        skip(self),
+        fields(api_op = "check_range_available", torrent_id, offset, size)
+    )]
     pub async fn check_range_available(
         &self,
         torrent_id: u64,
@@ -661,10 +664,7 @@ impl RqbitClient {
             return Ok(true);
         }
         if piece_length == 0 {
-            return Err(ApiError::InvalidRange(
-                "piece_length cannot be zero".to_string(),
-            )
-            .into());
+            return Err(ApiError::InvalidRange("piece_length cannot be zero".to_string()).into());
         }
 
         // Get cached status with bitfield

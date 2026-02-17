@@ -26,6 +26,19 @@ pub enum FuseRequest {
         /// Channel to send the response
         response_tx: std::sync::mpsc::Sender<FuseResponse>,
     },
+    /// Check if pieces are available for a byte range
+    CheckPiecesAvailable {
+        /// Torrent ID
+        torrent_id: u64,
+        /// Starting byte offset
+        offset: u64,
+        /// Number of bytes to check
+        size: u64,
+        /// Timeout for the operation
+        timeout: Duration,
+        /// Channel to send the response
+        response_tx: std::sync::mpsc::Sender<FuseResponse>,
+    },
     /// Remove/forget a torrent from rqbit
     ForgetTorrent {
         /// Torrent ID to remove
@@ -43,6 +56,10 @@ pub enum FuseResponse {
     ReadSuccess { data: Vec<u8> },
     /// File read failed
     ReadError { error_code: i32, message: String },
+    /// Pieces are available for the requested range
+    PiecesAvailable,
+    /// Pieces are not available for the requested range
+    PiecesNotAvailable { reason: String },
     /// Torrent was successfully forgotten
     ForgetSuccess,
     /// Failed to forget torrent
@@ -205,6 +222,53 @@ impl AsyncFuseWorker {
                 let _ = response_tx.send(response);
             }
 
+            FuseRequest::CheckPiecesAvailable {
+                torrent_id,
+                offset,
+                size,
+                timeout,
+                response_tx,
+            } => {
+                trace!(
+                    torrent_id = torrent_id,
+                    offset = offset,
+                    size = size,
+                    "Handling CheckPiecesAvailable request"
+                );
+
+                // Fetch torrent info to get piece_length
+                let piece_length = match api_client.get_torrent(torrent_id).await {
+                    Ok(info) => info.piece_length.unwrap_or(256 * 1024), // Default to 256KB
+                    Err(_) => 256 * 1024,                                // Conservative default
+                };
+
+                let result = tokio::time::timeout(
+                    timeout,
+                    api_client.check_range_available(torrent_id, offset, size, piece_length),
+                )
+                .await;
+
+                let response = match result {
+                    Ok(Ok(true)) => FuseResponse::PiecesAvailable,
+                    Ok(Ok(false)) => FuseResponse::PiecesNotAvailable {
+                        reason: "Some pieces in the requested range are not available".to_string(),
+                    },
+                    Ok(Err(e)) => {
+                        let error_code = e.to_fuse_error();
+                        FuseResponse::ReadError {
+                            error_code,
+                            message: e.to_string(),
+                        }
+                    }
+                    Err(_) => FuseResponse::ReadError {
+                        error_code: libc::ETIMEDOUT,
+                        message: "Piece availability check timed out".to_string(),
+                    },
+                };
+
+                let _ = response_tx.send(response);
+            }
+
             FuseRequest::ForgetTorrent {
                 torrent_id,
                 response_tx,
@@ -314,6 +378,50 @@ impl AsyncFuseWorker {
                 message,
             } => Err(FuseError::IoError(format!(
                 "Read failed (code {}): {}",
+                error_code, message
+            ))),
+            _ => Err(FuseError::IoError("Unexpected response type".to_string())),
+        }
+    }
+
+    /// Check if pieces are available for a byte range in a torrent.
+    ///
+    /// # Arguments
+    /// * `torrent_id` - ID of the torrent
+    /// * `offset` - Starting byte offset
+    /// * `size` - Number of bytes to check
+    /// * `timeout` - Maximum time to wait for the operation
+    ///
+    /// # Returns
+    /// * `Ok(true)` if all pieces in the range are available
+    /// * `Ok(false)` if any piece in the range is not available
+    /// * `Err(FuseError)` if the operation failed
+    pub fn check_pieces_available(
+        &self,
+        torrent_id: u64,
+        offset: u64,
+        size: u64,
+        timeout: Duration,
+    ) -> FuseResult<bool> {
+        let response = self.send_request(
+            |tx| FuseRequest::CheckPiecesAvailable {
+                torrent_id,
+                offset,
+                size,
+                timeout,
+                response_tx: tx,
+            },
+            timeout + Duration::from_secs(5),
+        )?;
+
+        match response {
+            FuseResponse::PiecesAvailable => Ok(true),
+            FuseResponse::PiecesNotAvailable { .. } => Ok(false),
+            FuseResponse::ReadError {
+                error_code,
+                message,
+            } => Err(FuseError::IoError(format!(
+                "Piece check failed (code {}): {}",
                 error_code, message
             ))),
             _ => Err(FuseError::IoError("Unexpected response type".to_string())),
