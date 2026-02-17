@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-013: Test lookup of special entries ("." and "..")
+  - Added special case handling in `filesystem.rs:lookup()` for "." and ".." entries
+  - "." returns the current directory inode
+  - ".." returns the parent directory inode (root's parent is itself)
+  - Added 5 comprehensive tests in `tests/fuse_operations.rs`:
+    - `test_lookup_dot_in_root`: Tests "." resolves to root directory
+    - `test_lookup_dotdot_in_root`: Tests ".." in root resolves to root
+    - `test_lookup_special_entries_in_torrent_dir`: Tests special entries in torrent directories
+    - `test_lookup_special_entries_in_nested_dir`: Tests special entries in nested subdirectories
+    - `test_parent_resolution_from_nested_dirs`: Tests parent chain resolution from deep nesting
+  - All tests pass: `cargo test test_lookup_dot test_lookup_special test_parent_resolution` ✅
+  - Marked EDGE-013 as complete in TODO.md
+
 - Mark EDGE-012 as complete - Test readdir on non-directory
   - `test_error_enotdir_file_as_directory` in `tests/fuse_operations.rs` tests ENOTDIR behavior
   - Verifies files have no children (empty result from `get_children()`)
