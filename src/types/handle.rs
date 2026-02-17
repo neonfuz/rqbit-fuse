@@ -135,20 +135,40 @@ pub struct FileHandleManager {
     next_handle: AtomicU64,
     /// Map of handle IDs to handle information
     handles: Arc<Mutex<HashMap<u64, FileHandle>>>,
+    /// Maximum number of file handles allowed (0 = unlimited)
+    max_handles: usize,
 }
 
 impl FileHandleManager {
-    /// Create a new file handle manager
+    /// Create a new file handle manager with unlimited handles
     pub fn new() -> Self {
+        Self::with_max_handles(0)
+    }
+
+    /// Create a new file handle manager with a maximum handle limit
+    ///
+    /// # Arguments
+    /// * `max_handles` - Maximum number of handles (0 = unlimited)
+    pub fn with_max_handles(max_handles: usize) -> Self {
         Self {
             next_handle: AtomicU64::new(1), // Start at 1, 0 is reserved/invalid
             handles: Arc::new(Mutex::new(HashMap::new())),
+            max_handles,
         }
     }
 
     /// Allocate a new file handle for an open file.
-    /// Returns a unique handle ID.
+    /// Returns a unique handle ID, or 0 if handle limit is reached.
     pub fn allocate(&self, inode: u64, flags: i32) -> u64 {
+        // Check if we're at the handle limit
+        if self.max_handles > 0 {
+            let handles = self.handles.lock().unwrap();
+            if handles.len() >= self.max_handles {
+                // At limit - return 0 to indicate failure
+                return 0;
+            }
+        }
+
         let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
         let handle = FileHandle::new(fh, inode, flags);
 
@@ -417,5 +437,79 @@ mod tests {
 
         manager.set_prefetching(fh, false);
         assert!(!manager.get(fh).unwrap().is_prefetching());
+    }
+
+    #[test]
+    fn test_handle_exhaustion() {
+        // EDGE-008: Test handle exhaustion
+        // Verify that allocating beyond max_handles returns 0 (indicating failure)
+        const MAX_HANDLES: usize = 5;
+
+        let manager = FileHandleManager::with_max_handles(MAX_HANDLES);
+
+        // Allocate handles up to the limit
+        let mut handles = Vec::new();
+        for i in 0..MAX_HANDLES {
+            let fh = manager.allocate(100 + i as u64, libc::O_RDONLY);
+            assert!(fh > 0, "Handle {} should be allocated successfully", i);
+            handles.push(fh);
+        }
+
+        // Verify we have exactly MAX_HANDLES handles
+        assert_eq!(
+            manager.len(),
+            MAX_HANDLES,
+            "Should have {} handles",
+            MAX_HANDLES
+        );
+
+        // Try to allocate one more - should return 0
+        let extra_fh = manager.allocate(200, libc::O_RDONLY);
+        assert_eq!(extra_fh, 0, "Should return 0 when handle limit is exceeded");
+
+        // Verify count hasn't changed
+        assert_eq!(
+            manager.len(),
+            MAX_HANDLES,
+            "Handle count should not increase after exhaustion"
+        );
+
+        // Release one handle
+        let released = manager.remove(handles[0]);
+        assert!(released.is_some(), "Should successfully release handle");
+        assert_eq!(
+            manager.len(),
+            MAX_HANDLES - 1,
+            "Handle count should decrease after release"
+        );
+
+        // Now we should be able to allocate again
+        let new_fh = manager.allocate(300, libc::O_RDONLY);
+        assert!(
+            new_fh > 0,
+            "Should be able to allocate after releasing a handle"
+        );
+        assert_eq!(
+            manager.len(),
+            MAX_HANDLES,
+            "Handle count should be back to max"
+        );
+
+        // Verify the new handle is different from the old ones
+        assert!(!handles.contains(&new_fh), "New handle should be unique");
+    }
+
+    #[test]
+    fn test_unlimited_handles() {
+        // Test that unlimited handles (max_handles = 0) allows many allocations
+        let manager = FileHandleManager::with_max_handles(0);
+
+        // Allocate many handles
+        for i in 0..100 {
+            let fh = manager.allocate(100 + i as u64, libc::O_RDONLY);
+            assert!(fh > 0, "Handle {} should be allocated", i);
+        }
+
+        assert_eq!(manager.len(), 100, "Should have 100 handles");
     }
 }
