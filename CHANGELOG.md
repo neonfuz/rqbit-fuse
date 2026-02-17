@@ -48,6 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Checks `status.is_complete()` before performing piece check for paused torrents
   - Completed torrents have all pieces available, so no need to verify via API
   - Reduces unnecessary API calls and improves read performance for finished torrents
+
+- EDGE-014: Test empty directory listing
+  - Added `test_edge_014_empty_directory_listing` in `tests/fuse_operations.rs`
+  - Tests that empty directories return no children (internal representation)
+  - Verifies directory attributes: size=0, perm=0o555, nlink=2
+  - Tests path lookup and parent directory listing for empty directories
+  - All tests pass: `cargo test test_edge_014` ✅
+  - Marked EDGE-014 as complete in TODO.md
   - Location: `src/fs/filesystem.rs:read()` around line 1030
   - All 103 tests pass: `cargo test` ✅
 
