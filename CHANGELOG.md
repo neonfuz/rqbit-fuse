@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `src/api/types.rs:PieceBitfield`
   - All 5 tests pass: `cargo test test_has_piece_range` ✅
 
+- Add `check_range_available()` helper method to `RqbitClient` (IDEA1-003)
+  - Checks if all pieces covering a byte range are downloaded
+  - Takes torrent_id, offset, size, and piece_length as parameters
+  - Uses cached status with bitfield for efficient lookups
+  - Returns `Result<bool, ApiError>` indicating if range is fully available
+  - Location: `src/api/client.rs:RqbitClient`
+  - All 32 API client tests pass: `cargo test --lib api::client::tests` ✅
+
 ### Fixed
 
 - Mark EDGE-008 as complete (handle exhaustion test)

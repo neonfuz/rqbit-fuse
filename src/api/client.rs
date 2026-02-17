@@ -632,6 +632,48 @@ impl RqbitClient {
         Ok(result)
     }
 
+    /// Check if a byte range is fully available (all pieces downloaded)
+    ///
+    /// This method checks whether all pieces covering the specified byte range
+    /// have been downloaded. It's useful for determining if a read operation
+    /// can succeed on a paused torrent without blocking.
+    ///
+    /// # Arguments
+    /// * `torrent_id` - The torrent ID
+    /// * `offset` - Starting byte offset in the file
+    /// * `size` - Number of bytes to check
+    /// * `piece_length` - Size of each piece in bytes (from torrent info)
+    ///
+    /// # Returns
+    /// * `Ok(true)` - All pieces in the range are available
+    /// * `Ok(false)` - At least one piece in the range is not available
+    /// * `Err(ApiError)` - Failed to fetch torrent status
+    #[instrument(skip(self), fields(api_op = "check_range_available", torrent_id, offset, size))]
+    pub async fn check_range_available(
+        &self,
+        torrent_id: u64,
+        offset: u64,
+        size: u64,
+        piece_length: u64,
+    ) -> Result<bool> {
+        // Handle edge cases
+        if size == 0 {
+            return Ok(true);
+        }
+        if piece_length == 0 {
+            return Err(ApiError::InvalidRange(
+                "piece_length cannot be zero".to_string(),
+            )
+            .into());
+        }
+
+        // Get cached status with bitfield
+        let status = self.get_torrent_status_with_bitfield(torrent_id).await?;
+
+        // Use the bitfield to check piece availability
+        Ok(status.bitfield.has_piece_range(offset, size, piece_length))
+    }
+
     // =========================================================================
     // File Operations
     // =========================================================================

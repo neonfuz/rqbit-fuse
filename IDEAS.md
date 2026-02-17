@@ -43,7 +43,7 @@ Return an immediate I/O error (EIO) when:
   - Return struct containing both stats and bitfield
   - Location: `src/api/client.rs`
 
-- [ ] **IDEA1-003**: Add `check_range_available()` helper method
+- [x] **IDEA1-003**: Add `check_range_available()` helper method
   - Take torrent_id, offset, and size as parameters
   - Get cached status with bitfield
   - Return `Result<bool, ApiError>` indicating if range is fully available
