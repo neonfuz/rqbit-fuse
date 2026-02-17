@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mark EDGE-006 as complete (double release handle test)
+  - Test already exists in `src/types/handle.rs:test_file_handle_removal`
+  - Verifies double release returns None without panic
+  - All tests pass: `cargo test test_file_handle_removal` ✅
+
 - Fix EDGE-005 piece boundary test expectation
   - Fixed incorrect expected value in test spanning multiple pieces
   - Test case (100, 3000, 3) expected 3 pieces but actually spans 4 pieces
