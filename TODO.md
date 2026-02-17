@@ -99,9 +99,10 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should handle gracefully
   - Implemented: 4 tests in tests/fuse_operations.rs
 
-- [ ] **EDGE-012**: Test readdir on non-directory
+- [x] **EDGE-012**: Test readdir on non-directory
   - Try to list contents of a file
   - Should return ENOTDIR error
+  - Implemented: `test_error_enotdir_file_as_directory` in `tests/fuse_operations.rs` tests that files have no children and nested lookups inside files fail
 
 - [ ] **EDGE-013**: Test lookup of special entries
   - Lookup "." in root directory

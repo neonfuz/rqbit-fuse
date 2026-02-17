@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mark EDGE-012 as complete - Test readdir on non-directory
+  - `test_error_enotdir_file_as_directory` in `tests/fuse_operations.rs` tests ENOTDIR behavior
+  - Verifies files have no children (empty result from `get_children()`)
+  - Tests that looking up paths inside files fails (returns None)
+  - Corresponds to FUSE readdir returning ENOTDIR error when called on files
+  - Test passes: `cargo test test_error_enotdir_file_as_directory` ✅
+
 - Add metrics for piece check failures (IDEA1-010)
   - Added `pieces_unavailable_errors` counter to `FuseMetrics`
   - Tracks how often reads are rejected due to unavailable pieces on paused torrents
