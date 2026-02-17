@@ -1044,7 +1044,10 @@ mod tests {
         // Read at offset beyond file_size - should handle gracefully
         let result = manager.read(1, 0, 101, 1024).await;
         // Streaming layer should return an error for HTTP 416
-        assert!(result.is_err(), "Read beyond EOF should return error (416 response)");
+        assert!(
+            result.is_err(),
+            "Read beyond EOF should return error (416 response)"
+        );
 
         mock_server.verify().await;
     }
@@ -1078,7 +1081,11 @@ mod tests {
         assert!(result.is_ok(), "Read should succeed");
         let data = result.unwrap();
         // Server returns what's available (25 bytes)
-        assert_eq!(data.len(), 25, "Should return only available bytes from server");
+        assert_eq!(
+            data.len(),
+            25,
+            "Should return only available bytes from server"
+        );
 
         mock_server.verify().await;
     }

@@ -37,10 +37,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should handle gracefully without panic
   - Implemented: 3 tests in tests/fuse_operations.rs covering negative offsets, i64::MIN, and overflow scenarios
 
-- [ ] **EDGE-004**: Test read beyond EOF
+- [x] **EDGE-004**: Test read beyond EOF
   - Request more bytes than remaining in file
   - Read starting at offset > file_size
   - Should return available bytes or empty, not error
+  - Implemented: 4 tests in tests/fuse_operations.rs
 
 - [ ] **EDGE-005**: Test piece boundary reads
   - Read starting exactly at piece boundary

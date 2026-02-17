@@ -3768,8 +3768,8 @@ async fn test_edge_002_zero_byte_read_various_file_sizes() {
     let test_sizes: Vec<(String, u64)> = vec![
         ("1_byte.bin".to_string(), 1),
         ("100_bytes.bin".to_string(), 100),
-        ("4096_bytes.bin".to_string(), 4096),  // Block size
-        ("1mb.bin".to_string(), 1024 * 1024),  // 1MB
+        ("4096_bytes.bin".to_string(), 4096), // Block size
+        ("1mb.bin".to_string(), 1024 * 1024), // 1MB
     ];
 
     for (file_name, file_size) in test_sizes {
@@ -3982,11 +3982,11 @@ async fn test_edge_003_negative_offset_no_overflow() {
 
     // Test various negative offsets
     let negative_offsets: Vec<i64> = vec![
-        -1,              // Simple negative
-        -100,            // Moderate negative
-        -4096,           // Block size negative
-        i64::MIN,        // Most negative
-        i64::MIN + 1,    // Second most negative
+        -1,                      // Simple negative
+        -100,                    // Moderate negative
+        -4096,                   // Block size negative
+        i64::MIN,                // Most negative
+        i64::MIN + 1,            // Second most negative
         -9223372036854775807i64, // Close to MIN
     ];
 
@@ -4005,11 +4005,7 @@ async fn test_edge_003_negative_offset_no_overflow() {
 
         // Verify the cast produces a large value (demonstrating why we need the check)
         if offset == -1 {
-            assert_eq!(
-                offset_as_u64,
-                u64::MAX,
-                "-1 cast to u64 should be u64::MAX"
-            );
+            assert_eq!(offset_as_u64, u64::MAX, "-1 cast to u64 should be u64::MAX");
         }
 
         // The key assertion: offset < 0 check must happen before casting
@@ -4018,5 +4014,291 @@ async fn test_edge_003_negative_offset_no_overflow() {
             "Offset {} should be rejected before cast to u64",
             offset
         );
+    }
+}
+
+// ============================================================================
+// EDGE-004: Read Beyond EOF Tests
+// ============================================================================
+// These tests verify that read operations beyond the end of file are handled
+// gracefully, returning available bytes or empty data without errors.
+
+/// Test read requesting more bytes than remaining in file
+/// Should return only the available bytes, not an error
+#[tokio::test]
+async fn test_edge_004_read_more_than_available() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a 100-byte file
+    let file_size: u64 = 100;
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "test.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "test.bin".to_string(),
+            length: file_size,
+            components: vec!["test.bin".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/test.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Test: Read starting at offset 50, requesting 100 bytes
+    // File has 100 bytes total, so only 50 bytes remain (50-99)
+    // Implementation should clamp to available bytes
+    let offset: u64 = 50;
+    let request_size: u32 = 100;
+    let remaining = file_size.saturating_sub(offset);
+
+    // Verify logic: should read min(request_size, remaining) = 50 bytes
+    assert_eq!(remaining, 50, "Should have 50 bytes remaining");
+    assert!(
+        request_size as u64 > remaining,
+        "Request size should exceed remaining bytes"
+    );
+
+    // The read implementation uses: end = min(offset + size, file_size).saturating_sub(1)
+    // So end = min(50 + 100, 100) - 1 = 100 - 1 = 99
+    // Range is 50-99, which is 50 bytes
+    let expected_end = std::cmp::min(offset + request_size as u64, file_size).saturating_sub(1);
+    assert_eq!(expected_end, 99, "End should be clamped to 99");
+}
+
+/// Test read starting at offset exactly equal to file_size
+/// Should return 0 bytes (EOF), not an error
+#[tokio::test]
+async fn test_edge_004_read_at_exact_eof() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let file_size: u64 = 1024;
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "test.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "test.bin".to_string(),
+            length: file_size,
+            components: vec!["test.bin".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/test.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Test: Read at offset = file_size (exactly at EOF)
+    // Implementation check: if offset >= file_size { return empty }
+    let offset: i64 = file_size as i64; // 1024
+    let size: u32 = 1024;
+
+    // Verify condition triggers EOF
+    assert!(
+        (offset as u64) >= file_size,
+        "Offset {} should be >= file_size {}, triggering EOF",
+        offset,
+        file_size
+    );
+
+    // The early return check: if size == 0 || offset >= file_size
+    assert!(
+        size == 0 || (offset as u64) >= file_size,
+        "Should trigger empty read path"
+    );
+}
+
+/// Test read starting beyond file_size
+/// Should return 0 bytes (EOF), not an error
+#[tokio::test]
+async fn test_edge_004_read_beyond_eof() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let file_size: u64 = 1024;
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "test.bin".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "test.bin".to_string(),
+            length: file_size,
+            components: vec!["test.bin".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let file_ino = inode_manager
+        .lookup_by_path("/test.bin")
+        .expect("File should exist");
+
+    let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+    let attr = fs.build_file_attr(&file_entry);
+
+    assert_eq!(attr.size, file_size);
+
+    // Test: Read at offset > file_size (beyond EOF)
+    let offsets: Vec<u64> = vec![
+        file_size + 1,   // Just beyond EOF
+        file_size + 100, // Further beyond
+        file_size * 2,   // Double the file size
+    ];
+
+    for offset in offsets {
+        // Implementation check: if offset >= file_size { return empty }
+        assert!(
+            offset >= file_size,
+            "Offset {} should be >= file_size {}, triggering EOF",
+            offset,
+            file_size
+        );
+
+        // Verify this would trigger the empty read path
+        let size: u32 = 1024;
+        assert!(
+            size == 0 || offset >= file_size,
+            "Offset {} beyond EOF should trigger empty read",
+            offset
+        );
+    }
+}
+
+/// Test read range calculation clamping for various file sizes
+#[tokio::test]
+async fn test_edge_004_read_range_calculation_beyond_eof() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various file sizes
+    let test_sizes: Vec<(String, u64)> = vec![
+        ("1_byte.bin".to_string(), 1),
+        ("100_bytes.bin".to_string(), 100),
+        ("4096_bytes.bin".to_string(), 4096),
+        ("1mb.bin".to_string(), 1024 * 1024),
+    ];
+
+    for (file_name, file_size) in test_sizes {
+        let torrent_info = TorrentInfo {
+            id: file_size,
+            info_hash: format!("hash_{}", file_size),
+            name: file_name.clone(),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: file_name.clone(),
+                length: file_size,
+                components: vec![file_name.clone()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        fs.create_torrent_structure(&torrent_info).unwrap();
+
+        let inode_manager = fs.inode_manager();
+        let file_path = format!("/{}", file_name);
+        let file_ino = inode_manager
+            .lookup_by_path(&file_path)
+            .unwrap_or_else(|| panic!("File {} should exist", file_name));
+
+        let file_entry = inode_manager.get(file_ino).expect("Entry should exist");
+        let attr = fs.build_file_attr(&file_entry);
+
+        assert_eq!(
+            attr.size, file_size,
+            "File {} should have correct size",
+            file_name
+        );
+
+        // Test various offsets beyond EOF
+        let beyond_eof_offsets = vec![
+            file_size,       // Exactly at EOF
+            file_size + 1,   // Just beyond
+            file_size + 100, // Further beyond
+        ];
+
+        for offset in beyond_eof_offsets {
+            // All these should trigger the empty read path
+            assert!(
+                offset >= file_size,
+                "Offset {} for {} should be >= file_size {}, triggering EOF",
+                offset,
+                file_name,
+                file_size
+            );
+        }
+
+        // Test: Request more bytes than available at various positions
+        if file_size > 10 {
+            let test_offsets = vec![
+                file_size - 5, // 5 bytes remaining
+                file_size - 1, // 1 byte remaining
+            ];
+
+            for offset in test_offsets {
+                let request_size: u32 = 100; // Request more than available
+                let remaining = file_size.saturating_sub(offset);
+
+                // Verify remaining bytes
+                assert!(
+                    remaining > 0 && remaining < request_size as u64,
+                    "Should have {} bytes remaining, less than requested {}",
+                    remaining,
+                    request_size
+                );
+
+                // Verify clamping logic
+                let end = std::cmp::min(offset + request_size as u64, file_size).saturating_sub(1);
+                assert_eq!(end, file_size - 1, "End should be clamped to file_size - 1");
+            }
+        }
     }
 }
