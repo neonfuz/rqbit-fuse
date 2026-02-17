@@ -2,6 +2,16 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 use thiserror::Error;
 
+/// Reason why data is unavailable
+#[derive(Debug, Clone, PartialEq, Eq, Display)]
+#[strum(serialize_all = "snake_case")]
+pub enum DataUnavailableReason {
+    /// Torrent is paused and pieces haven't been downloaded
+    Paused,
+    /// Requested pieces haven't been downloaded yet
+    NotDownloaded,
+}
+
 /// Errors that can occur when interacting with the rqbit API
 #[derive(Error, Debug, Clone)]
 pub enum ApiError {
@@ -52,6 +62,12 @@ pub enum ApiError {
 
     #[error("Authentication failed: {0}")]
     AuthenticationError(String),
+
+    #[error("Data unavailable for torrent {torrent_id}: {reason}")]
+    DataUnavailable {
+        torrent_id: u64,
+        reason: DataUnavailableReason,
+    },
 }
 
 impl From<reqwest::Error> for ApiError {
@@ -101,6 +117,7 @@ impl ApiError {
             | ApiError::CircuitBreakerOpen
             | ApiError::RetryLimitExceeded => libc::EAGAIN,
             ApiError::AuthenticationError(_) => libc::EACCES,
+            ApiError::DataUnavailable { .. } => libc::EIO,
             ApiError::HttpError(_)
             | ApiError::ClientInitializationError(_)
             | ApiError::RequestCloneError(_) => libc::EIO,

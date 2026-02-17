@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `src/api/client.rs:RqbitClient`
   - All 32 API client tests pass: `cargo test --lib api::client::tests` ✅
 
+- Add `DataUnavailable` error variant to `ApiError` (IDEA1-004)
+  - Added `DataUnavailableReason` enum with `Paused` and `NotDownloaded` variants
+  - `DataUnavailable` error includes torrent_id and reason fields
+  - Maps to `libc::EIO` (I/O error) in `to_fuse_error()` for immediate feedback
+  - Enables fast failure when reading paused torrents with missing pieces
+  - Location: `src/api/types.rs`
+  - All 151 tests pass: `cargo test --lib` ✅
+
 ### Fixed
 
 - Mark EDGE-008 as complete (handle exhaustion test)

@@ -57,7 +57,7 @@ Return an immediate I/O error (EIO) when:
 
 **Tasks:**
 
-- [ ] **IDEA1-004**: Add `DataUnavailable` error variant to `ApiError`
+- [x] **IDEA1-004**: Add `DataUnavailable` error variant to `ApiError`
   - Variant should include torrent_id and reason (Paused/NotDownloaded)
   - Map to `libc::EIO` in `to_fuse_error()`
   - Location: `src/api/types.rs`
