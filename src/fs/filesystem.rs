@@ -1250,6 +1250,46 @@ impl Filesystem for TorrentFS {
             return;
         }
 
+        // Handle special entries: "." and ".."
+        let target_ino = match name_str.as_ref() {
+            "." => {
+                // "." refers to the current directory (parent)
+                Some(parent)
+            }
+            ".." => {
+                // ".." refers to the parent directory
+                // Root directory's parent is itself
+                Some(parent_entry.parent())
+            }
+            _ => None,
+        };
+
+        if let Some(ino) = target_ino {
+            if let Some(entry) = self.inode_manager.get(ino) {
+                let attr = self.build_file_attr(&entry);
+                reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
+                fuse_ok!(
+                    self,
+                    "lookup",
+                    parent = parent,
+                    name = name_str.to_string(),
+                    ino = ino,
+                    special = true
+                );
+            } else {
+                // This shouldn't happen - special entry maps to non-existent inode
+                error!(
+                    fuse_op = "lookup",
+                    parent = parent,
+                    name = %name_str,
+                    target_ino = ino,
+                    "Special entry maps to missing inode"
+                );
+                reply.error(libc::EIO);
+            }
+            return;
+        }
+
         // Build the full path for this entry
         let path = if parent == 1 {
             format!("/{}", name_str)

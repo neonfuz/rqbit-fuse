@@ -104,10 +104,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should return ENOTDIR error
   - Implemented: `test_error_enotdir_file_as_directory` in `tests/fuse_operations.rs` tests that files have no children and nested lookups inside files fail
 
-- [ ] **EDGE-013**: Test lookup of special entries
+- [x] **EDGE-013**: Test lookup of special entries
   - Lookup "." in root directory
   - Lookup ".." in various directories
   - Should resolve correctly
+  - Implemented: Added special handling for "." and ".." in lookup() callback and 5 comprehensive tests
 
 - [ ] **EDGE-014**: Test empty directory listing
   - Create empty directory, list contents

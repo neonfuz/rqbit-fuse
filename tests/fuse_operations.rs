@@ -1205,6 +1205,290 @@ async fn test_lookup_special_characters() {
 }
 
 // ============================================================================
+// EDGE-013: Test lookup of special entries (".", "..")
+// ============================================================================
+
+/// Test lookup of "." in root directory - should return root inode
+#[tokio::test]
+async fn test_lookup_dot_in_root() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let inode_manager = fs.inode_manager();
+
+    // Root inode should be 1
+    let root = inode_manager.get(1);
+    assert!(root.is_some(), "Root inode should exist");
+
+    // Verify root entry attributes
+    let root_entry = root.unwrap();
+    assert!(root_entry.is_directory(), "Root should be a directory");
+    assert_eq!(root_entry.parent(), 1, "Root's parent should be itself");
+
+    // Build attributes for root
+    let root_attr = fs.build_file_attr(&root_entry);
+    assert_eq!(root_attr.ino, 1, "Root inode should be 1");
+    assert_eq!(root_attr.kind, fuser::FileType::Directory);
+}
+
+/// Test lookup of ".." in root directory - should return root inode
+#[tokio::test]
+async fn test_lookup_dotdot_in_root() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    let inode_manager = fs.inode_manager();
+
+    // Root's parent should be itself
+    let root = inode_manager.get(1).expect("Root should exist");
+    assert_eq!(root.parent(), 1, "Root's parent should be itself");
+
+    // Verify root has correct attributes
+    let root_attr = fs.build_file_attr(&root);
+    assert_eq!(root_attr.ino, 1);
+    assert_eq!(root_attr.kind, fuser::FileType::Directory);
+}
+
+/// Test lookup of "." and ".." in torrent directory
+#[tokio::test]
+async fn test_lookup_special_entries_in_torrent_dir() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a multi-file torrent (needs 2+ files for directory)
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent directory should exist");
+
+    let torrent_dir_entry = inode_manager
+        .get(torrent_dir_ino)
+        .expect("Entry should exist");
+
+    // Verify torrent directory has correct parent (root)
+    assert_eq!(
+        torrent_dir_entry.parent(),
+        1,
+        "Torrent directory's parent should be root (inode 1)"
+    );
+
+    // Verify torrent directory attributes
+    let torrent_dir_attr = fs.build_file_attr(&torrent_dir_entry);
+    assert_eq!(torrent_dir_attr.ino, torrent_dir_ino);
+    assert_eq!(torrent_dir_attr.kind, fuser::FileType::Directory);
+
+    // Verify we can get root's attributes (parent of torrent dir)
+    let root = inode_manager.get(1).expect("Root should exist");
+    let root_attr = fs.build_file_attr(&root);
+    assert_eq!(root_attr.ino, 1);
+    assert_eq!(root_attr.kind, fuser::FileType::Directory);
+}
+
+/// Test lookup of "." and ".." in nested subdirectory
+#[tokio::test]
+async fn test_lookup_special_entries_in_nested_dir() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with nested directories
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "nested123".to_string(),
+        name: "Nested Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "deep.txt".to_string(),
+                length: 1024,
+                components: vec![
+                    "level1".to_string(),
+                    "level2".to_string(),
+                    "file.txt".to_string(),
+                ],
+            },
+            FileInfo {
+                name: "other.txt".to_string(),
+                length: 512,
+                components: vec!["other.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get nested directory inodes
+    let level1_ino = inode_manager
+        .lookup_by_path("/Nested Torrent/level1")
+        .expect("level1 should exist");
+    let level2_ino = inode_manager
+        .lookup_by_path("/Nested Torrent/level1/level2")
+        .expect("level2 should exist");
+
+    let level1_entry = inode_manager
+        .get(level1_ino)
+        .expect("level1 entry should exist");
+    let level2_entry = inode_manager
+        .get(level2_ino)
+        .expect("level2 entry should exist");
+
+    // Verify parent relationships
+    assert_eq!(
+        level1_entry.parent(),
+        inode_manager.lookup_by_path("/Nested Torrent").unwrap(),
+        "level1's parent should be torrent directory"
+    );
+    assert_eq!(
+        level2_entry.parent(),
+        level1_ino,
+        "level2's parent should be level1"
+    );
+
+    // Verify directory attributes
+    let level1_attr = fs.build_file_attr(&level1_entry);
+    let level2_attr = fs.build_file_attr(&level2_entry);
+
+    assert_eq!(level1_attr.kind, fuser::FileType::Directory);
+    assert_eq!(level2_attr.kind, fuser::FileType::Directory);
+    assert_eq!(level1_attr.ino, level1_ino);
+    assert_eq!(level2_attr.ino, level2_ino);
+}
+
+/// Test that parent attributes can be resolved correctly from nested directories
+#[tokio::test]
+async fn test_parent_resolution_from_nested_dirs() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a deeply nested torrent structure
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "deep123".to_string(),
+        name: "Deep Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "deep.txt".to_string(),
+                length: 1024,
+                components: vec![
+                    "a".to_string(),
+                    "b".to_string(),
+                    "c".to_string(),
+                    "deep.txt".to_string(),
+                ],
+            },
+            FileInfo {
+                name: "root.txt".to_string(),
+                length: 512,
+                components: vec!["root.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get all directory inodes
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Deep Torrent")
+        .expect("Torrent dir should exist");
+    let a_ino = inode_manager
+        .lookup_by_path("/Deep Torrent/a")
+        .expect("a should exist");
+    let b_ino = inode_manager
+        .lookup_by_path("/Deep Torrent/a/b")
+        .expect("b should exist");
+    let c_ino = inode_manager
+        .lookup_by_path("/Deep Torrent/a/b/c")
+        .expect("c should exist");
+
+    // Verify parent chain
+    let torrent_entry = inode_manager.get(torrent_ino).unwrap();
+    let a_entry = inode_manager.get(a_ino).unwrap();
+    let b_entry = inode_manager.get(b_ino).unwrap();
+    let c_entry = inode_manager.get(c_ino).unwrap();
+
+    assert_eq!(
+        torrent_entry.parent(),
+        1,
+        "Torrent dir parent should be root"
+    );
+    assert_eq!(
+        a_entry.parent(),
+        torrent_ino,
+        "a's parent should be torrent dir"
+    );
+    assert_eq!(b_entry.parent(), a_ino, "b's parent should be a");
+    assert_eq!(c_entry.parent(), b_ino, "c's parent should be b");
+
+    // Verify all are directories
+    assert!(torrent_entry.is_directory());
+    assert!(a_entry.is_directory());
+    assert!(b_entry.is_directory());
+    assert!(c_entry.is_directory());
+
+    // Build and verify attributes
+    let torrent_attr = fs.build_file_attr(&torrent_entry);
+    let c_attr = fs.build_file_attr(&c_entry);
+
+    assert_eq!(torrent_attr.ino, torrent_ino);
+    assert_eq!(c_attr.ino, c_ino);
+    assert_eq!(torrent_attr.kind, fuser::FileType::Directory);
+    assert_eq!(c_attr.kind, fuser::FileType::Directory);
+}
+
+// ============================================================================
 // FS-007.4: Getattr Operation Tests
 // ============================================================================
 // These tests verify the getattr operation scenarios that the FUSE getattr()
@@ -5276,9 +5560,9 @@ async fn test_read_paused_torrent_missing_pieces() {
     // This should succeed (or at least not fail with EIO for piece check)
     let start_time = std::time::Instant::now();
     let result = fs.async_worker().check_pieces_available(
-        1,      // torrent_id
-        0,      // offset
-        2048,   // size (pieces 0-1)
+        1,    // torrent_id
+        0,    // offset
+        2048, // size (pieces 0-1)
         Duration::from_secs(5),
     );
     let elapsed = start_time.elapsed();
@@ -5303,9 +5587,9 @@ async fn test_read_paused_torrent_missing_pieces() {
     // This should return Ok(false) indicating pieces not available
     let start_time = std::time::Instant::now();
     let result = fs.async_worker().check_pieces_available(
-        1,      // torrent_id
-        4096,   // offset (starts at piece 4)
-        2048,   // size (pieces 4-5)
+        1,    // torrent_id
+        4096, // offset (starts at piece 4)
+        2048, // size (pieces 4-5)
         Duration::from_secs(5),
     );
     let elapsed = start_time.elapsed();
@@ -5329,9 +5613,9 @@ async fn test_read_paused_torrent_missing_pieces() {
     // This should return Ok(false) because piece 4-5 are missing
     let start_time = std::time::Instant::now();
     let result = fs.async_worker().check_pieces_available(
-        1,      // torrent_id
-        3072,   // offset (starts in piece 3)
-        2048,   // size (spans pieces 3-5)
+        1,    // torrent_id
+        3072, // offset (starts in piece 3)
+        2048, // size (spans pieces 3-5)
         Duration::from_secs(5),
     );
     let elapsed = start_time.elapsed();
@@ -5424,9 +5708,9 @@ async fn test_read_paused_torrent_all_pieces_available() {
 
     // Test reading entire file - all pieces available
     let result = fs.async_worker().check_pieces_available(
-        1,      // torrent_id
-        0,      // offset
-        4096,   // full file size
+        1,    // torrent_id
+        0,    // offset
+        4096, // full file size
         Duration::from_secs(5),
     );
 
@@ -5442,9 +5726,9 @@ async fn test_read_paused_torrent_all_pieces_available() {
 
     // Test reading partial range - all pieces available
     let result = fs.async_worker().check_pieces_available(
-        1,      // torrent_id
-        1024,   // offset (piece 1)
-        2048,   // size (pieces 1-2)
+        1,    // torrent_id
+        1024, // offset (piece 1)
+        2048, // size (pieces 1-2)
         Duration::from_secs(5),
     );
 

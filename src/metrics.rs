@@ -95,7 +95,11 @@ impl FuseMetrics {
     record_op!(record_open, open_count, "open");
     record_op!(record_release, release_count, "release");
     record_op!(record_error, error_count);
-    record_op!(record_pieces_unavailable, pieces_unavailable_errors, "pieces_unavailable");
+    record_op!(
+        record_pieces_unavailable,
+        pieces_unavailable_errors,
+        "pieces_unavailable"
+    );
 
     /// Record a read operation with bytes and latency
     pub fn record_read(&self, bytes: u64, latency: Duration) {
