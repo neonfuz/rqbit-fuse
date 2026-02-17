@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add edge case tests for EOF boundary reads (EDGE-001)
+  - 9 comprehensive tests across streaming and fuse_operations modules
+  - Tests read at file_size - 1 (last byte) and file_size (EOF)
+  - Tests file sizes: 1 byte, 4096 bytes (block size), 1MB, 1GB
+  - Tests zero-byte reads at various offsets including EOF
+  - Tests read range calculation at EOF boundaries
+  - All tests pass: `cargo test test_edge_001` ✅
+
 ### Fixed
 
 - Fix race conditions in metrics averages (METRICS-001)

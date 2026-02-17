@@ -18,11 +18,12 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### FUSE Read Operations (tests/fuse_operations.rs)
 
-- [ ] **EDGE-001**: Test read at EOF boundary
+- [x] **EDGE-001**: Test read at EOF boundary
   - Read at offset = `file_size - 1` (only 1 byte remaining)
   - Read at offset exactly equal to file_size (should return 0 bytes/EOF)
   - Verify no panic or error, just empty data
   - Test file sizes: 1 byte, 4096 bytes (block size), 1MB, 1GB
+  - Implemented: 9 tests across streaming and fuse_operations modules
 
 - [ ] **EDGE-002**: Test zero-byte reads
   - Read with size = 0 at various offsets
