@@ -25,7 +25,7 @@ clap = { version = "4.4", features = ["derive", "env"] }
 libc = "0.2"
 toml = "0.8"
 dirs = "5.0"
-strum = { version = "0.25", features = ["derive"] }
+strum = { version = "0.27", features = ["derive"] }
 base64 = "0.22"
 
 [dev-dependencies]
