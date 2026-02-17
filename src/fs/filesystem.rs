@@ -31,6 +31,15 @@ pub struct ConcurrencyStats {
     pub available_permits: usize,
 }
 
+/// Result of torrent discovery operation
+#[derive(Debug)]
+struct DiscoveryResult {
+    /// Number of new torrents discovered
+    new_count: u64,
+    /// List of all current torrent IDs from rqbit
+    current_torrent_ids: Vec<u64>,
+}
+
 /// The main FUSE filesystem implementation for rqbit-fuse.
 /// Implements the fuser::Filesystem trait to provide a FUSE interface
 /// over the rqbit HTTP API.
@@ -213,6 +222,10 @@ impl TorrentFS {
         let api_client = Arc::clone(&self.api_client);
         let inode_manager = Arc::clone(&self.inode_manager);
         let last_discovery = Arc::clone(&self.last_discovery);
+        let known_torrents = Arc::clone(&self.known_torrents);
+        let file_handles = Arc::clone(&self.file_handles);
+        let torrent_statuses = Arc::clone(&self.torrent_statuses);
+        let metrics = Arc::clone(&self.metrics);
         let poll_interval = Duration::from_secs(30);
 
         let handle = tokio::spawn(async move {
@@ -222,12 +235,54 @@ impl TorrentFS {
                 ticker.tick().await;
 
                 match Self::discover_torrents(&api_client, &inode_manager).await {
-                    Ok(_) => {
+                    Ok(result) => {
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as u64;
                         last_discovery.store(now_ms, Ordering::SeqCst);
+
+                        // Update known_torrents with current torrent IDs
+                        for torrent_id in &result.current_torrent_ids {
+                            known_torrents.insert(*torrent_id);
+                        }
+
+                        // Detect and remove torrents that were deleted from rqbit
+                        let current: std::collections::HashSet<u64> = result.current_torrent_ids.iter().copied().collect();
+                        let known: std::collections::HashSet<u64> = known_torrents.iter().map(|e| *e).collect();
+                        let removed: Vec<u64> = known.difference(&current).copied().collect();
+
+                        for torrent_id in removed {
+                            info!("Removing torrent {} from filesystem", torrent_id);
+
+                            // Get the torrent's root inode
+                            if let Some(inode) = inode_manager.lookup_torrent(torrent_id) {
+                                // Close all file handles for this torrent
+                                let removed_handles = file_handles.remove_by_torrent(torrent_id);
+                                if removed_handles > 0 {
+                                    debug!("Closed {} file handles for torrent {}", removed_handles, torrent_id);
+                                }
+
+                                // Remove the inode tree for this torrent
+                                if !inode_manager.remove_inode(inode) {
+                                    warn!("Failed to remove inode {} for torrent {}", inode, torrent_id);
+                                }
+
+                                // Remove from torrent statuses
+                                torrent_statuses.remove(&torrent_id);
+
+                                // Remove from known torrents
+                                known_torrents.remove(&torrent_id);
+
+                                // Record metric
+                                metrics.fuse.record_torrent_removed();
+
+                                info!("Successfully removed torrent {} from filesystem", torrent_id);
+                            } else {
+                                warn!("Torrent {} not found in filesystem, skipping removal", torrent_id);
+                                known_torrents.remove(&torrent_id);
+                            }
+                        }
                     }
                     Err(e) => {
                         warn!("Background torrent discovery failed: {}", e);
@@ -265,11 +320,11 @@ impl TorrentFS {
     /// * `inode_manager` - Reference to the inode manager for structure creation
     ///
     /// # Returns
-    /// * `Result<u64, anyhow::Error>` - Number of new torrents discovered, or error
+    /// * `Result<DiscoveryResult, anyhow::Error>` - Discovery results, or error
     async fn discover_torrents(
         api_client: &Arc<RqbitClient>,
         inode_manager: &Arc<InodeManager>,
-    ) -> Result<u64> {
+    ) -> Result<DiscoveryResult> {
         let result = api_client.list_torrents().await?;
 
         // Log any partial failures
@@ -283,6 +338,9 @@ impl TorrentFS {
                 warn!("Failed to load torrent {} ({}): {}", id, name, err);
             }
         }
+
+        // Collect all current torrent IDs
+        let current_torrent_ids: Vec<u64> = result.torrents.iter().map(|t| t.id).collect();
 
         let mut new_count: u64 = 0;
 
@@ -312,7 +370,10 @@ impl TorrentFS {
             trace!("No new torrents found");
         }
 
-        Ok(new_count)
+        Ok(DiscoveryResult {
+            new_count,
+            current_torrent_ids,
+        })
     }
 
     /// Detect torrents that have been removed from rqbit.
@@ -496,12 +557,24 @@ impl TorrentFS {
 
         // Perform discovery
         match Self::discover_torrents(&self.api_client, &self.inode_manager).await {
-            Ok(_) => {
+            Ok(result) => {
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
                 self.last_discovery.store(now_ms, Ordering::SeqCst);
+
+                // Update known_torrents with current torrent IDs
+                for torrent_id in &result.current_torrent_ids {
+                    self.known_torrents.insert(*torrent_id);
+                }
+
+                // Detect and remove torrents that were deleted from rqbit
+                let removed = self.detect_removed_torrents(&result.current_torrent_ids);
+                for torrent_id in removed {
+                    self.remove_torrent_from_fs(torrent_id).await;
+                }
+
                 true
             }
             Err(e) => {
@@ -1555,6 +1628,10 @@ impl Filesystem for TorrentFS {
             let api_client = Arc::clone(&self.api_client);
             let inode_manager = Arc::clone(&self.inode_manager);
             let last_discovery = Arc::clone(&self.last_discovery);
+            let known_torrents = Arc::clone(&self.known_torrents);
+            let file_handles = Arc::clone(&self.file_handles);
+            let torrent_statuses = Arc::clone(&self.torrent_statuses);
+            let metrics = Arc::clone(&self.metrics);
 
             tokio::spawn(async move {
                 const COOLDOWN_MS: u64 = 5000;
@@ -1570,8 +1647,50 @@ impl Filesystem for TorrentFS {
 
                 if should_run {
                     match Self::discover_torrents(&api_client, &inode_manager).await {
-                        Ok(_) => {
+                        Ok(result) => {
                             last_discovery.store(now_ms, Ordering::SeqCst);
+
+                            // Update known_torrents with current torrent IDs
+                            for torrent_id in &result.current_torrent_ids {
+                                known_torrents.insert(*torrent_id);
+                            }
+
+                            // Detect and remove torrents that were deleted from rqbit
+                            let current: std::collections::HashSet<u64> = result.current_torrent_ids.iter().copied().collect();
+                            let known: std::collections::HashSet<u64> = known_torrents.iter().map(|e| *e).collect();
+                            let removed: Vec<u64> = known.difference(&current).copied().collect();
+
+                            for torrent_id in removed {
+                                info!("Removing torrent {} from filesystem", torrent_id);
+
+                                // Get the torrent's root inode
+                                if let Some(inode) = inode_manager.lookup_torrent(torrent_id) {
+                                    // Close all file handles for this torrent
+                                    let removed_handles = file_handles.remove_by_torrent(torrent_id);
+                                    if removed_handles > 0 {
+                                        debug!("Closed {} file handles for torrent {}", removed_handles, torrent_id);
+                                    }
+
+                                    // Remove the inode tree for this torrent
+                                    if !inode_manager.remove_inode(inode) {
+                                        warn!("Failed to remove inode {} for torrent {}", inode, torrent_id);
+                                    }
+
+                                    // Remove from torrent statuses
+                                    torrent_statuses.remove(&torrent_id);
+
+                                    // Remove from known torrents
+                                    known_torrents.remove(&torrent_id);
+
+                                    // Record metric
+                                    metrics.fuse.record_torrent_removed();
+
+                                    info!("Successfully removed torrent {} from filesystem", torrent_id);
+                                } else {
+                                    warn!("Torrent {} not found in filesystem, skipping removal", torrent_id);
+                                    known_torrents.remove(&torrent_id);
+                                }
+                            }
                         }
                         Err(e) => {
                             warn!("On-demand torrent discovery failed: {}", e);

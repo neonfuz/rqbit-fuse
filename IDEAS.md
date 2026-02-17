@@ -168,21 +168,22 @@ When a torrent is removed from rqbit:
 
 **Tasks:**
 
-- [ ] **IDEA2-001**: Track currently known torrent IDs
+- [x] **IDEA2-001**: Track currently known torrent IDs
   - Add `known_torrents: DashSet<u64>` to `TorrentFS`
   - Populate during discovery with all torrent IDs from rqbit
   - Update on each discovery cycle
   - Location: `src/fs/filesystem.rs:TorrentFS`
 
-- [ ] **IDEA2-002**: Add method to detect removed torrents
+- [x] **IDEA2-002**: Add method to detect removed torrents
   - Compare current torrent list with `known_torrents`
   - Return list of torrent IDs that are no longer in rqbit
   - Location: `src/fs/filesystem.rs`
 
-- [ ] **IDEA2-003**: Add `get_torrent_inode()` method to `InodeManager`
+- [x] **IDEA2-003**: Add `get_torrent_inode()` method to `InodeManager`
   - Get root directory inode for a given torrent_id
   - Returns `Option<u64>` (None if torrent not in filesystem)
   - Location: `src/fs/inode.rs`
+  - Already exists as `lookup_torrent()`
 
 #### Phase 2: Implement Torrent Removal from Filesystem
 
@@ -192,7 +193,7 @@ When a torrent is removed from rqbit:
 
 **Tasks:**
 
-- [ ] **IDEA2-004**: Add `remove_torrent_from_fs()` method
+- [x] **IDEA2-004**: Add `remove_torrent_from_fs()` method
   - Look up torrent directory inode by torrent_id
   - Call `inode_manager.remove_inode()` to delete torrent tree
   - Close all open streams for the torrent via `api_client.close_torrent_streams()`
@@ -201,7 +202,7 @@ When a torrent is removed from rqbit:
   - Log the removal
   - Location: `src/fs/filesystem.rs`
 
-- [ ] **IDEA2-005**: Integrate removal check into discovery
+- [x] **IDEA2-005**: Integrate removal check into discovery
   - After fetching torrent list from rqbit
   - Detect removed torrents by comparing with `known_torrents`
   - Call `remove_torrent_from_fs()` for each removed torrent
