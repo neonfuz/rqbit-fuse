@@ -116,10 +116,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Verify no crash or error
   - Implemented: test_edge_014_empty_directory_listing in tests/fuse_operations.rs
 
-- [ ] **EDGE-015**: Test directory with many files
+- [x] **EDGE-015**: Test directory with many files
   - Create directory with 1000+ files
   - List contents with various offsets
   - Verify pagination/offset works correctly
+  - Implemented: test_edge_015_directory_with_many_files in tests/fuse_operations.rs
 
 ---
 

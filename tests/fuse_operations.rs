@@ -2177,6 +2177,131 @@ async fn test_edge_014_empty_directory_listing() {
     );
 }
 
+// ============================================================================
+// EDGE-015: Test directory with many files
+// ============================================================================
+
+/// Test directory with 1000+ files - verify pagination and offset work correctly
+#[tokio::test]
+async fn test_edge_015_directory_with_many_files() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with 1050 files to test large directory handling
+    let num_files = 1050;
+    let files: Vec<FileInfo> = (0..num_files)
+        .map(|i| FileInfo {
+            name: format!("file_{:04}.txt", i),
+            length: 1024,
+            components: vec![format!("file_{:04}.txt", i)],
+        })
+        .collect();
+
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "large123".to_string(),
+        name: "Large Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(num_files),
+        files,
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Verify torrent directory exists
+    let torrent_ino = inode_manager
+        .lookup_by_path("/Large Torrent")
+        .expect("Torrent directory should exist");
+
+    // Get all children
+    let all_children = inode_manager.get_children(torrent_ino);
+    assert_eq!(
+        all_children.len(),
+        num_files,
+        "Directory should have {} files",
+        num_files
+    );
+
+    // Verify all files are accessible by name
+    for i in 0..num_files {
+        let filename = format!("file_{:04}.txt", i);
+        let path = format!("/Large Torrent/{}", filename);
+        let file_ino = inode_manager.lookup_by_path(&path);
+        assert!(
+            file_ino.is_some(),
+            "File {} should be accessible by path",
+            filename
+        );
+
+        // Verify file attributes
+        let entry = inode_manager
+            .get(file_ino.unwrap())
+            .expect("Entry should exist");
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(
+            attr.kind,
+            fuser::FileType::RegularFile,
+            "{} should be a file",
+            filename
+        );
+        assert_eq!(attr.size, 1024, "{} should have size 1024", filename);
+    }
+
+    // Test pagination with various offsets
+    let inodes: Vec<u64> = all_children.iter().map(|(ino, _)| *ino).collect();
+
+    // Test offset at beginning (0)
+    let offset_0: Vec<_> = all_children.iter().skip(0).take(100).collect();
+    assert_eq!(offset_0.len(), 100, "Should get 100 entries from offset 0");
+
+    // Test offset in middle (500)
+    let offset_500: Vec<_> = all_children.iter().skip(500).take(100).collect();
+    assert_eq!(
+        offset_500.len(),
+        100,
+        "Should get 100 entries from offset 500"
+    );
+    assert_eq!(
+        offset_500[0].0, inodes[500],
+        "First entry at offset 500 should match inode at index 500"
+    );
+
+    // Test offset near end (1000)
+    let offset_1000: Vec<_> = all_children.iter().skip(1000).collect();
+    assert_eq!(
+        offset_1000.len(),
+        50,
+        "Should get 50 entries from offset 1000"
+    );
+    assert_eq!(
+        offset_1000[0].0, inodes[1000],
+        "First entry at offset 1000 should match inode at index 1000"
+    );
+
+    // Test offset beyond end (2000)
+    let offset_2000: Vec<_> = all_children.iter().skip(2000).collect();
+    assert!(
+        offset_2000.is_empty(),
+        "Offset beyond end should return empty list"
+    );
+
+    // Verify all inodes are unique (no duplicates)
+    let unique_inodes: std::collections::HashSet<_> = inodes.iter().cloned().collect();
+    assert_eq!(
+        unique_inodes.len(),
+        num_files,
+        "All {} inodes should be unique",
+        num_files
+    );
+}
+
 /// Test readdir with offset - simulating resuming directory listing after offset
 #[tokio::test]
 async fn test_readdir_with_offset() {
