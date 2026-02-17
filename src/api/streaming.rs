@@ -907,4 +907,186 @@ mod tests {
         // Verify only one request was made
         mock_server.verify().await;
     }
+
+    // ============================================================================
+    // EDGE-001: EOF Boundary Edge Cases
+    // ============================================================================
+
+    /// Test read at EOF boundary - 1 byte file
+    #[tokio::test]
+    async fn test_edge_001_read_eof_boundary_1_byte() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // 1 byte file
+        let file_size = 1u64;
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![0xABu8; file_size as usize]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Read at offset = file_size - 1 (last byte)
+        let result = manager.read(1, 0, file_size - 1, 1024).await;
+        assert!(result.is_ok(), "Read at EOF-1 should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 1, "Should read exactly 1 byte");
+        assert_eq!(data[0], 0xAB, "Should read correct byte");
+
+        // Read at offset = file_size (EOF) - should return empty, not error
+        let result = manager.read(1, 0, file_size, 1024).await;
+        assert!(result.is_ok(), "Read at EOF should succeed (return empty)");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 0, "Should return 0 bytes at EOF");
+
+        mock_server.verify().await;
+    }
+
+    /// Test read at EOF boundary - 4096 byte file (block size)
+    #[tokio::test]
+    async fn test_edge_001_read_eof_boundary_4096_bytes() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // 4096 byte file (standard block size)
+        let file_size = 4096u64;
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![0xCDu8; file_size as usize]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Read at offset = file_size - 1 (last byte)
+        let result = manager.read(1, 0, file_size - 1, 1024).await;
+        assert!(result.is_ok(), "Read at EOF-1 should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 1, "Should read exactly 1 byte");
+        assert_eq!(data[0], 0xCD, "Should read correct byte");
+
+        // Read at offset = file_size (EOF)
+        let result = manager.read(1, 0, file_size, 1024).await;
+        assert!(result.is_ok(), "Read at EOF should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 0, "Should return 0 bytes at EOF");
+
+        mock_server.verify().await;
+    }
+
+    /// Test read at EOF boundary - 1MB file
+    #[tokio::test]
+    async fn test_edge_001_read_eof_boundary_1mb() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // 1 MB file
+        let file_size = 1024 * 1024u64;
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![0xEFu8; file_size as usize]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Read at offset = file_size - 1 (last byte)
+        let result = manager.read(1, 0, file_size - 1, 4096).await;
+        assert!(result.is_ok(), "Read at EOF-1 should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 1, "Should read exactly 1 byte");
+        assert_eq!(data[0], 0xEF, "Should read correct byte");
+
+        // Read at offset = file_size (EOF)
+        let result = manager.read(1, 0, file_size, 4096).await;
+        assert!(result.is_ok(), "Read at EOF should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 0, "Should return 0 bytes at EOF");
+
+        mock_server.verify().await;
+    }
+
+    /// Test read beyond EOF - should return available bytes or empty
+    #[tokio::test]
+    async fn test_edge_001_read_beyond_eof() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // 100 byte file
+        let file_size = 100u64;
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![0x42u8; file_size as usize]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Read at offset beyond file_size - should return empty
+        let result = manager.read(1, 0, file_size + 1, 1024).await;
+        assert!(result.is_ok(), "Read beyond EOF should succeed (return empty)");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 0, "Should return 0 bytes beyond EOF");
+
+        // Read at offset = file_size + 1000
+        let result = manager.read(1, 0, file_size + 1000, 1024).await;
+        assert!(result.is_ok(), "Read far beyond EOF should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 0, "Should return 0 bytes far beyond EOF");
+
+        mock_server.verify().await;
+    }
+
+    /// Test read requesting more bytes than available at EOF
+    #[tokio::test]
+    async fn test_edge_001_read_request_more_than_available() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // 50 byte file
+        let file_size = 50u64;
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![0x99u8; file_size as usize]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Read starting at offset 25, requesting 100 bytes (only 25 available)
+        let result = manager.read(1, 0, 25, 100).await;
+        assert!(result.is_ok(), "Read should succeed even requesting more than available");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 25, "Should return only available bytes");
+
+        // Read starting at offset 0, requesting 1000 bytes (only 50 available)
+        let result = manager.read(1, 0, 0, 1000).await;
+        assert!(result.is_ok(), "Read should succeed");
+        let data = result.unwrap();
+        assert_eq!(data.len(), 50, "Should return entire file content");
+
+        mock_server.verify().await;
+    }
 }
