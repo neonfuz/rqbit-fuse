@@ -13,10 +13,10 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - [x] Run tests to verify cache still works correctly
 
 ### 2. Archive Migration Directory
-- [ ] Verify all migration plans in `migration/` are completed (check git history)
-- [ ] Move `migration/` to `archive/migration/` or delete if fully completed
-- [ ] Update any references in documentation
-- [ ] Commit the cleanup
+- [x] Verify all migration plans in `migration/` are completed (check git history)
+- [x] Move `migration/` to `archive/migration/` or delete if fully completed
+- [x] Update any references in documentation
+- [x] Commit the cleanup
 
 ### 3. Archive Research Directory
 - [ ] Review `research/` directory contents for any active relevance
