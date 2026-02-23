@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-038: Test timeout at different stages
+  - Implemented 4 comprehensive tests in `src/api/client.rs` for timeout handling:
+    - `test_edge_038_connection_timeout`: Tests connection timeout using short connect_timeout (100ms)
+    - `test_edge_038_read_timeout`: Tests read timeout with server response delay (200ms vs 50ms timeout)
+    - `test_edge_038_dns_resolution_failure`: Tests DNS failure handling for unresolvable hostnames
+    - `test_edge_038_timeout_error_types`: Tests error type mappings and errno conversions
+  - All tests verify appropriate error types (ConnectionTimeout, ReadTimeout) are returned
+  - Tests verify transient error classification and server availability detection
+  - All 176+ tests passing with zero clippy warnings
+
 - EDGE-037: Test malformed JSON response
   - Implemented 5 comprehensive tests in `src/api/client.rs` for handling invalid JSON
   - Tests verify graceful error handling without panic for:

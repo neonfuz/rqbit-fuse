@@ -337,11 +337,16 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_037_empty_json_response`: Tests empty response body
     - `test_edge_037_json_with_null_required_fields`: Tests null values for required fields
 
-- [ ] **EDGE-038**: Test timeout at different stages
+- [x] **EDGE-038**: Test timeout at different stages
   - DNS resolution timeout
   - Connection timeout
   - Read timeout
   - Each should return appropriate error
+  - Implemented: 4 tests in `src/api/client.rs`:
+    - `test_edge_038_connection_timeout`: Tests connection timeout with short connect_timeout
+    - `test_edge_038_read_timeout`: Tests read timeout with delayed response
+    - `test_edge_038_dns_resolution_failure`: Tests DNS failure handling
+    - `test_edge_038_timeout_error_types`: Tests error type mappings for timeout errors
 
 - [ ] **EDGE-039**: Test connection reset
   - Server resets connection mid-request

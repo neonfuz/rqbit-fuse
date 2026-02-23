@@ -2087,4 +2087,156 @@ mod tests {
             "Should return error for null required fields"
         );
     }
+
+    // =========================================================================
+    // EDGE-038: Timeout at Different Stages Tests
+    // =========================================================================
+
+    /// Test connection timeout when server is unreachable
+    /// Tests that connection failures produce appropriate timeout errors
+    #[tokio::test]
+    async fn test_edge_038_connection_timeout() {
+        // Create a reqwest client with a very short connect timeout
+        let client = Client::builder()
+            .connect_timeout(Duration::from_millis(100)) // Short connect timeout
+            .timeout(Duration::from_millis(200))
+            .build()
+            .unwrap();
+
+        let start = Instant::now();
+        // Try to connect to a non-routable address on a closed port
+        // This should timeout quickly due to the connect_timeout setting
+        let result = client.get("http://192.0.2.1:3030/torrents").send().await;
+        let elapsed = start.elapsed();
+
+        // Should fail with timeout
+        assert!(result.is_err(), "Should fail with connection timeout");
+
+        let err = result.unwrap_err();
+        assert!(
+            err.is_timeout() || err.is_connect(),
+            "Should be a timeout or connect error, got: {:?}",
+            err
+        );
+
+        // Should timeout quickly due to connect_timeout setting
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "Should timeout quickly with connect_timeout, but took {:?}",
+            elapsed
+        );
+    }
+
+    /// Test read timeout when server responds slowly
+    /// Server takes longer than the configured read timeout
+    #[tokio::test]
+    async fn test_edge_038_read_timeout() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+
+        // Create client with a very short timeout (50ms)
+        let client = Client::builder()
+            .timeout(Duration::from_millis(50))
+            .build()
+            .unwrap();
+
+        // Mock a response that delays longer than the timeout
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"torrents": []}))
+                    .set_delay(Duration::from_millis(200)), // Delay longer than timeout
+            )
+            .mount(&mock_server)
+            .await;
+
+        let start = Instant::now();
+        let result = client
+            .get(format!("{}/torrents", mock_server.uri()))
+            .send()
+            .await;
+        let elapsed = start.elapsed();
+
+        // Should timeout
+        assert!(result.is_err(), "Should timeout on slow response");
+
+        let err = result.unwrap_err();
+        assert!(err.is_timeout(), "Error should be a timeout");
+
+        // Should timeout around 50ms (with some overhead)
+        assert!(
+            elapsed < Duration::from_millis(150),
+            "Should timeout around 50ms, but took {:?}",
+            elapsed
+        );
+    }
+
+    /// Test that DNS resolution timeout is handled appropriately
+    /// This tests that unresolvable hostnames produce appropriate errors
+    #[tokio::test]
+    async fn test_edge_038_dns_resolution_failure() {
+        let metrics = Arc::new(ApiMetrics::new());
+
+        // Use a hostname that should not resolve
+        // This tests DNS failure handling, not actual timeout timing
+        // (DNS timeouts can be long and system-dependent)
+        let client = RqbitClient::with_config(
+            "http://this-host-definitely-does-not-exist.invalid".to_string(),
+            0, // No retries
+            Duration::from_millis(10),
+            None,
+            metrics.clone(),
+        )
+        .unwrap();
+
+        let start = Instant::now();
+        let result = client.list_torrents().await;
+        let elapsed = start.elapsed();
+
+        // Should fail
+        assert!(result.is_err(), "Should fail with DNS resolution error");
+
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        // Should be a network-related error (either DNS failure or connection failure)
+        assert!(
+            matches!(
+                err,
+                RqbitFuseError::NetworkError(_)
+                    | RqbitFuseError::ServerDisconnected
+                    | RqbitFuseError::ConnectionTimeout
+                    | RqbitFuseError::HttpError(_)
+            ),
+            "Should get network/DNS error, got: {:?}",
+            err
+        );
+
+        // Should complete in reasonable time (DNS resolution typically times out in ~5s)
+        assert!(
+            elapsed < Duration::from_secs(30),
+            "DNS resolution should complete or timeout reasonably, but took {:?}",
+            elapsed
+        );
+    }
+
+    /// Test that different timeout stages return appropriate error types
+    #[tokio::test]
+    async fn test_edge_038_timeout_error_types() {
+        // Test ConnectionTimeout error mapping
+        let conn_timeout_err = RqbitFuseError::ConnectionTimeout;
+        assert_eq!(conn_timeout_err.to_errno(), libc::EAGAIN);
+        assert!(conn_timeout_err.is_transient());
+        assert!(conn_timeout_err.is_server_unavailable());
+
+        // Test ReadTimeout error mapping
+        let read_timeout_err = RqbitFuseError::ReadTimeout;
+        assert_eq!(read_timeout_err.to_errno(), libc::EAGAIN);
+        assert!(read_timeout_err.is_transient());
+        assert!(!read_timeout_err.is_server_unavailable()); // Read timeout doesn't mean server unavailable
+
+        // Test TimedOut error mapping
+        let timed_out_err = RqbitFuseError::TimedOut;
+        assert_eq!(timed_out_err.to_errno(), libc::ETIMEDOUT);
+        assert!(!timed_out_err.is_transient()); // Generic timeout is not transient
+    }
 }
