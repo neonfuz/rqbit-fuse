@@ -209,10 +209,15 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_024_slow_server_partial_response`: Tests timeout during body read
     - `test_edge_024_normal_server_response`: Control test verifying normal operation
 
-- [ ] **EDGE-025**: Test wrong content-length
+- [x] **EDGE-025**: Test wrong content-length
   - Server returns more/less data than Content-Length header
   - Should handle gracefully
   - Return error or available data
+  - Implemented: 3 tests in `src/api/streaming.rs`
+    - `test_edge_025_content_length_more_than_header`: Tests when server sends more data than header indicates
+    - `test_edge_025_content_length_less_than_header`: Tests when server sends less data than header indicates
+    - `test_edge_025_content_length_mismatch_at_offset`: Tests mismatch at non-zero offset
+    - Note: HTTP layer (hyper) detects mismatch and returns error, which streaming layer handles gracefully
 
 - [ ] **EDGE-026**: Test seek patterns
   - Seek backward by 1 byte (should create new stream)

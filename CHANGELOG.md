@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-025: Test wrong content-length
+  - Added `test_edge_025_content_length_more_than_header` to verify graceful handling when server sends more data than Content-Length header indicates
+  - Added `test_edge_025_content_length_less_than_header` to verify graceful handling when server sends less data than Content-Length header indicates
+  - Added `test_edge_025_content_length_mismatch_at_offset` to verify handling of mismatches at non-zero offsets
+  - Tests verify HTTP layer (hyper) detects mismatch and returns error, which streaming layer handles gracefully without panic
+  - Location: `src/api/streaming.rs`
+
 - EDGE-024: Test slow server response
   - Added `test_edge_024_slow_server_response` to verify timeout handling with slow server (5s delay vs 100ms client timeout)
   - Added `test_edge_024_slow_server_partial_response` to test timeout during body read phase

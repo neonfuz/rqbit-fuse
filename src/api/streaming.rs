@@ -1620,4 +1620,162 @@ mod tests {
 
         mock_server.verify().await;
     }
+
+    // ============================================================================
+    // EDGE-025: Test wrong content-length
+    // ============================================================================
+
+    /// Test server returns more data than Content-Length header indicates
+    /// Verifies streaming layer handles overflow gracefully without panic
+    /// Note: HTTP layer (hyper) detects this mismatch and returns an error,
+    /// which our streaming layer handles gracefully by propagating the error
+    #[tokio::test]
+    async fn test_edge_025_content_length_more_than_header() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server says content-length is 50 bytes, but actually sends 100 bytes
+        // This simulates a buggy or malicious server
+        // The HTTP layer will detect this mismatch and return an error
+        let actual_data = vec![0xABu8; 100];
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(
+                ResponseTemplate::new(206)
+                    .insert_header("Content-Length", "50")
+                    .set_body_bytes(actual_data),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read - HTTP layer should detect mismatch and return error
+        // Our streaming layer should handle this gracefully (no panic)
+        let result = manager.read(1, 0, 0, 1024).await;
+
+        // Should return an error due to content-length mismatch
+        // The important thing is that we don't panic - we handle the error gracefully
+        assert!(
+            result.is_err(),
+            "Read should return error when content-length header doesn't match actual body length"
+        );
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("content-length") || error_msg.contains("stream"),
+            "Error should indicate content-length issue or stream error: {}",
+            error_msg
+        );
+
+        mock_server.verify().await;
+    }
+
+    /// Test server returns less data than Content-Length header indicates
+    /// Verifies streaming layer handles truncated response gracefully
+    /// Note: HTTP layer (hyper) detects this mismatch and returns an error,
+    /// which our streaming layer handles gracefully by propagating the error
+    #[tokio::test]
+    async fn test_edge_025_content_length_less_than_header() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server says content-length is 1000 bytes, but only sends 50 bytes
+        // This simulates a truncated response or connection issue
+        // The HTTP layer will detect this mismatch and return an error
+        let actual_data = vec![0xCDu8; 50];
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(
+                ResponseTemplate::new(206)
+                    .insert_header("Content-Length", "1000")
+                    .set_body_bytes(actual_data),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read - HTTP layer should detect mismatch and return error
+        // Our streaming layer should handle this gracefully (no panic)
+        let result = manager.read(1, 0, 0, 1024).await;
+
+        // Should return an error due to content-length mismatch
+        // The important thing is that we don't panic - we handle the error gracefully
+        assert!(
+            result.is_err(),
+            "Read should return error when content-length header doesn't match actual body length"
+        );
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("content-length") || error_msg.contains("stream"),
+            "Error should indicate content-length issue or stream error: {}",
+            error_msg
+        );
+
+        mock_server.verify().await;
+    }
+
+    /// Test content-length mismatch with range request at offset
+    /// Verifies streaming layer handles wrong content-length at non-zero offset
+    /// Note: HTTP layer (hyper) detects this mismatch and returns an error,
+    /// which our streaming layer handles gracefully by propagating the error
+    #[tokio::test]
+    async fn test_edge_025_content_length_mismatch_at_offset() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server claims content-length of 100 bytes from offset 50, but only sends 25
+        // The HTTP layer will detect this mismatch and return an error
+        let actual_data = vec![0xEFu8; 25];
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("Range", "bytes=50-"))
+            .respond_with(
+                ResponseTemplate::new(206)
+                    .insert_header("Content-Range", "bytes 50-149/200")
+                    .insert_header("Content-Length", "100")
+                    .set_body_bytes(actual_data),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read at offset 50 - HTTP layer should detect mismatch and return error
+        // Our streaming layer should handle this gracefully (no panic)
+        let result = manager.read(1, 0, 50, 100).await;
+
+        // Should return an error due to content-length mismatch
+        // The important thing is that we don't panic - we handle the error gracefully
+        assert!(
+            result.is_err(),
+            "Read should return error when content-length header doesn't match actual body length at offset"
+        );
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("content-length") || error_msg.contains("stream"),
+            "Error should indicate content-length issue or stream error: {}",
+            error_msg
+        );
+
+        mock_server.verify().await;
+    }
 }
