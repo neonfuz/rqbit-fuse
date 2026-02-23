@@ -236,6 +236,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- SIMPLIFY-2-009: Remove unused `strum` dependency
+  - Removed `strum = { version = "0.25", features = ["derive"] }` from `Cargo.toml`
+  - Removed `use strum::Display;` import from `src/api/types.rs`
+  - Removed `Display` derive and `#[strum(serialize_all = "snake_case")]` from `DataUnavailableReason` enum
+  - Removed `Display` derive and `#[strum(serialize_all = "snake_case")]` from `TorrentState` enum
+  - Total: 6 lines removed, 1 dependency removed
+  - Rationale: Display trait was never actually used (no `.to_string()` calls found)
+  - Enums are only used for pattern matching and comparisons, not string formatting
+  - See analysis: `research/strum_usage_verification.md`
+  - Location: `Cargo.toml`, `src/api/types.rs`
+
 - SIMPLIFY-2-006: Remove circuit breaker implementation
   - Deleted `src/api/circuit_breaker.rs` (85 lines)
   - Removed circuit breaker from `src/api/mod.rs` exports

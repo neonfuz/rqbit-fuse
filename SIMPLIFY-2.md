@@ -75,7 +75,7 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 
 ### 9. Review Unused Dependencies
 - [ ] Check `Cargo.toml` for potentially unused dependencies:
-  - [ ] `strum` - verify only used for Display derive
+  - [x] `strum` - verify only used for Display derive - REMOVED: Was unused, Display trait never invoked
   - [ ] `base64` - verify only used for HTTP Basic Auth
   - [ ] `proptest` - heavy dev dependency, verify usage
 - [ ] For each unused dependency:

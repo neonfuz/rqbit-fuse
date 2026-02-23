@@ -1,10 +1,8 @@
 use serde::{Deserialize, Serialize};
-use strum::Display;
 use thiserror::Error;
 
 /// Reason why data is unavailable
-#[derive(Debug, Clone, PartialEq, Eq, Display)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataUnavailableReason {
     /// Torrent is paused and pieces haven't been downloaded
     Paused,
@@ -378,8 +376,7 @@ impl PieceBitfield {
 }
 
 /// Status of a torrent for monitoring
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TorrentState {
     /// Torrent is downloading
     Downloading,
