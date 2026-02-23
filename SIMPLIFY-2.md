@@ -5,11 +5,12 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 ## High Priority
 
 ### 1. Remove ShardedCounter Module
-- [ ] Delete `src/sharded_counter.rs`
-- [ ] Remove `pub mod sharded_counter;` from `src/lib.rs`
-- [ ] Replace `ShardedCounter` usage in `src/cache.rs` with simple `AtomicU64`
-- [ ] Update `src/cache.rs` imports to remove `ShardedCounter`
-- [ ] Run tests to verify cache still works correctly
+- [x] Delete `src/sharded_counter.rs` (already removed)
+- [x] Remove `pub mod sharded_counter;` from `src/lib.rs` (already removed)
+- [x] Replace `ShardedCounter` usage in `src/cache.rs` with simple `AtomicU64` (already using AtomicU64)
+- [x] Update `src/cache.rs` imports to remove `ShardedCounter` (no imports needed)
+- [x] Update test comment referencing sharded counters
+- [x] Run tests to verify cache still works correctly
 
 ### 2. Archive Migration Directory
 - [ ] Verify all migration plans in `migration/` are completed (check git history)

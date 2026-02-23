@@ -1,5 +1,5 @@
-use crate::sharded_counter::ShardedCounter;
 use moka::future::Cache as MokaCache;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -58,12 +58,12 @@ impl CacheStats {
 pub struct Cache<K, V> {
     /// The underlying moka cache
     inner: MokaCache<K, Arc<V>>,
-    /// Sharded hit counter for reduced contention
-    hits: ShardedCounter,
-    /// Sharded miss counter for reduced contention
-    misses: ShardedCounter,
-    /// Sharded eviction counter for tracking evictions
-    evictions: ShardedCounter,
+    /// Hit counter
+    hits: AtomicU64,
+    /// Miss counter
+    misses: AtomicU64,
+    /// Eviction counter
+    evictions: AtomicU64,
     /// Default TTL for entries
     default_ttl: Duration,
     /// Maximum capacity (for eviction tracking)
@@ -84,9 +84,9 @@ where
 
         Self {
             inner,
-            hits: ShardedCounter::new(),
-            misses: ShardedCounter::new(),
-            evictions: ShardedCounter::new(),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            evictions: AtomicU64::new(0),
             default_ttl,
             max_capacity: max_entries as u64,
         }
@@ -100,11 +100,11 @@ where
     {
         match self.inner.get(key).await {
             Some(value) => {
-                self.hits.increment();
+                self.hits.fetch_add(1, Ordering::Relaxed);
                 Some((*value).clone())
             }
             None => {
-                self.misses.increment();
+                self.misses.fetch_add(1, Ordering::Relaxed);
                 None
             }
         }
@@ -134,7 +134,7 @@ where
         // an eviction likely occurred to make room. This is an approximation due to
         // moka's async processing.
         if size_before >= self.max_capacity {
-            self.evictions.increment();
+            self.evictions.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -157,9 +157,9 @@ where
     /// Get cache statistics
     pub async fn stats(&self) -> CacheStats {
         CacheStats {
-            hits: self.hits.sum(),
-            misses: self.misses.sum(),
-            evictions: self.evictions.sum(),
+            hits: self.hits.load(Ordering::Relaxed),
+            misses: self.misses.load(Ordering::Relaxed),
+            evictions: self.evictions.load(Ordering::Relaxed),
             expired: 0, // moka handles expiration internally
             size: self.inner.entry_count() as usize,
             weight: 0, // Requires weigher to be configured; not available by default
@@ -392,8 +392,8 @@ mod tests {
     }
 
     /// Performance benchmark for concurrent cache reads with statistics collection.
-    /// This test verifies that sharded counters provide good performance under
-    /// high concurrency compared to a single atomic counter.
+    /// This test verifies that atomic counters provide good performance under
+    /// high concurrency.
     #[tokio::test]
     async fn test_cache_stats_performance() {
         use std::sync::Arc;

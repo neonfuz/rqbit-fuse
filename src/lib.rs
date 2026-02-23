@@ -211,7 +211,6 @@ pub mod config;
 pub mod fs;
 pub mod metrics;
 pub mod mount;
-pub mod sharded_counter;
 pub mod types;
 
 /// Cache module re-exports.
@@ -241,12 +240,6 @@ pub use fs::filesystem::TorrentFS;
 /// Tracks API call latency, cache hits/misses, FUSE operation counts, and other
 /// useful metrics for debugging and optimization.
 pub use metrics::{CacheMetrics, Metrics};
-
-/// High-performance counter for concurrent metrics.
-///
-/// A sharded counter that allows concurrent increment operations without locking.
-/// Used internally for metrics that are updated frequently from multiple threads.
-pub use sharded_counter::ShardedCounter;
 
 use crate::api::create_api_client;
 use anyhow::{Context, Result};
