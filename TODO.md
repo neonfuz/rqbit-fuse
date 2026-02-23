@@ -628,11 +628,13 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Testing Simplifications
 
-- [ ] **SIMPLIFY-010**: Simplify Test Structure
-  - Consolidate test modules if too fragmented
-  - Use parameterized tests where appropriate
-  - Extract common test fixtures into shared module
-  - Remove redundant test cases that don't add coverage
+- [x] **SIMPLIFY-010**: Simplify Test Structure
+  - Removed 2 duplicate tests from `fuse_operations.rs` that already existed in `integration_tests.rs`:
+    - `test_filesystem_creation_and_initialization` (13 lines)
+    - `test_unicode_and_special_characters` (53 lines)
+  - Fixed pre-existing clippy error: removed redundant `.skip(0)` call
+  - Reduced `fuse_operations.rs` from 6894 to 6828 lines (-66 lines)
+  - All tests pass (95 in fuse_operations, 19 in integration_tests)
 
 ---
 

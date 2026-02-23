@@ -27,19 +27,6 @@ mod common;
 use common::test_helpers::{create_test_config, create_test_fs, setup_mock_server};
 
 #[tokio::test]
-async fn test_filesystem_creation_and_initialization() {
-    let mock_server = setup_mock_server().await;
-    let temp_dir = TempDir::new().unwrap();
-    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
-
-    let metrics = Arc::new(Metrics::new());
-    let fs = create_test_fs(config, metrics);
-
-    // Verify filesystem was created
-    assert!(!fs.is_initialized());
-}
-
-#[tokio::test]
 async fn test_torrent_structure_creation_single_file() {
     let mock_server = setup_mock_server().await;
     let temp_dir = TempDir::new().unwrap();
@@ -644,59 +631,6 @@ async fn test_torrent_removal_cleanup() {
     assert!(!fs.has_torrent(1));
     assert!(inode_manager.lookup_by_path("/Test Torrent").is_none());
     assert!(inode_manager.lookup_torrent(1).is_none());
-}
-
-#[tokio::test]
-async fn test_unicode_and_special_characters() {
-    let mock_server = setup_mock_server().await;
-    let temp_dir = TempDir::new().unwrap();
-    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
-
-    let metrics = Arc::new(Metrics::new());
-    let fs = create_test_fs(config, metrics);
-
-    // Create torrent with unicode names (use multi-file for directory)
-    let torrent_info = TorrentInfo {
-        id: 1,
-        info_hash: "unicode123".to_string(),
-        name: "Unicode Test 🎉".to_string(),
-        output_folder: "/downloads".to_string(),
-        file_count: Some(3),
-        files: vec![
-            FileInfo {
-                name: "中文文件.txt".to_string(),
-                length: 100,
-                components: vec!["中文文件.txt".to_string()],
-            },
-            FileInfo {
-                name: "日本語ファイル.txt".to_string(),
-                length: 200,
-                components: vec!["日本語ファイル.txt".to_string()],
-            },
-            FileInfo {
-                name: "file with spaces.txt".to_string(),
-                length: 300,
-                components: vec!["file with spaces.txt".to_string()],
-            },
-        ],
-        piece_length: Some(1048576),
-    };
-
-    fs.create_torrent_structure(&torrent_info).unwrap();
-
-    let inode_manager = fs.inode_manager();
-
-    // Verify unicode paths work
-    assert!(inode_manager.lookup_by_path("/Unicode Test 🎉").is_some());
-    assert!(inode_manager
-        .lookup_by_path("/Unicode Test 🎉/中文文件.txt")
-        .is_some());
-    assert!(inode_manager
-        .lookup_by_path("/Unicode Test 🎉/日本語ファイル.txt")
-        .is_some());
-    assert!(inode_manager
-        .lookup_by_path("/Unicode Test 🎉/file with spaces.txt")
-        .is_some());
 }
 
 #[tokio::test]
@@ -2229,7 +2163,7 @@ async fn test_edge_015_directory_with_many_files() {
     let inodes: Vec<u64> = all_children.iter().map(|(ino, _)| *ino).collect();
 
     // Test offset at beginning (0)
-    let offset_0: Vec<_> = all_children.iter().skip(0).take(100).collect();
+    let offset_0: Vec<_> = all_children.iter().take(100).collect();
     assert_eq!(offset_0.len(), 100, "Should get 100 entries from offset 0");
 
     // Test offset in middle (500)
