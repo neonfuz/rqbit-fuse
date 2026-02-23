@@ -259,11 +259,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - Tests 7 phases: initial allocation, clear verification, new allocation, duplicate check, lookup verification, path lookup, multiple clear cycles
   - Verifies inodes are properly reused and no duplicates exist after multiple clear cycles
 
-- [ ] **EDGE-030**: Test concurrent allocation stress
+- [x] **EDGE-030**: Test concurrent allocation stress
   - 100 threads allocating simultaneously
   - Each thread allocates 100 inodes
   - Verify all inodes are unique
   - No duplicates, no gaps
+  - Implemented: `test_edge_030_concurrent_allocation_stress` in `src/fs/inode_manager.rs`
 
 ---
 

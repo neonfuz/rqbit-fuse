@@ -1094,4 +1094,141 @@ mod tests {
             "Torrent 20 should be found"
         );
     }
+
+    #[test]
+    fn test_edge_030_concurrent_allocation_stress() {
+        // EDGE-030: Test concurrent allocation stress
+        // 100 threads allocating simultaneously
+        // Each thread allocates 100 inodes
+        // Verify all inodes are unique
+        // No duplicates, no gaps
+
+        use std::sync::Arc;
+        use std::thread;
+
+        let manager = Arc::new(InodeManager::new());
+        let mut handles = vec![];
+        const NUM_THREADS: usize = 100;
+        const INODES_PER_THREAD: usize = 100;
+        const TOTAL_INODES: usize = NUM_THREADS * INODES_PER_THREAD; // 10,000
+
+        // Spawn 100 threads that each allocate 100 inodes
+        for thread_id in 0..NUM_THREADS {
+            let manager_clone = Arc::clone(&manager);
+            let handle = thread::spawn(move || {
+                let mut allocated_inodes = Vec::with_capacity(INODES_PER_THREAD);
+
+                for i in 0..INODES_PER_THREAD {
+                    let name = format!("thread{}_file{}", thread_id, i);
+                    let inode = manager_clone.allocate_file(
+                        name.clone(),
+                        1, // parent (root)
+                        thread_id as u64,
+                        i as u64,
+                        100,
+                    );
+
+                    // Verify inode was allocated successfully
+                    assert_ne!(
+                        inode, 0,
+                        "Thread {}: allocation {} should not fail",
+                        thread_id, i
+                    );
+                    assert!(
+                        inode >= 2,
+                        "Thread {}: allocated inode should be >= 2",
+                        thread_id
+                    );
+
+                    // Verify inode exists immediately
+                    let retrieved = manager_clone.get(inode);
+                    assert!(
+                        retrieved.is_some(),
+                        "Thread {}: allocated inode {} should exist immediately",
+                        thread_id,
+                        inode
+                    );
+
+                    // Verify retrieved entry matches
+                    assert_eq!(
+                        retrieved.unwrap().ino(),
+                        inode,
+                        "Thread {}: retrieved entry should have correct inode",
+                        thread_id
+                    );
+
+                    allocated_inodes.push(inode);
+                }
+
+                allocated_inodes
+            });
+            handles.push(handle);
+        }
+
+        // Collect all allocated inodes from all threads
+        let mut all_inodes: Vec<u64> = Vec::with_capacity(TOTAL_INODES);
+        for (thread_id, handle) in handles.into_iter().enumerate() {
+            let thread_inodes = handle.join().unwrap();
+            assert_eq!(
+                thread_inodes.len(),
+                INODES_PER_THREAD,
+                "Thread {} should allocate exactly {} inodes",
+                thread_id,
+                INODES_PER_THREAD
+            );
+            all_inodes.extend(thread_inodes);
+        }
+
+        // Final verification: should have exactly 10,000 inodes (plus root)
+        assert_eq!(
+            manager.inode_count(),
+            TOTAL_INODES,
+            "Should have exactly {} allocated inodes",
+            TOTAL_INODES
+        );
+
+        // Verify all inodes are unique (no duplicates)
+        let mut unique_inodes = all_inodes.clone();
+        unique_inodes.sort();
+        unique_inodes.dedup();
+        assert_eq!(
+            unique_inodes.len(),
+            TOTAL_INODES,
+            "Should have {} unique inodes, but found {} ({} duplicates)",
+            TOTAL_INODES,
+            unique_inodes.len(),
+            TOTAL_INODES - unique_inodes.len()
+        );
+
+        // Verify no gaps in inode numbers (all values from 2 to 10,001 should exist)
+        // Sort all inodes to check for gaps
+        all_inodes.sort();
+        for (i, &inode) in all_inodes.iter().enumerate() {
+            let expected = (i + 2) as u64; // Inodes start at 2
+            assert_eq!(
+                inode, expected,
+                "Gap in inode sequence at position {}: expected {}, got {}",
+                i, expected, inode
+            );
+        }
+
+        // Verify the next inode counter is correct
+        let expected_next = (TOTAL_INODES + 2) as u64; // 10,002
+        assert_eq!(
+            manager.next_inode(),
+            expected_next,
+            "Next inode should be {} after allocating {} inodes",
+            expected_next,
+            TOTAL_INODES
+        );
+
+        // Final consistency check: verify all inodes are still accessible
+        for inode in all_inodes {
+            assert!(
+                manager.contains(inode),
+                "Inode {} should still exist in manager",
+                inode
+            );
+        }
+    }
 }

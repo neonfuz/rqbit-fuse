@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-030: Test concurrent allocation stress
+  - Added `test_edge_030_concurrent_allocation_stress` to verify concurrent inode allocation under high load
+  - Tests 100 threads allocating simultaneously, each creating 100 inodes (10,000 total)
+  - Verifies all inodes are unique with no duplicates across concurrent allocations
+  - Verifies no gaps in inode sequence (all values from 2 to 10,001 are allocated)
+  - Tests immediate availability of allocated inodes across all threads
+  - Verifies thread-safety of InodeManager's atomic counter and DashMap storage
+  - Tests that `next_inode` counter is correctly set after mass concurrent allocation
+  - Location: `src/fs/inode_manager.rs`
+
 - EDGE-029: Test allocation after clear_torrents
   - Added `test_allocation_after_clear_torrents` to verify inode reuse after clear_torrents()
   - Tests 7 comprehensive phases:
