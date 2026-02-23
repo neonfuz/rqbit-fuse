@@ -47,8 +47,6 @@ impl TestFilesystem {
         let mut config = Config::default();
         config.api.url = mock_uri;
         config.mount.mount_point = mount_point.path().to_path_buf();
-        config.mount.allow_other = false;
-        config.mount.auto_unmount = true;
 
         let metrics = Arc::new(Metrics::new());
         let api_client = Arc::new(

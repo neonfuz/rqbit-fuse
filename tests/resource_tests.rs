@@ -25,7 +25,6 @@ fn create_test_config_with_semaphore(
     let mut config = Config::default();
     config.api.url = mock_uri;
     config.mount.mount_point = mount_point;
-    config.mount.allow_other = false;
     config.performance.max_concurrent_reads = max_concurrent_reads;
     config
 }

@@ -118,11 +118,17 @@ Reduce configuration complexity and validation overhead.
   - Write findings to `research/config-fields-usage.md`
   - Reference: "See research/config-fields-usage.md"
   
-- [ ] **Task 2.2.2**: Remove MountConfig options
+- [x] **Task 2.2.2**: Remove MountConfig options
   - Remove `allow_other` field - always use default (false)
   - Remove `auto_unmount` field - always use default (true)
   - Remove `uid` and `gid` fields - always use current user
   - Keep only: `mount_point`
+  - **Completed**: Removed 4 fields from MountConfig (allow_other, auto_unmount, uid, gid)
+  - **Completed**: Removed `--allow-other` and `--auto-unmount` CLI args from Mount command
+  - **Completed**: Removed env var parsing for TORRENT_FUSE_ALLOW_OTHER and TORRENT_FUSE_AUTO_UNMOUNT
+  - **Completed**: Updated filesystem.rs to hardcode AutoUnmount and use libc::geteuid/getegid directly
+  - **Completed**: Updated all test files to remove references to removed fields
+  - **Completed**: All 185+ tests passing
   
 - [ ] **Task 2.2.3**: Remove PerformanceConfig options
   - Remove `prefetch_enabled` - feature doesn't work well

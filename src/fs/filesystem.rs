@@ -861,13 +861,7 @@ impl TorrentFS {
                                         // broke FUSE mounting with Sync option enabled.
         ];
 
-        if self.config.mount.auto_unmount {
-            options.push(fuser::MountOption::AutoUnmount);
-        }
-
-        if self.config.mount.allow_other {
-            options.push(fuser::MountOption::AllowOther);
-        }
+        options.push(fuser::MountOption::AutoUnmount);
 
         options
     }
@@ -886,8 +880,8 @@ impl TorrentFS {
 
         let now = SystemTime::now();
         let creation_time = UNIX_EPOCH + Duration::from_secs(1_700_000_000); // Fixed creation time
-        let uid = self.config.mount.uid;
-        let gid = self.config.mount.gid;
+        let uid = unsafe { libc::geteuid() };
+        let gid = unsafe { libc::getegid() };
 
         match entry {
             InodeEntry::Directory { ino, .. } => fuser::FileAttr {
@@ -2537,19 +2531,6 @@ mod tests {
         assert!(options.contains(&fuser::MountOption::RO));
         assert!(options.contains(&fuser::MountOption::NoSuid));
         assert!(options.contains(&fuser::MountOption::AutoUnmount));
-    }
-
-    #[tokio::test]
-    async fn test_build_mount_options_allow_other() {
-        let mut config = Config::default();
-        config.mount.allow_other = true;
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
-
-        let options = fs.build_mount_options();
-
-        assert!(options.contains(&fuser::MountOption::AllowOther));
     }
 
     #[tokio::test]

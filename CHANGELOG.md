@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-019: Remove MountConfig Options (Task 2.2.2)
+  - Removed 4 fields from `MountConfig` struct in `src/config/mod.rs`:
+    - `allow_other` - now always false (other users cannot access mount)
+    - `auto_unmount` - now always true (always auto-unmount on exit)
+    - `uid` - now uses `libc::geteuid()` directly at runtime
+    - `gid` - now uses `libc::getegid()` directly at runtime
+  - Simplified `MountConfig` to single field: `mount_point`
+  - Removed `--allow-other` and `--auto-unmount` CLI arguments from Mount command
+  - Removed environment variable parsing for `TORRENT_FUSE_ALLOW_OTHER` and `TORRENT_FUSE_AUTO_UNMOUNT`
+  - Updated `src/fs/filesystem.rs`:
+    - Hardcoded `AutoUnmount` mount option (always enabled)
+    - Removed conditional `AllowOther` mount option
+    - Use `unsafe { libc::geteuid() }` and `unsafe { libc::getegid() }` directly in `build_file_attr()`
+  - Updated documentation and examples in `src/config/mod.rs` to reflect simplified config
+  - Updated all test files to remove references to removed fields:
+    - `tests/common/fuse_helpers.rs`
+    - `tests/common/test_helpers.rs`
+    - `tests/resource_tests.rs`
+    - `tests/common/mock_server.rs`
+    - `src/fs/filesystem.rs` (removed test_build_mount_options_allow_other test)
+    - `src/config/mod.rs` (removed allow_other from TOML test)
+  - Reduced MountConfig from 5 fields to 1 field (80% reduction)
+  - All 185+ tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`, `src/main.rs`, `src/fs/filesystem.rs`
+
 - SIMPLIFY-018: Research Config Fields Usage (Task 2.2.1)
   - Analyzed all 27 configuration fields across 7 config sections
   - Documented field usage patterns and identified candidates for removal

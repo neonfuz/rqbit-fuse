@@ -232,8 +232,6 @@ pub fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> 
     let mut config = Config::default();
     config.api.url = mock_uri;
     config.mount.mount_point = mount_point;
-    config.mount.allow_other = false;
-    config.mount.auto_unmount = true;
     config
 }
 

@@ -44,14 +44,6 @@ enum Commands {
         /// Suppress all output except errors
         #[arg(short, long)]
         quiet: bool,
-
-        /// Allow other users to access the mount
-        #[arg(long, env = "TORRENT_FUSE_ALLOW_OTHER")]
-        allow_other: bool,
-
-        /// Auto-unmount on process exit
-        #[arg(long, env = "TORRENT_FUSE_AUTO_UNMOUNT")]
-        auto_unmount: bool,
     },
 
     /// Unmount the torrent filesystem
@@ -90,20 +82,9 @@ async fn main() -> Result<()> {
             password,
             verbose,
             quiet,
-            allow_other,
-            auto_unmount,
         } => {
             setup_logging(verbose, quiet)?;
-            run_mount(
-                mount_point,
-                api_url,
-                config,
-                username,
-                password,
-                allow_other,
-                auto_unmount,
-            )
-            .await
+            run_mount(mount_point, api_url, config, username, password).await
         }
         Commands::Umount {
             mount_point,
@@ -144,17 +125,8 @@ async fn run_mount(
     config_file: Option<PathBuf>,
     username: Option<String>,
     password: Option<String>,
-    allow_other: bool,
-    auto_unmount: bool,
 ) -> Result<()> {
-    let mut config = load_config(config_file, mount_point, api_url, username, password)?;
-
-    if allow_other {
-        config.mount.allow_other = true;
-    }
-    if auto_unmount {
-        config.mount.auto_unmount = true;
-    }
+    let config = load_config(config_file, mount_point, api_url, username, password)?;
 
     if !config.mount.mount_point.exists() {
         tracing::info!(

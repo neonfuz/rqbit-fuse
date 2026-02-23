@@ -58,14 +58,6 @@ use std::path::PathBuf;
 /// [mount]
 /// # Where to mount the FUSE filesystem
 /// mount_point = "/mnt/torrents"
-/// # Allow other users to access the mount
-/// allow_other = false
-/// # Automatically unmount on process exit
-/// auto_unmount = true
-/// # User ID for file ownership (default: current user's EUID)
-/// # uid = 1000
-/// # Group ID for file ownership (default: current user's EGID)
-/// # gid = 1000
 ///
 /// [performance]
 /// # Timeout for read operations (seconds)
@@ -112,11 +104,7 @@ use std::path::PathBuf;
 ///     "max_entries": 1000
 ///   },
 ///   "mount": {
-///     "mount_point": "/mnt/torrents",
-///     "allow_other": false,
-///     "auto_unmount": true,
-///     "uid": 1000,
-///     "gid": 1000
+///     "mount_point": "/mnt/torrents"
 ///   },
 ///   "performance": {
 ///     "read_timeout": 30,
@@ -246,29 +234,19 @@ pub struct CacheConfig {
 
 /// Configuration for FUSE mount options.
 ///
-/// Controls where and how the filesystem is mounted.
+/// Controls where the filesystem is mounted.
 ///
 /// # Fields
 ///
 /// * `mount_point` - Directory to mount the FUSE filesystem (default: `/mnt/torrents`)
-/// * `allow_other` - Allow other users to access the mounted filesystem (default: false)
-/// * `auto_unmount` - Automatically unmount on process exit (default: true)
-/// * `uid` - User ID for file ownership (default: current user's EUID)
-/// * `gid` - Group ID for file ownership (default: current user's EGID)
 ///
 /// # Environment Variables
 ///
 /// - `TORRENT_FUSE_MOUNT_POINT` - Mount point directory path
-/// - `TORRENT_FUSE_ALLOW_OTHER` - Boolean to allow other users access
-/// - `TORRENT_FUSE_AUTO_UNMOUNT` - Boolean to enable auto unmount
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MountConfig {
     pub mount_point: PathBuf,
-    pub allow_other: bool,
-    pub auto_unmount: bool,
-    pub uid: u32,
-    pub gid: u32,
 }
 
 /// Configuration for performance-related settings.
@@ -398,10 +376,6 @@ impl Default for MountConfig {
     fn default() -> Self {
         Self {
             mount_point: PathBuf::from("/mnt/torrents"),
-            allow_other: false,
-            auto_unmount: true,
-            uid: unsafe { libc::geteuid() },
-            gid: unsafe { libc::getegid() },
         }
     }
 }
@@ -533,16 +507,6 @@ impl Config {
                 RqbitFuseError::InvalidValue(
                     "TORRENT_FUSE_READAHEAD_SIZE has invalid format".into(),
                 )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_ALLOW_OTHER") {
-            self.mount.allow_other = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_ALLOW_OTHER has invalid format".into())
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_AUTO_UNMOUNT") {
-            self.mount.auto_unmount = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_AUTO_UNMOUNT has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_STATUS_POLL_INTERVAL") {
@@ -768,7 +732,6 @@ max_entries = 500
 
 [mount]
 mount_point = "/tmp/torrents"
-allow_other = true
 
 [performance]
 read_timeout = 60
@@ -784,7 +747,6 @@ max_concurrent_reads = 20
         assert_eq!(config.cache.metadata_ttl, 120);
         assert_eq!(config.cache.max_entries, 500);
         assert_eq!(config.mount.mount_point, PathBuf::from("/tmp/torrents"));
-        assert!(config.mount.allow_other);
         assert_eq!(config.performance.read_timeout, 60);
         assert_eq!(config.performance.max_concurrent_reads, 20);
     }
