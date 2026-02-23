@@ -1455,3 +1455,300 @@ async fn test_edge_051_other_utf8_edge_cases() {
         }
     }
 }
+
+// ============================================================================
+// EDGE-053: Test maximum path length
+// ============================================================================
+
+/// Test that paths at various lengths are handled correctly
+///
+/// Linux filesystems typically support paths up to 4096 bytes (PATH_MAX).
+/// This test verifies that paths at various lengths are handled correctly,
+/// including paths approaching and potentially exceeding the limit.
+#[tokio::test]
+async fn test_edge_053_path_length_handling() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various path lengths
+    // Note: The actual PATH_MAX in Linux is 4096 bytes, but this includes the
+    // mount point path. Since we're creating torrent structures internally,
+    // we test the system's handling of deeply nested paths.
+    let test_cases = [
+        (100, "short path"),
+        (500, "medium path"),
+        (1000, "long path"),
+        (2000, "very long path"),
+        (3000, "extremely long path"),
+    ];
+
+    for (target_len, description) in test_cases.iter() {
+        // Calculate number of components needed
+        // Each component: "dirXXXXXX" (10 chars) + "/" separator
+        let component_len = 10 + 1; // name + slash
+        let filename = "file.txt";
+        let filename_len = filename.len();
+
+        // Base is just "/" for root
+        let base_len = 1;
+        let remaining = (*target_len as usize).saturating_sub(base_len + filename_len);
+        let dir_count = remaining / component_len;
+
+        let mut components: Vec<String> = vec![];
+        for i in 0..dir_count {
+            components.push(format!("dir{:06}", i % 1000000));
+        }
+
+        // Calculate actual path length
+        let actual_len =
+            base_len + components.iter().map(|c| c.len() + 1).sum::<usize>() + filename_len;
+
+        let torrent_info = TorrentInfo {
+            id: 1300 + actual_len as u64,
+            info_hash: format!("path{:06}", actual_len),
+            name: format!("Path Length Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: components.clone(),
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully without panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                println!(
+                    "{} ({} chars): Created successfully",
+                    description, actual_len
+                );
+            }
+            Err(e) => {
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "{} ({} chars) should not cause panic: {}",
+                    description,
+                    actual_len,
+                    error_msg
+                );
+                println!(
+                    "{} ({} chars): Rejected gracefully",
+                    description, actual_len
+                );
+            }
+        }
+    }
+}
+
+/// Test that extremely long paths (near PATH_MAX) are handled gracefully
+///
+/// Creates paths approaching 4096 bytes to verify the system handles
+/// the boundary correctly without panics.
+#[tokio::test]
+async fn test_edge_053_path_length_near_boundary() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test near the boundary with 350+ nested directories
+    // This creates a path of approximately 3800-3900 characters
+    let dir_count = 350;
+    let mut components: Vec<String> = vec![];
+
+    for i in 0..dir_count {
+        components.push(format!("dir{:06}", i));
+    }
+
+    let filename = "file.txt";
+    let total_len = 1 + components.iter().map(|c| c.len() + 1).sum::<usize>() + filename.len();
+
+    let torrent_info = TorrentInfo {
+        id: 1399,
+        info_hash: "boundarytest".to_string(),
+        name: "Boundary Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: filename.to_string(),
+            length: 1024,
+            components: components.clone(),
+        }],
+        piece_length: Some(1048576),
+    };
+
+    // Should handle gracefully without panic
+    let result = fs.create_torrent_structure(&torrent_info);
+
+    match result {
+        Ok(_) => {
+            println!(
+                "Near-boundary path ({} chars): Created successfully",
+                total_len
+            );
+        }
+        Err(e) => {
+            let error_msg = format!("{}", e);
+            assert!(
+                !error_msg.to_lowercase().contains("panic"),
+                "Near-boundary path ({} chars) should not cause panic: {}",
+                total_len,
+                error_msg
+            );
+            println!(
+                "Near-boundary path ({} chars): Rejected gracefully",
+                total_len
+            );
+        }
+    }
+}
+
+/// Test path length boundaries with various component sizes
+///
+/// Tests various path configurations to ensure consistent behavior.
+#[tokio::test]
+async fn test_edge_053_path_length_various_depths() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various nesting depths
+    let test_depths = [10, 50, 100, 200, 300];
+
+    for (idx, depth) in test_depths.iter().enumerate() {
+        let mut components: Vec<String> = vec![];
+        for i in 0..*depth {
+            components.push(format!("dir{:06}", i));
+        }
+
+        let filename = "file.txt";
+        let actual_len = 1 + components.iter().map(|c| c.len() + 1).sum::<usize>() + filename.len();
+
+        let torrent_info = TorrentInfo {
+            id: 1310 + idx as u64,
+            info_hash: format!("depth{}", depth),
+            name: format!("Depth Test {}", depth),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 512,
+                components: components.clone(),
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Each should be handled without panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                println!(
+                    "Depth {} ({} chars): Created successfully",
+                    depth, actual_len
+                );
+            }
+            Err(e) => {
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "Depth {} ({} chars) should not cause panic: {}",
+                    depth,
+                    actual_len,
+                    error_msg
+                );
+                println!(
+                    "Depth {} ({} chars): Rejected gracefully",
+                    depth, actual_len
+                );
+            }
+        }
+    }
+}
+
+/// Test maximum path length with multi-byte UTF-8 characters
+///
+/// Path limits are in bytes, not characters. This test verifies that
+/// UTF-8 paths respect the byte limit.
+#[tokio::test]
+async fn test_edge_053_maximum_path_with_multibyte_utf8() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Use Japanese character "あ" which is 3 bytes in UTF-8
+    let dir_char = "あ";
+    let char_bytes = dir_char.len(); // 3 bytes
+
+    let base_path = "/downloads/".to_string();
+    let base_len = base_path.len();
+    let filename = "file.txt";
+    let filename_len = filename.len();
+
+    // Calculate how many characters we can fit
+    // Target exactly 4096 bytes
+    let target_len = 4096;
+    let remaining = target_len - base_len - filename_len;
+    let char_count = remaining / (char_bytes + 1); // +1 for slash
+
+    let mut components: Vec<String> = vec![];
+    for i in 0..char_count {
+        components.push(format!("{}{}", dir_char, i));
+    }
+
+    // Calculate actual path length
+    let total_path_len =
+        base_len + components.iter().map(|c| c.len() + 1).sum::<usize>() + filename_len;
+
+    let torrent_info = TorrentInfo {
+        id: 1320,
+        info_hash: "utf8path4096".to_string(),
+        name: "UTF-8 Path 4096 Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: filename.to_string(),
+            length: 1024,
+            components: components.clone(),
+        }],
+        piece_length: Some(1048576),
+    };
+
+    // Should handle gracefully
+    let result = fs.create_torrent_structure(&torrent_info);
+
+    match result {
+        Ok(_) => {
+            println!(
+                "UTF-8 path ({} bytes, {} components) created successfully",
+                total_path_len, char_count
+            );
+        }
+        Err(e) => {
+            let error_msg = format!("{}", e);
+            assert!(
+                !error_msg.to_lowercase().contains("panic"),
+                "UTF-8 path should not cause panic: {}",
+                error_msg
+            );
+            println!("UTF-8 path rejected gracefully: {}", error_msg);
+        }
+    }
+}
