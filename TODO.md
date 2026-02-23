@@ -112,7 +112,7 @@ Reduce configuration complexity and validation overhead.
   - **Completed**: See CHANGELOG.md SIMPLIFY-017
 
 ### 2.2 Reduce Configuration Surface Area
-- [ ] **Task 2.2.1**: Research - Identify config fields to remove
+- [x] **Task 2.2.1**: Research - Identify config fields to remove
   - Analyze all 27 config fields in `src/config/mod.rs`
   - Document which fields are commonly changed vs never used
   - Write findings to `research/config-fields-usage.md`

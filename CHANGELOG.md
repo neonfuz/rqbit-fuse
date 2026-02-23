@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-018: Research Config Fields Usage (Task 2.2.1)
+  - Analyzed all 27 configuration fields across 7 config sections
+  - Documented field usage patterns and identified candidates for removal
+  - Categorized fields as "essential" vs "removable":
+    - **Essential (11 fields)**: api.url, api.username, api.password, cache.metadata_ttl, cache.max_entries, mount.mount_point, performance.read_timeout, performance.max_concurrent_reads, performance.readahead_size, logging.level
+    - **Removable (16 fields)**: All MountConfig except mount_point, all MonitoringConfig, all ResourceLimitsConfig, most LoggingConfig, some CacheConfig and PerformanceConfig fields
+  - Proposed reduction from 27 fields to 11 fields (59% reduction)
+  - Proposed reduction from 30+ env vars to 9 env vars (70% reduction)
+  - Full analysis written to `research/config-fields-usage.md`
+  - Provides roadmap for Phase 2.2 configuration simplification tasks
+
+### Changed
+
 - SIMPLIFY-017: Consolidate Validation Methods (Task 2.1.4)
   - Merged 7 separate validation methods into a single `validate()` method
   - Removed per-field validation methods: `validate_api_config()`, `validate_cache_config()`, `validate_mount_config()`, `validate_performance_config()`, `validate_monitoring_config()`, `validate_logging_config()`, `validate_resources_config()`
