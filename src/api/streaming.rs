@@ -909,6 +909,141 @@ mod tests {
     }
 
     // ============================================================================
+    // EDGE-021: Test server returning 200 OK instead of 206 Partial Content
+    // ============================================================================
+
+    /// Test server returning 200 OK for range request - should skip to offset
+    #[tokio::test]
+    async fn test_edge_021_server_returns_200_instead_of_206() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Create a 1000-byte file with distinct bytes at each position
+        let mut file_content = Vec::with_capacity(1000);
+        for i in 0..1000u16 {
+            file_content.push((i % 256) as u8);
+        }
+
+        // Server returns 200 OK with full file content (not 206)
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("Range", "bytes=100-"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read at offset 100
+        let result = manager.read(1, 0, 100, 50).await;
+        assert!(
+            result.is_ok(),
+            "Read should succeed even with 200 OK response"
+        );
+
+        let data = result.unwrap();
+        assert_eq!(data.len(), 50, "Should read requested 50 bytes");
+
+        // Verify data correctness - should be bytes 100-149 from the original file
+        for (i, byte) in data.iter().enumerate() {
+            let expected_byte = ((100 + i) % 256) as u8;
+            assert_eq!(
+                *byte, expected_byte,
+                "Byte at position {} should match expected value",
+                i
+            );
+        }
+
+        mock_server.verify().await;
+    }
+
+    /// Test server returns 200 OK at offset 0 - should not skip
+    #[tokio::test]
+    async fn test_edge_021_server_returns_200_at_offset_zero() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Create test content
+        let file_content: Vec<u8> = (0..100u8).collect();
+
+        // Server returns 200 OK for range request at offset 0
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("Range", "bytes=0-"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read at offset 0
+        let result = manager.read(1, 0, 0, 50).await;
+        assert!(result.is_ok(), "Read at offset 0 should succeed");
+
+        let data = result.unwrap();
+        assert_eq!(data.len(), 50, "Should read 50 bytes from start");
+
+        // Verify we got the first 50 bytes (no skipping needed at offset 0)
+        assert_eq!(
+            &data[..],
+            &file_content[0..50],
+            "Data should match first 50 bytes"
+        );
+
+        mock_server.verify().await;
+    }
+
+    /// Test large skip with 200 OK response
+    #[tokio::test]
+    async fn test_edge_021_large_skip_with_200_response() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Create a larger file (1MB) to test skip performance
+        let file_size = 1024 * 1024;
+        let file_content: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
+        let offset = 100 * 1024; // 100KB offset
+
+        // Server returns 200 OK with full file
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("Range", format!("bytes={}-", offset)))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read at 100KB offset
+        let result = manager.read(1, 0, offset, 1024).await;
+        assert!(result.is_ok(), "Read should succeed with large skip");
+
+        let data = result.unwrap();
+        assert_eq!(data.len(), 1024, "Should read 1KB at requested offset");
+
+        // Verify data at the offset position
+        let expected_start_byte = (offset % 256) as u8;
+        assert_eq!(
+            data[0], expected_start_byte,
+            "First byte should be at offset position"
+        );
+
+        mock_server.verify().await;
+    }
+
+    // ============================================================================
     // EDGE-001: EOF Boundary Edge Cases
     // ============================================================================
     // Note: These tests verify the streaming layer's behavior when the server

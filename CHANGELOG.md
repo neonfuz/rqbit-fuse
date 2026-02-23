@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-021: Test server returning 200 OK instead of 206 Partial Content
+  - Added `test_edge_021_server_returns_200_instead_of_206` to verify streaming layer handles 200 OK responses
+  - Tests that the streaming layer correctly skips to the requested offset when server returns full file
+  - Verifies data correctness by checking returned bytes match expected values at the offset position
+  - Added `test_edge_021_server_returns_200_at_offset_zero` to verify no skip occurs at offset 0
+  - Added `test_edge_021_large_skip_with_200_response` to test 100KB skip with 1MB file
+  - All tests verify the existing rqbit bug workaround in `PersistentStream::new()` works correctly
+  - Location: `src/api/streaming.rs`
+
 - EDGE-020: Test cache statistics edge cases
   - Added `test_cache_stats_edge_cases` to verify hit rate calculations handle edge cases
   - Tests 0 total requests (fresh cache) - verifies no division by zero

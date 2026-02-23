@@ -175,10 +175,11 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### HTTP Streaming (src/api/streaming.rs)
 
-- [ ] **EDGE-021**: Test server returning 200 instead of 206
+- [x] **EDGE-021**: Test server returning 200 instead of 206
   - Request range, server returns full file (200 OK)
   - Should handle correctly, skip to offset
   - Verify data correctness
+  - Implemented: 3 tests in `src/api/streaming.rs`
 
 - [ ] **EDGE-022**: Test empty response body
   - Server returns 200/206 with empty body
