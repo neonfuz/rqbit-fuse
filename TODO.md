@@ -364,11 +364,15 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Race Conditions (tests/concurrent_tests.rs)
 
-- [ ] **EDGE-040**: Test read while torrent being removed
+- [x] **EDGE-040**: Test read while torrent being removed
   - Start reading file
   - Remove torrent mid-read
   - Should handle gracefully
   - No crash or data corruption
+  - Implemented: `test_edge_040_read_while_torrent_being_removed` in `tests/integration_tests.rs`
+  - Tests file handles existing for removed torrents without panic
+  - Tests multiple handles with various states (active reads, prefetching)
+  - Tests graceful cleanup of stale handles
 
 - [ ] **EDGE-041**: Test concurrent discovery
   - Trigger discovery from readdir

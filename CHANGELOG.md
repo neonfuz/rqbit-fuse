@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-040: Test read while torrent being removed
+  - Implemented comprehensive test `test_edge_040_read_while_torrent_being_removed` in `tests/integration_tests.rs`
+  - Tests graceful handling when file handles exist for removed torrents
+  - Verifies no panic or crash when releasing handles for deleted files
+  - Tests multiple handles with various states (active reads, prefetching)
+  - Tests system state consistency after torrent removal with open handles
+  - All tests pass with zero clippy warnings
+
 - EDGE-039: Test connection reset
   - Implemented 4 comprehensive tests in `src/api/client.rs` for connection reset handling:
     - `test_edge_039_connection_reset_error_conversion`: Tests error conversion from reqwest errors

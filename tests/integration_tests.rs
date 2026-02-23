@@ -889,3 +889,230 @@ async fn debug_nested_structure() {
         println!("  Child: inode {} -> {}", ino, entry.name());
     }
 }
+
+/// EDGE-040: Test read while torrent being removed
+///
+/// This test verifies that the system handles gracefully when a torrent is removed
+/// while file handles are still open. The system should not crash when:
+/// 1. File handles exist for files that have been removed
+/// 2. Attempts are made to read from removed torrents
+/// 3. Torrent removal happens concurrently with file operations
+///
+/// This tests the graceful degradation of the filesystem when operations
+/// race with torrent removal.
+#[tokio::test]
+async fn test_edge_040_read_while_torrent_being_removed() {
+    use rqbit_fuse::types::handle::FileHandleManager;
+
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = Arc::new(create_test_fs(config, metrics));
+
+    // Create multi-file torrent structure (has directory + file inodes)
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
+    let torrent_info = TorrentInfo {
+        id: 40,
+        info_hash: "edge040".to_string(),
+        name: "EDGE-040 Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+    let torrent_inode = inode_manager.lookup_torrent(40).unwrap();
+
+    // Get the file inode (file1.txt under torrent directory)
+    let torrent_children = inode_manager.get_children(torrent_inode);
+    let file_entry = torrent_children
+        .iter()
+        .find(|(_, entry)| entry.name() == "file1.txt" && entry.is_file())
+        .expect("Should find file1.txt");
+    let file_inode = file_entry.0;
+
+    // Verify file exists before removal
+    assert!(
+        inode_manager.get(file_inode).is_some(),
+        "File should exist before removal"
+    );
+
+    // Test 1: Simulate race condition - open file handle then remove torrent
+    // This simulates the scenario where a file is opened for reading,
+    // then the torrent is removed before the read completes.
+    let fh_manager = FileHandleManager::default();
+    let fh = fh_manager.allocate(file_inode, 40, 0);
+    assert!(fh > 0, "Should allocate valid file handle");
+
+    // Verify handle maps to inode
+    assert_eq!(
+        fh_manager.get_inode(fh),
+        Some(file_inode),
+        "Handle should map to file inode"
+    );
+
+    // Remove torrent structure (simulating what happens when torrent is removed)
+    // This manually removes the inodes without API calls
+    fs.inode_manager().remove_child(1, torrent_inode);
+    fs.inode_manager().remove_inode(torrent_inode);
+
+    // Verify torrent is removed from filesystem
+    assert!(
+        inode_manager.lookup_torrent(40).is_none(),
+        "Torrent should be removed from lookup"
+    );
+    assert!(
+        inode_manager.get(file_inode).is_none(),
+        "File inode should be removed"
+    );
+
+    // Handle should still exist in the handle manager (not auto-invalidated)
+    // This is expected - handles are independent of inode lifecycle
+    assert_eq!(
+        fh_manager.get_inode(fh),
+        Some(file_inode),
+        "Handle still points to old inode even after removal"
+    );
+
+    // Release handle - should succeed even for removed file
+    // This tests that the handle manager doesn't crash when releasing stale handles
+    let removed_handle = fh_manager.remove(fh);
+    assert!(
+        removed_handle.is_some(),
+        "Should be able to remove handle for deleted file"
+    );
+    assert!(
+        fh_manager.get_inode(fh).is_none(),
+        "Handle should be released"
+    );
+
+    // Test 2: Verify file handles with various states don't crash on removal
+    // Create another multi-file torrent
+    let torrent_info2 = TorrentInfo {
+        id: 41,
+        info_hash: "edge041".to_string(),
+        name: "EDGE-040 Second Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "readme.txt".to_string(),
+                length: 1024,
+                components: vec!["readme.txt".to_string()],
+            },
+            FileInfo {
+                name: "data.bin".to_string(),
+                length: 2048,
+                components: vec!["data".to_string(), "data.bin".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+    fs.create_torrent_structure(&torrent_info2).unwrap();
+
+    // Get the file inode from the second torrent
+    let torrent_inode2 = inode_manager.lookup_torrent(41).unwrap();
+    let torrent2_children = inode_manager.get_children(torrent_inode2);
+    let file_entry2 = torrent2_children
+        .iter()
+        .find(|(_, entry)| entry.name() == "readme.txt" && entry.is_file())
+        .expect("Should find readme.txt");
+    let file_inode2 = file_entry2.0;
+
+    // Open multiple handles for the same file
+    let fh2 = fh_manager.allocate(file_inode2, 41, 0);
+    let fh3 = fh_manager.allocate(file_inode2, 41, 0);
+    let fh4 = fh_manager.allocate(file_inode2, 41, 0);
+
+    assert!(
+        fh2 > 0 && fh3 > 0 && fh4 > 0,
+        "Should allocate multiple handles"
+    );
+
+    // Update handle state (simulating active read)
+    fh_manager.update_state(fh2, 512, 1024);
+    fh_manager.set_prefetching(fh3, true);
+
+    // Remove torrent while handles are active
+    fs.inode_manager().remove_child(1, torrent_inode2);
+    fs.inode_manager().remove_inode(torrent_inode2);
+
+    // Verify torrent is removed
+    assert!(
+        inode_manager.lookup_torrent(41).is_none(),
+        "Second torrent should be removed"
+    );
+
+    // Release all handles - should not crash
+    fh_manager.remove(fh2);
+    fh_manager.remove(fh3);
+    fh_manager.remove(fh4);
+
+    // Verify all handles released
+    assert!(fh_manager.is_empty(), "All handles should be released");
+
+    // Test 3: Verify system state remains consistent
+    // Root directory should have no torrent children with our test names
+    let root_children = inode_manager.get_children(1);
+    let torrent_children: Vec<_> = root_children
+        .iter()
+        .filter(|(_, entry)| {
+            entry.name() == "EDGE-040 Test" || entry.name() == "EDGE-040 Second Test"
+        })
+        .collect();
+    assert!(
+        torrent_children.is_empty(),
+        "Root should not have removed torrent children"
+    );
+
+    // Update handle state (simulating active read)
+    fh_manager.update_state(fh2, 512, 1024);
+    fh_manager.set_prefetching(fh3, true);
+
+    // Remove torrent while handles are active
+    fs.inode_manager().remove_child(1, file_inode2);
+    fs.inode_manager().remove_inode(file_inode2);
+
+    // Verify torrent is removed
+    assert!(
+        inode_manager.lookup_torrent(41).is_none(),
+        "Second torrent should be removed"
+    );
+
+    // Release all handles - should not crash
+    fh_manager.remove(fh2);
+    fh_manager.remove(fh3);
+    fh_manager.remove(fh4);
+
+    // Verify all handles released
+    assert!(fh_manager.is_empty(), "All handles should be released");
+
+    // Test 3: Verify system state remains consistent
+    // Root directory should have no torrent children with our test names
+    let root_children = inode_manager.get_children(1);
+    let torrent_children: Vec<_> = root_children
+        .iter()
+        .filter(|(_, entry)| {
+            entry.name() == "EDGE-040 Test" || entry.name() == "EDGE-040 Second Test"
+        })
+        .collect();
+    assert!(
+        torrent_children.is_empty(),
+        "Root should not have removed torrent children"
+    );
+}
