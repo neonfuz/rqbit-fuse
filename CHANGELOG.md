@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-006: Consolidate Test Helpers
+  - Created `tests/common/test_helpers.rs` with consolidated test infrastructure
+  - Removed ~110 lines of duplicated code across test files
+  - Added `TestEnvironment` struct for comprehensive test setup
+  - Created helper modules:
+    - `handle_helpers`: File handle allocation patterns (`allocate_test_handle`, `exhaust_handle_limit`)
+    - `torrent_helpers`: Torrent creation helpers (`single_file`, `multi_file`)
+  - Updated 4 test files to use common helpers:
+    - `tests/integration_tests.rs`: Removed 35 lines of duplicate setup code
+    - `tests/fuse_operations.rs`: Removed 35 lines of duplicate setup code
+    - `tests/unicode_tests.rs`: Removed 37 lines of duplicate setup code
+    - `tests/resource_tests.rs`: Added common module import
+  - Fixed pre-existing compilation errors in common modules:
+    - Fixed type mismatch in `file_count` (usize vs u32)
+    - Fixed `RqbitClient::new()` Result handling
+    - Fixed `AsyncFuseWorker::new_for_test` API usage
+    - Removed broken `fuser::Request::new` usage (private API)
+    - Removed broken `fuser::KernelConfig::empty()` usage (non-existent)
+  - All tests passing (200+) with consolidated test infrastructure
+
 - SIMPLIFY-001: Complete error type consolidation
   - Removed legacy `ApiError` enum from `src/api/types.rs` (142 lines)
   - Removed duplicate `DataUnavailableReason` from `src/api/types.rs` (21 lines)

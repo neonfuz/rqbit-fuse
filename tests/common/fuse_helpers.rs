@@ -51,32 +51,24 @@ impl TestFilesystem {
         config.mount.auto_unmount = true;
 
         let metrics = Arc::new(Metrics::new());
-        let api_client = Arc::new(rqbit_fuse::api::client::RqbitClient::new(
-            config.api.url.clone(),
-            Arc::clone(&metrics.api),
-        ));
+        let api_client = Arc::new(
+            rqbit_fuse::api::client::RqbitClient::new(
+                config.api.url.clone(),
+                Arc::clone(&metrics.api),
+            )
+            .expect("Failed to create API client"),
+        );
         let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
         let fs = Arc::new(TorrentFS::new(config, metrics, async_worker)?);
 
-        // Start mount in background (if supported)
         // Note: Actual FUSE mounting requires elevated privileges
         // This creates the filesystem structure without kernel mount
-        let fs_clone = Arc::clone(&fs);
-        let mount_handle = tokio::spawn(async move {
-            // Initialize the filesystem
-            let _ = fs_clone.init(
-                &fuser::Request::new(0, 0, 0),
-                &mut fuser::KernelConfig::empty(),
-            );
-        });
-
-        // Wait for initialization
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Filesystem operations are tested through direct API calls
 
         Ok(Self {
             fs,
             mount_point,
-            mount_handle: Some(mount_handle),
+            mount_handle: None,
         })
     }
 
@@ -140,10 +132,10 @@ impl TestFilesystem {
 /// let fs = create_test_fs(config, metrics);
 /// ```
 pub fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
-    let api_client = Arc::new(rqbit_fuse::api::client::RqbitClient::new(
-        config.api.url.clone(),
-        Arc::clone(&metrics.api),
-    ));
+    let api_client = Arc::new(
+        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
+            .expect("Failed to create API client"),
+    );
     let async_worker = Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics.clone()));
     TorrentFS::new(config, metrics, async_worker).unwrap()
 }
@@ -165,7 +157,7 @@ pub async fn wait_for_mount(mount_point: &Path, timeout_secs: u64) -> anyhow::Re
     timeout(Duration::from_secs(timeout_secs), async {
         loop {
             if mount_point.exists() && mount_point.read_dir().is_ok() {
-                return Ok(());
+                return Ok::<(), std::io::Error>(());
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -213,17 +205,4 @@ macro_rules! skip_if_no_fuse {
             return;
         }
     };
-}
-
-/// Create a standard FUSE request for testing
-///
-/// # Arguments
-/// * `uid` - User ID (default: 1000)
-/// * `gid` - Group ID (default: 1000)
-/// * `pid` - Process ID (default: 1)
-///
-/// # Returns
-/// A fuser::Request instance for use in tests
-pub fn create_test_request(uid: u32, gid: u32, pid: u32) -> fuser::Request {
-    fuser::Request::new(uid, gid, pid)
 }

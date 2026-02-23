@@ -14,38 +14,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use rqbit_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
 
-/// Sets up a mock rqbit server with standard responses
-async fn setup_mock_server() -> MockServer {
-    let mock_server = MockServer::start().await;
-
-    // Default health check response
-    Mock::given(method("GET"))
-        .and(path("/torrents"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})))
-        .mount(&mock_server)
-        .await;
-
-    mock_server
-}
-
-/// Creates a test configuration pointing to the mock server
-fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> Config {
-    let mut config = Config::default();
-    config.api.url = mock_uri;
-    config.mount.mount_point = mount_point;
-    config.mount.allow_other = false;
-    config
-}
-
-/// Helper function to create a TorrentFS with an async worker for tests
-fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
-    let api_client = Arc::new(
-        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
-            .expect("Failed to create API client"),
-    );
-    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
-    TorrentFS::new(config, metrics, async_worker).unwrap()
-}
+// Import common test helpers to avoid duplication
+mod common;
+use common::test_helpers::{create_test_config, create_test_fs, setup_mock_server};
 
 #[tokio::test]
 async fn test_filesystem_creation_and_initialization() {

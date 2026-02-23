@@ -123,7 +123,7 @@ pub fn deeply_nested_torrent(id: u64, depth: usize) -> TorrentInfo {
         info_hash: format!("nested{}", id),
         name: format!("Nested {} levels", depth),
         output_folder: "/downloads".to_string(),
-        file_count: Some(files.len() as u32),
+        file_count: Some(files.len()),
         files,
         piece_length: Some(262144),
     }

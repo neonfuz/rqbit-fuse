@@ -589,14 +589,16 @@ Each item is designed to be completed independently. These are edge case tests t
   - No sharded counters exist in the codebase
   - Metrics are working efficiently with atomic operations
 
-- [ ] **SIMPLIFY-006**: Consolidate Test Helpers
-  - Create `tests/common/test_helpers.rs` module
-  - Extract shared mock setup code from integration tests
-  - Create helper functions for:
-    - Mock server setup
-    - Test torrent creation
-    - File handle allocation patterns
-  - Reduce duplication across test files
+- [x] **SIMPLIFY-006**: Consolidate Test Helpers
+  - ✅ Create `tests/common/test_helpers.rs` module with consolidated test infrastructure
+  - ✅ Extract shared mock setup code from integration tests (removed ~110 lines of duplication)
+  - ✅ Create helper functions for:
+    - Mock server setup (`setup_mock_server()`)
+    - Test torrent creation (`torrent_helpers` module)
+    - File handle allocation patterns (`handle_helpers` module)
+  - ✅ Created `TestEnvironment` struct for comprehensive test setup
+  - ✅ Updated integration_tests.rs, fuse_operations.rs, unicode_tests.rs, resource_tests.rs to use common helpers
+  - ✅ Fixed pre-existing compilation errors in common modules (type mismatches, API changes)
 
 ### API Simplifications
 

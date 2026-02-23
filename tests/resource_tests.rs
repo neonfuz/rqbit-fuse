@@ -13,6 +13,9 @@ use tokio::time::timeout;
 
 use rqbit_fuse::{AsyncFuseWorker, Config, Metrics, TorrentFS};
 
+// Import common test helpers
+mod common;
+
 /// Creates a test configuration with specified max_concurrent_reads
 fn create_test_config_with_semaphore(
     mock_uri: String,
