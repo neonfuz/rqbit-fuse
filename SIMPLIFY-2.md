@@ -19,10 +19,10 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - [x] Commit the cleanup
 
 ### 3. Archive Research Directory
-- [ ] Review `research/` directory contents for any active relevance
-- [ ] Move valuable notes to wiki or `docs/research/`
-- [ ] Delete `research/` directory
-- [ ] Commit the cleanup
+- [x] Review `research/` directory contents for any active relevance
+- [x] Move valuable notes to archive/research/
+- [x] Move `research/` directory to archive
+- [x] Commit the cleanup
 
 ### 4. Reduce Test Coverage in inode.rs
 - [ ] Analyze `src/fs/inode.rs` test coverage (currently ~150% lines ratio)
