@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use rqbit_fuse::config::{CliArgs, Config};
-use rqbit_fuse::mount::{get_mount_info, is_mount_point, setup_logging, unmount_filesystem};
+use rqbit_fuse::mount::{is_mount_point, setup_logging, unmount_filesystem};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -234,12 +234,6 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
             println!("Mount Status:");
             if is_mounted {
                 println!("  Status:         MOUNTED");
-                if let Ok(info) = get_mount_info(mount_point) {
-                    println!("  Filesystem:     {}", info.filesystem);
-                    println!("  Size:           {}", info.size);
-                    println!("  Used:           {}", info.used);
-                    println!("  Available:      {}", info.available);
-                }
             } else {
                 println!("  Status:         NOT MOUNTED");
             }
@@ -249,7 +243,6 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
             struct StatusOutput {
                 mounted: bool,
                 config: ConfigOutput,
-                mount_info: Option<MountInfoOutput>,
             }
 
             #[derive(serde::Serialize)]
@@ -258,31 +251,11 @@ async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Resul
                 mount_point: String,
             }
 
-            #[derive(serde::Serialize)]
-            struct MountInfoOutput {
-                filesystem: String,
-                size: String,
-                used: String,
-                available: String,
-            }
-
             let output = StatusOutput {
                 mounted: is_mounted,
                 config: ConfigOutput {
                     api_url: config.api.url.clone(),
                     mount_point: mount_point.display().to_string(),
-                },
-                mount_info: if is_mounted {
-                    get_mount_info(mount_point)
-                        .ok()
-                        .map(|info| MountInfoOutput {
-                            filesystem: info.filesystem,
-                            size: info.size,
-                            used: info.used,
-                            available: info.available,
-                        })
-                } else {
-                    None
                 },
             };
 

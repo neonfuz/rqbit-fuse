@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-011: Remove Mount Info Display Feature (Task 1.2.1)
+  - Removed `MountInfo` struct from `src/mount.rs` (lines 106-112)
+  - Removed `get_mount_info()` function from `src/mount.rs` (lines 114-143)
+  - Updated `src/main.rs` to remove import of `get_mount_info`
+  - Updated `run_status()` text output to remove filesystem, size, used, available fields
+  - Updated `run_status()` JSON output to remove `MountInfoOutput` struct and `mount_info` field
+  - Status command now shows only "MOUNTED" / "NOT MOUNTED" status
+  - Removed 38 lines of code from `src/mount.rs`, 20 lines from `src/main.rs`
+  - All tests passing with zero clippy warnings
+  - Location: `src/mount.rs`, `src/main.rs`
+
 - SIMPLIFY-010: Simplify Test Structure
   - Removed 2 duplicate tests from `tests/fuse_operations.rs` that already existed in `tests/integration_tests.rs`:
     - `test_filesystem_creation_and_initialization` - basic filesystem creation test

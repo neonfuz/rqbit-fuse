@@ -31,10 +31,14 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
   - Removed status-related imports (TorrentStatus, DashMap)
 
 ### 1.2 Remove Mount Info Display Feature
-- [ ] **Task 1.2.1**: Remove `get_mount_info()` function
+- [x] **Task 1.2.1**: Remove `get_mount_info()` function
   - Delete from `src/mount.rs` lines 106-143
   - Remove `MountInfo` struct
   - Remove import of `MountInfo` from `src/main.rs`
+  - **Completed**: Removed MountInfo struct and get_mount_info() function from src/mount.rs
+  - **Completed**: Updated src/main.rs to remove get_mount_info import
+  - **Completed**: Updated run_status() text output to remove filesystem/size/used/available fields
+  - **Completed**: Updated run_status() JSON output to remove MountInfoOutput struct and mount_info field
   
 - [ ] **Task 1.2.2**: Update Status command to remove mount info
   - Modify `run_status()` in `src/main.rs` to remove mount info display
