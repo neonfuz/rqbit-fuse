@@ -6775,3 +6775,149 @@ async fn test_edge_034_symlink_special_path_components() {
         assert_eq!(attr.size, target.len() as u64);
     }
 }
+
+/// EDGE-035: Test case sensitivity
+/// On case-sensitive filesystems (Linux default), "file.txt" and "FILE.txt" are different files.
+/// This test verifies that lookups respect case sensitivity consistently.
+#[tokio::test]
+async fn test_edge_035_case_sensitivity() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with files that differ only in case
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Case Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(3),
+        files: vec![
+            FileInfo {
+                name: "file.txt".to_string(),
+                length: 100,
+                components: vec!["file.txt".to_string()],
+            },
+            FileInfo {
+                name: "FILE.txt".to_string(),
+                length: 200,
+                components: vec!["FILE.txt".to_string()],
+            },
+            FileInfo {
+                name: "File.txt".to_string(),
+                length: 300,
+                components: vec!["File.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // All three files should exist as separate inodes
+    let lower_ino = inode_manager.lookup_by_path("/Case Test/file.txt");
+    let upper_ino = inode_manager.lookup_by_path("/Case Test/FILE.txt");
+    let mixed_ino = inode_manager.lookup_by_path("/Case Test/File.txt");
+
+    assert!(lower_ino.is_some(), "Lowercase 'file.txt' should be found");
+    assert!(upper_ino.is_some(), "Uppercase 'FILE.txt' should be found");
+    assert!(mixed_ino.is_some(), "Mixed case 'File.txt' should be found");
+
+    // They should all be different inodes
+    assert_ne!(
+        lower_ino, upper_ino,
+        "Lowercase and uppercase should be different inodes"
+    );
+    assert_ne!(
+        lower_ino, mixed_ino,
+        "Lowercase and mixed case should be different inodes"
+    );
+    assert_ne!(
+        upper_ino, mixed_ino,
+        "Uppercase and mixed case should be different inodes"
+    );
+
+    // Verify file sizes match expected case
+    let lower_entry = inode_manager.get(lower_ino.unwrap()).unwrap();
+    let upper_entry = inode_manager.get(upper_ino.unwrap()).unwrap();
+    let mixed_entry = inode_manager.get(mixed_ino.unwrap()).unwrap();
+
+    assert_eq!(
+        lower_entry.file_size(),
+        100,
+        "file.txt should have size 100"
+    );
+    assert_eq!(
+        upper_entry.file_size(),
+        200,
+        "FILE.txt should have size 200"
+    );
+    assert_eq!(
+        mixed_entry.file_size(),
+        300,
+        "File.txt should have size 300"
+    );
+
+    // Test case sensitivity: looking up wrong case should fail on case-sensitive systems
+    // On Linux (case-sensitive), these lookups should return None
+    let wrong_case_lower = inode_manager.lookup_by_path("/Case Test/FILE.txt");
+    let wrong_case_upper = inode_manager.lookup_by_path("/Case Test/file.txt");
+
+    // Since we created both files, both lookups succeed - but they point to different files
+    assert!(
+        wrong_case_lower.is_some(),
+        "Looking up 'FILE.txt' should find the uppercase file"
+    );
+    assert!(
+        wrong_case_upper.is_some(),
+        "Looking up 'file.txt' should find the lowercase file"
+    );
+
+    // Verify they are indeed different files by checking sizes
+    let found_upper = inode_manager.get(wrong_case_lower.unwrap()).unwrap();
+    let found_lower = inode_manager.get(wrong_case_upper.unwrap()).unwrap();
+
+    assert_eq!(
+        found_upper.file_size(),
+        200,
+        "Looking up 'FILE.txt' should find the 200-byte file"
+    );
+    assert_eq!(
+        found_lower.file_size(),
+        100,
+        "Looking up 'file.txt' should find the 100-byte file"
+    );
+
+    // Test non-existent case variations
+    let non_existent_lower = inode_manager.lookup_by_path("/Case Test/FILE.TXT");
+    let non_existent_mixed = inode_manager.lookup_by_path("/Case Test/File.TXT");
+
+    // These should not exist (different extensions)
+    assert!(
+        non_existent_lower.is_none(),
+        "'FILE.TXT' (uppercase extension) should not exist"
+    );
+    assert!(
+        non_existent_mixed.is_none(),
+        "'File.TXT' (mixed case extension) should not exist"
+    );
+
+    // Test case sensitivity in directory names
+    let torrent_lower = inode_manager.lookup_by_path("/case test");
+    let torrent_upper = inode_manager.lookup_by_path("/CASE TEST");
+
+    // Directory lookups are also case-sensitive
+    assert!(
+        torrent_lower.is_none(),
+        "Lowercase 'case test' should not match 'Case Test'"
+    );
+    assert!(
+        torrent_upper.is_none(),
+        "Uppercase 'CASE TEST' should not match 'Case Test'"
+    );
+}

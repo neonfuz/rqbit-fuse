@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-035: Test case sensitivity
+  - Implemented `test_edge_035_case_sensitivity` in `tests/fuse_operations.rs`
+  - Tests verify case-sensitive file lookups on Linux filesystems
+  - Creates 3 files differing only in case: "file.txt", "FILE.txt", "File.txt"
+  - Verifies each file has unique inode and correct size (100, 200, 300 bytes)
+  - Confirms case-sensitive lookups return correct files
+  - Tests non-existent case variations and directory name case sensitivity
+  - Added `file_size()` method to `InodeEntry` for retrieving file sizes in tests
+  - All 170+ tests passing with zero clippy warnings
+
 - EDGE-034: Test symlink edge cases
   - Implemented 6 comprehensive tests for symlink edge cases in `tests/fuse_operations.rs`
   - Tests verify graceful handling of:

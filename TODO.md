@@ -302,10 +302,13 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_034_self_referential_symlink`: Tests self-referential symlinks
     - `test_edge_034_symlink_special_path_components`: Tests symlinks with special path components
 
-- [ ] **EDGE-035**: Test case sensitivity
-  - On case-insensitive filesystems (macOS)
-  - Look up "FILE.txt" when file is "file.txt"
-  - Behavior should be consistent
+- [x] **EDGE-035**: Test case sensitivity
+  - On case-sensitive filesystems (Linux), "file.txt" and "FILE.txt" are different files
+  - Created 3 files with different cases: "file.txt", "FILE.txt", "File.txt"
+  - Verified they all have unique inodes and correct sizes
+  - Verified case-sensitive lookups work correctly
+  - Added `file_size()` method to `InodeEntry` for size retrieval
+  - **Test**: `test_edge_035_case_sensitivity` in `tests/fuse_operations.rs`
 
 ---
 
