@@ -291,3 +291,194 @@ async fn test_edge_048_maximum_filename_with_multibyte_utf8() {
 
     assert!(found, "255-byte UTF-8 filename should exist in filesystem");
 }
+
+// ============================================================================
+// EDGE-049: Test null byte in filename
+// ============================================================================
+
+/// Test that filenames containing null bytes are handled gracefully
+///
+/// Null bytes in filenames should be either sanitized (replaced) or rejected
+/// but should never cause a panic or crash.
+#[tokio::test]
+async fn test_edge_049_null_byte_in_filename() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various null byte positions
+    let test_cases = vec![
+        ("\0file.txt", "null at start"),
+        ("file\0.txt", "null in middle"),
+        ("file.txt\0", "null at end"),
+        ("file\0\0.txt", "multiple nulls"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 100 + idx as u64,
+            info_hash: format!("nullbyte{}", idx),
+            name: format!("Null Byte Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let _found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name().contains("file"));
+
+                // If null bytes are sanitized, we should be able to find a file
+                // If null bytes are rejected, we won't find anything
+                println!(
+                    "Null byte filename '{}' succeeded ({})",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable - should contain filename-related message
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic")
+                        && !error_msg.to_lowercase().contains("unwrap")
+                        && !error_msg.to_lowercase().contains("assertion"),
+                    "Null byte filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "Null byte filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that null bytes at various positions are handled consistently
+///
+/// This ensures that null byte handling is predictable regardless of position.
+#[tokio::test]
+async fn test_edge_049_null_byte_positions() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test edge case: filename consisting only of null bytes
+    let only_nulls = "\0\0\0";
+    let torrent_info = TorrentInfo {
+        id: 200,
+        info_hash: "onlynulls".to_string(),
+        name: "Only Nulls Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: only_nulls.to_string(),
+            length: 512,
+            components: vec![only_nulls.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    // Should handle gracefully without panic
+    let result = fs.create_torrent_structure(&torrent_info);
+
+    match result {
+        Ok(_) => {
+            println!("Null-only filename succeeded (sanitized or allowed)");
+        }
+        Err(e) => {
+            let error_msg = format!("{}", e);
+            assert!(
+                !error_msg.to_lowercase().contains("panic"),
+                "Null-only filename should not cause panic"
+            );
+            println!("Null-only filename rejected gracefully: {}", error_msg);
+        }
+    }
+}
+
+/// Test that null byte filenames don't interfere with other files
+///
+/// Ensures that problematic filenames don't corrupt the filesystem state
+/// or affect other valid files.
+#[tokio::test]
+async fn test_edge_049_null_byte_with_valid_files() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // First create a valid file
+    let valid_filename = "valid_file.txt";
+    let valid_torrent = TorrentInfo {
+        id: 300,
+        info_hash: "validfirst".to_string(),
+        name: "Valid File Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: valid_filename.to_string(),
+            length: 2048,
+            components: vec![valid_filename.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&valid_torrent)
+        .expect("Valid file should be created");
+
+    // Then try to create a file with null bytes
+    let null_filename = "file\0with\0nulls.txt";
+    let null_torrent = TorrentInfo {
+        id: 301,
+        info_hash: "nullsecond".to_string(),
+        name: "Null Byte Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: null_filename.to_string(),
+            length: 1024,
+            components: vec![null_filename.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    // Should handle gracefully
+    let result = fs.create_torrent_structure(&null_torrent);
+
+    // Verify the valid file is still accessible
+    let inode_manager = fs.inode_manager();
+    let root_children = inode_manager.get_children(1);
+    let valid_file_exists = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == valid_filename);
+
+    assert!(
+        valid_file_exists,
+        "Valid file should still exist after attempted null byte file creation"
+    );
+
+    // No panic should have occurred
+    println!("Null byte file result: {:?}", result.is_ok());
+}

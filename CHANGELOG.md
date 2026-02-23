@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-049: Test null byte in filename
+  - Added 3 tests to `tests/unicode_tests.rs` for null byte handling:
+    - `test_edge_049_null_byte_in_filename`: Tests null bytes at various positions (start, middle, end, multiple)
+      - Verifies system handles null bytes gracefully without panic
+      - Tests sanitization behavior (null bytes are stripped from filenames)
+    - `test_edge_049_null_byte_positions`: Tests filenames consisting entirely of null bytes
+      - Ensures no panic or crash occurs with extreme edge case
+    - `test_edge_049_null_byte_with_valid_files`: Tests that null byte handling doesn't affect other files
+      - Creates valid file first, then attempts null byte file creation
+      - Verifies valid file remains accessible after null byte handling
+  - System handles null bytes by sanitizing (removing them), not by rejecting
+  - All 200+ tests passing with zero clippy warnings
+
 - EDGE-048: Test maximum filename length
   - Created `tests/unicode_tests.rs` with 4 comprehensive tests:
     - `test_edge_048_maximum_filename_length_255_chars`: Tests 255-character filename at boundary

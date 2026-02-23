@@ -64,7 +64,10 @@ impl TestFilesystem {
         let fs_clone = Arc::clone(&fs);
         let mount_handle = tokio::spawn(async move {
             // Initialize the filesystem
-            let _ = fs_clone.init(&fuser::Request::new(0, 0, 0), &mut fuser::KernelConfig::empty());
+            let _ = fs_clone.init(
+                &fuser::Request::new(0, 0, 0),
+                &mut fuser::KernelConfig::empty(),
+            );
         });
 
         // Wait for initialization

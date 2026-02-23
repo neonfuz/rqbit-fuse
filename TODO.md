@@ -449,10 +449,14 @@ Each item is designed to be completed independently. These are edge case tests t
   - 256 characters should fail
   - **Implemented**: `tests/unicode_tests.rs` with 4 tests covering 255-char, 256-char, boundary variations, and multi-byte UTF-8 scenarios
 
-- [ ] **EDGE-049**: Test null byte in filename
+- [x] **EDGE-049**: Test null byte in filename
   - Filename containing \0
   - Should sanitize or reject
   - No panic
+  - Implemented: 3 tests in `tests/unicode_tests.rs`:
+    - `test_edge_049_null_byte_in_filename`: Tests null bytes at start, middle, end, and multiple occurrences
+    - `test_edge_049_null_byte_positions`: Tests filename consisting only of null bytes
+    - `test_edge_049_null_byte_with_valid_files`: Verifies null byte handling doesn't affect other files
 
 - [ ] **EDGE-050**: Test control characters
   - Filename with \n, \t, \r, etc.

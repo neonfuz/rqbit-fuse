@@ -119,10 +119,7 @@ pub async fn setup_mock_server_with_data() -> MockServer {
 /// ```rust
 /// let mock_server = setup_mock_server_with_error(503, Some("Service Unavailable")).await;
 /// ```
-pub async fn setup_mock_server_with_error(
-    status_code: u16,
-    message: Option<&str>,
-) -> MockServer {
+pub async fn setup_mock_server_with_error(status_code: u16, message: Option<&str>) -> MockServer {
     let mock_server = MockServer::start().await;
 
     let body = if let Some(msg) = message {
@@ -154,10 +151,7 @@ pub async fn setup_mock_server_with_error(
 /// let temp_dir = TempDir::new().unwrap();
 /// let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 /// ```
-pub fn create_test_config(
-    mock_uri: String,
-    mount_point: std::path::PathBuf,
-) -> rqbit_fuse::Config {
+pub fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> rqbit_fuse::Config {
     let mut config = rqbit_fuse::Config::default();
     config.api.url = mock_uri;
     config.mount.mount_point = mount_point;
