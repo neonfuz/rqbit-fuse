@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All method signatures remain compatible - no changes needed in call sites
   - Location: `src/metrics.rs`
 
+### Fixed
+
+- PORT-001: Add Linux support while maintaining macOS compatibility
+  - Fixed compilation warnings on Linux regarding `libc::ENOATTR`
+  - ENOATTR is macOS-specific; Linux uses ENODATA for the same purpose
+  - Added platform-specific conditional compilation using `#[cfg(target_os = "macos")]`
+  - Created internal `ENOATTR` constant that maps to `libc::ENOATTR` on macOS and `libc::ENODATA` on Linux
+  - Replaced all three occurrences of `libc::ENOATTR` with the new constant in `getxattr()` method
+  - Eliminates deprecation warnings: "ENOATTR is not available on Linux; use ENODATA instead"
+  - Location: `src/fs/filesystem.rs`
+
 ### Added
 
 - IDEA2-006 to IDEA2-007: Handle open file handles during torrent removal and add integration test

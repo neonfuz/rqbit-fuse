@@ -760,5 +760,4 @@ mod tests {
         inodes.dedup();
         assert_eq!(inodes.len(), 1000, "Should have 1000 unique inodes");
     }
-
 }

@@ -72,7 +72,8 @@ impl FuseMetrics {
     }
 
     pub fn record_pieces_unavailable(&self) {
-        self.pieces_unavailable_errors.fetch_add(1, Ordering::Relaxed);
+        self.pieces_unavailable_errors
+            .fetch_add(1, Ordering::Relaxed);
         trace!(fuse_op = "pieces_unavailable");
     }
 

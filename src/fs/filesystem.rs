@@ -22,6 +22,13 @@ use tokio::sync::{Mutex, Semaphore};
 use tokio::time::interval;
 use tracing::{debug, error, info, instrument, trace, warn};
 
+// Platform-specific error code for "no attribute"
+// ENOATTR is macOS-specific, ENODATA is the Linux equivalent
+#[cfg(target_os = "macos")]
+const ENOATTR: i32 = libc::ENOATTR;
+#[cfg(not(target_os = "macos"))]
+const ENOATTR: i32 = libc::ENODATA;
+
 /// Statistics about concurrent operations
 #[derive(Debug, Clone)]
 pub struct ConcurrencyStats {
@@ -1966,7 +1973,7 @@ impl Filesystem for TorrentFS {
 
         // Only support the "user.torrent.status" attribute
         if name_str != "user.torrent.status" {
-            reply.error(libc::ENOATTR);
+            reply.error(ENOATTR);
             return;
         }
 
@@ -1985,7 +1992,7 @@ impl Filesystem for TorrentFS {
                 }
                 InodeEntry::Symlink { .. } => {
                     // Symlinks don't have torrent status
-                    reply.error(libc::ENOATTR);
+                    reply.error(ENOATTR);
                     return;
                 }
             },
@@ -1997,7 +2004,7 @@ impl Filesystem for TorrentFS {
 
         if torrent_id == 0 {
             // This directory is not associated with a torrent (e.g., subdirectory)
-            reply.error(libc::ENOATTR);
+            reply.error(ENOATTR);
             return;
         }
 
