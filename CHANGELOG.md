@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SIMPLIFY-001: Complete error type consolidation
+  - Removed legacy `ApiError` enum from `src/api/types.rs` (142 lines)
+  - Removed duplicate `DataUnavailableReason` from `src/api/types.rs` (21 lines)
+  - Total dead code removed: 162 lines from src/api/types.rs
+  - All error types now consolidated in unified `RqbitFuseError` in src/error.rs
+  - Backward compatibility maintained via `pub use crate::error::RqbitFuseError as ApiError` in src/api/mod.rs
+  - All tests passing (200+ tests) with zero clippy warnings
+  - Error consolidation subtasks SIMPLIFY-001A through SIMPLIFY-001E now complete
+
 ### Added
 
 - EDGE-057: Test environment variable edge cases

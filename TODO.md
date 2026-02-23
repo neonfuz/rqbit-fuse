@@ -539,11 +539,11 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Architecture Simplifications
 
-- [ ] **SIMPLIFY-001**: Consolidate Error Types **[HIGH PRIORITY]**
+- [x] **SIMPLIFY-001**: Consolidate Error Types **[HIGH PRIORITY]**
   - Create single `RqbitFuseError` enum replacing:
-    - `FuseError` in `fs/error.rs` (178 lines)
-    - `ApiError` in `api/types.rs` (lines 14-69)
-    - `ConfigError` in `config/mod.rs` (lines 466-476)
+    - `FuseError` in `fs/error.rs` (178 lines) - ✅ Removed
+    - `ApiError` in `api/types.rs` (lines 23-164) - ✅ Removed
+    - `ConfigError` in `config/mod.rs` (lines 466-476) - ✅ Removed
   - Currently have duplicate error mappings (e.g., ENOENT in both FuseError and ApiError)
   - Implement `std::error::Error` for all error variants
   - Use `thiserror` derive macros for consistency
@@ -554,6 +554,7 @@ Each item is designed to be completed independently. These are edge case tests t
     - [x] **SIMPLIFY-001C**: Migrate fs/ module from FuseError to RqbitFuseError
     - [x] **SIMPLIFY-001D**: Migrate config/ module from ConfigError to RqbitFuseError
     - [x] **SIMPLIFY-001E**: Remove old error types and clean up exports
+  - **Completed**: Removed 162 lines of dead code from src/api/types.rs (old ApiError enum and DataUnavailableReason)
 
 - [x] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
   - Split `src/fs/inode.rs` (1,051 lines) into smaller modules:
