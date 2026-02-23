@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-001C: Migrate fs/ module from FuseError to RqbitFuseError
+  - Migrated `src/fs/async_bridge.rs` to use RqbitFuseError and RqbitFuseResult
+  - Replaced FuseError::TimedOut with RqbitFuseError::TimedOut
+  - Replaced FuseError::WorkerDisconnected with RqbitFuseError::WorkerDisconnected
+  - Replaced FuseError::ChannelFull with RqbitFuseError::ChannelFull
+  - Replaced FuseError::IoError with RqbitFuseError::IoError
+  - Updated return types from FuseResult<T> to RqbitFuseResult<T>
+  - Updated fs/mod.rs to re-export RqbitFuseError and RqbitFuseResult from crate::error
+  - Simplified src/fs/error.rs to only contain ToFuseError trait (removed FuseError enum)
+  - Removed duplicate From<std::io::Error> implementation (already in src/error.rs)
+  - Maintained backward compatibility through existing ToFuseError trait
+  - All 168+ tests passing with zero clippy warnings
+  - Net reduction: 171 lines removed, 36 lines added across 3 files
+  - Location: src/fs/async_bridge.rs, src/fs/error.rs, src/fs/mod.rs
+
 - SIMPLIFY-001B: Migrate api/ module from ApiError to RqbitFuseError
   - Migrated all api/ module files to use unified RqbitFuseError type
   - Updated `src/api/client.rs`: Replaced all ApiError usages with RqbitFuseError

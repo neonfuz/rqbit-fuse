@@ -473,7 +473,7 @@ Each item is designed to be completed independently. These are edge case tests t
     - **Sub-tasks:**
     - [x] **SIMPLIFY-001A**: Create unified RqbitFuseError enum in src/error.rs
     - [x] **SIMPLIFY-001B**: Migrate api/ module from ApiError to RqbitFuseError
-    - [ ] **SIMPLIFY-001C**: Migrate fs/ module from FuseError to RqbitFuseError
+    - [x] **SIMPLIFY-001C**: Migrate fs/ module from FuseError to RqbitFuseError
     - [ ] **SIMPLIFY-001D**: Migrate config/ module from ConfigError to RqbitFuseError
     - [ ] **SIMPLIFY-001E**: Remove old error types and clean up exports
 

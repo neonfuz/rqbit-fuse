@@ -1,5 +1,5 @@
 use crate::api::client::RqbitClient;
-use crate::fs::error::{FuseError, FuseResult, ToFuseError};
+use crate::error::{RqbitFuseError, RqbitFuseResult, ToFuseError};
 use crate::metrics::Metrics;
 use std::sync::Arc;
 use std::time::Duration;
@@ -303,8 +303,12 @@ impl AsyncFuseWorker {
     ///
     /// # Returns
     /// * `Ok(FuseResponse)` if successful
-    /// * `Err(FuseError)` if the channel is full, worker disconnected, or timed out
-    pub fn send_request<F>(&self, request_builder: F, timeout: Duration) -> FuseResult<FuseResponse>
+    /// * `Err(RqbitFuseError)` if the channel is full, worker disconnected, or timed out
+    pub fn send_request<F>(
+        &self,
+        request_builder: F,
+        timeout: Duration,
+    ) -> RqbitFuseResult<FuseResponse>
     where
         F: FnOnce(std::sync::mpsc::Sender<FuseResponse>) -> FuseRequest,
     {
@@ -320,21 +324,21 @@ impl AsyncFuseWorker {
                     Ok(response) => Ok(response),
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                         warn!("FUSE request timed out waiting for response");
-                        Err(FuseError::TimedOut)
+                        Err(RqbitFuseError::TimedOut)
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                         error!("Async worker disconnected while waiting for response");
-                        Err(FuseError::WorkerDisconnected)
+                        Err(RqbitFuseError::WorkerDisconnected)
                     }
                 }
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 warn!("FUSE request channel is full");
-                Err(FuseError::ChannelFull)
+                Err(RqbitFuseError::ChannelFull)
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 error!("Async worker channel is closed");
-                Err(FuseError::WorkerDisconnected)
+                Err(RqbitFuseError::WorkerDisconnected)
             }
         }
     }
@@ -350,7 +354,7 @@ impl AsyncFuseWorker {
     ///
     /// # Returns
     /// * `Ok(Vec<u8>)` with the file data
-    /// * `Err(FuseError)` if the operation failed
+    /// * `Err(RqbitFuseError)` if the operation failed
     pub fn read_file(
         &self,
         torrent_id: u64,
@@ -358,7 +362,7 @@ impl AsyncFuseWorker {
         offset: u64,
         size: usize,
         timeout: Duration,
-    ) -> FuseResult<Vec<u8>> {
+    ) -> RqbitFuseResult<Vec<u8>> {
         let response = self.send_request(
             |tx| FuseRequest::ReadFile {
                 torrent_id,
@@ -376,11 +380,13 @@ impl AsyncFuseWorker {
             FuseResponse::ReadError {
                 error_code,
                 message,
-            } => Err(FuseError::IoError(format!(
+            } => Err(RqbitFuseError::IoError(format!(
                 "Read failed (code {}): {}",
                 error_code, message
             ))),
-            _ => Err(FuseError::IoError("Unexpected response type".to_string())),
+            _ => Err(RqbitFuseError::IoError(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -395,14 +401,14 @@ impl AsyncFuseWorker {
     /// # Returns
     /// * `Ok(true)` if all pieces in the range are available
     /// * `Ok(false)` if any piece in the range is not available
-    /// * `Err(FuseError)` if the operation failed
+    /// * `Err(RqbitFuseError)` if the operation failed
     pub fn check_pieces_available(
         &self,
         torrent_id: u64,
         offset: u64,
         size: u64,
         timeout: Duration,
-    ) -> FuseResult<bool> {
+    ) -> RqbitFuseResult<bool> {
         let response = self.send_request(
             |tx| FuseRequest::CheckPiecesAvailable {
                 torrent_id,
@@ -420,11 +426,13 @@ impl AsyncFuseWorker {
             FuseResponse::ReadError {
                 error_code,
                 message,
-            } => Err(FuseError::IoError(format!(
+            } => Err(RqbitFuseError::IoError(format!(
                 "Piece check failed (code {}): {}",
                 error_code, message
             ))),
-            _ => Err(FuseError::IoError("Unexpected response type".to_string())),
+            _ => Err(RqbitFuseError::IoError(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -436,8 +444,8 @@ impl AsyncFuseWorker {
     ///
     /// # Returns
     /// * `Ok(())` if successful
-    /// * `Err(FuseError)` if the operation failed
-    pub fn forget_torrent(&self, torrent_id: u64, timeout: Duration) -> FuseResult<()> {
+    /// * `Err(RqbitFuseError)` if the operation failed
+    pub fn forget_torrent(&self, torrent_id: u64, timeout: Duration) -> RqbitFuseResult<()> {
         let response = self.send_request(
             |tx| FuseRequest::ForgetTorrent {
                 torrent_id,
@@ -451,11 +459,13 @@ impl AsyncFuseWorker {
             FuseResponse::ForgetError {
                 error_code,
                 message,
-            } => Err(FuseError::IoError(format!(
+            } => Err(RqbitFuseError::IoError(format!(
                 "Forget failed (code {}): {}",
                 error_code, message
             ))),
-            _ => Err(FuseError::IoError("Unexpected response type".to_string())),
+            _ => Err(RqbitFuseError::IoError(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
