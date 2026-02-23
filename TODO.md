@@ -384,11 +384,14 @@ Each item is designed to be completed independently. These are edge case tests t
   - Verifies only one torrent is created despite concurrent discoveries
   - Tests cooldown mechanism prevents duplicate discoveries
 
-- [ ] **EDGE-042**: Test mount/unmount race
+- [x] **EDGE-042**: Test mount/unmount race
   - Start mount operation
   - Immediately unmount
   - Should not panic
   - Resources should be cleaned up
+  - **Implemented**: 2 tests in `tests/integration_tests.rs`:
+    - `test_edge_042_mount_unmount_race`: Tests immediate unmount during mount
+    - `test_edge_042b_rapid_mount_unmount_cycles`: Tests multiple rapid cycles
 
 - [ ] **EDGE-043**: Test cache eviction during get
   - Start get() operation

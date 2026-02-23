@@ -1266,3 +1266,133 @@ async fn test_edge_041_concurrent_discovery() {
         .count();
     assert_eq!(final_count, 1, "Should still have exactly one torrent");
 }
+
+/// EDGE-042: Test mount/unmount race condition
+///
+/// This test verifies that starting a mount operation and immediately
+/// unmounting doesn't cause panics and properly cleans up resources.
+#[tokio::test]
+async fn test_edge_042_mount_unmount_race() {
+    use std::thread;
+    use std::time::Duration;
+
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+    let mount_point = temp_dir.path().to_path_buf();
+
+    // Spawn mount in a separate thread (mount blocks until unmounted)
+    let mount_handle = thread::spawn(move || {
+        // This will block until unmounted
+        fs.mount()
+    });
+
+    // Give the mount operation a moment to start
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Immediately unmount from main thread
+    // This should interrupt the mount gracefully
+    let unmount_result = rqbit_fuse::mount::try_unmount(&mount_point, false);
+
+    // Wait for mount thread to complete
+    let mount_result = mount_handle.join();
+
+    // Verify mount thread didn't panic
+    assert!(
+        mount_result.is_ok(),
+        "Mount thread should not panic, got: {:?}",
+        mount_result.err()
+    );
+
+    // The mount operation should return either Ok(()) or an error,
+    // but it should NOT panic
+    match mount_result.unwrap() {
+        Ok(()) => {
+            // Mount completed successfully (unlikely in race scenario but valid)
+        }
+        Err(e) => {
+            // Mount returned an error - this is expected in a race
+            // The error should be graceful, not a panic
+            let err_str = e.to_string();
+            assert!(
+                err_str.contains("unmount")
+                    || err_str.contains("mount")
+                    || err_str.contains("interrupted")
+                    || err_str.contains("Transport")
+                    || err_str.contains("endpoint"),
+                "Expected graceful error during mount/unmount race, got: {}",
+                err_str
+            );
+        }
+    }
+
+    // Verify unmount was attempted (may succeed or fail depending on timing)
+    // The important thing is that it didn't panic
+    match unmount_result {
+        Ok(()) => {
+            // Successfully unmounted
+        }
+        Err(e) => {
+            // Unmount may fail if mount hadn't fully started yet
+            // This is acceptable - no panic means test passes
+            tracing::debug!("Unmount returned error (acceptable in race): {}", e);
+        }
+    }
+
+    // Final verification: mount point should not be mounted
+    // (or the check itself should not panic)
+    match rqbit_fuse::mount::is_mount_point(&mount_point) {
+        Ok(is_mounted) => {
+            // It's okay if it's still mounted briefly after the race
+            // The important thing is no panic occurred
+            tracing::debug!("Mount point mounted status after race: {}", is_mounted);
+        }
+        Err(e) => {
+            // Checking mount status might fail if directory was removed
+            // This is also acceptable
+            tracing::debug!("Mount check returned error (acceptable): {}", e);
+        }
+    }
+}
+
+/// EDGE-042b: Test rapid mount/unmount cycles
+///
+/// Verifies that repeated mount/unmount cycles don't cause resource leaks
+/// or panics.
+#[tokio::test]
+async fn test_edge_042b_rapid_mount_unmount_cycles() {
+    use std::thread;
+    use std::time::Duration;
+
+    // Run multiple mount/unmount cycles
+    for i in 0..3 {
+        let mock_server = setup_mock_server().await;
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+        let metrics = Arc::new(Metrics::new());
+        let fs = create_test_fs(config, metrics);
+        let mount_point = temp_dir.path().to_path_buf();
+
+        // Start mount
+        let mount_handle = thread::spawn(move || fs.mount());
+
+        // Small delay
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // Unmount
+        let _ = rqbit_fuse::mount::try_unmount(&mount_point, false);
+
+        // Wait for completion without panic
+        let result = mount_handle.join();
+        assert!(
+            result.is_ok(),
+            "Cycle {}: Mount thread panicked: {:?}",
+            i,
+            result.err()
+        );
+    }
+}

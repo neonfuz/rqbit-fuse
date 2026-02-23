@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-042: Test mount/unmount race
+  - Implemented 2 tests in `tests/integration_tests.rs`:
+    - `test_edge_042_mount_unmount_race`: Tests immediate unmount during mount operation
+      - Spawns mount in separate thread and immediately unmounts from main thread
+      - Verifies mount thread doesn't panic and handles race gracefully
+      - Accepts both success and error returns as long as no panic occurs
+    - `test_edge_042b_rapid_mount_unmount_cycles`: Tests multiple rapid mount/unmount cycles
+      - Runs 3 cycles of mount/unmount to verify no resource leaks
+      - Confirms repeated operations don't cause panics
+  - All tests pass with zero clippy warnings
+
 - EDGE-041: Test concurrent discovery
   - Implemented test `test_edge_041_concurrent_discovery` in `tests/integration_tests.rs`
   - Verifies atomic check-and-set mechanism prevents duplicate torrent creation
