@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-015: Remove Arbitrary Upper Bound Validations (Task 2.1.2)
+  - Removed max TTL checks (86400 limit) from `validate_cache_config()`
+  - Removed max entries checks (1,000,000 limit) from `validate_cache_config()`
+  - Removed read timeout max checks (3600s limit) from `validate_performance_config()`
+  - Removed max concurrent reads checks (1000 limit) from `validate_performance_config()`
+  - Removed readahead size checks (1GB limit) from `validate_performance_config()`
+  - Removed status poll interval max checks (3600s limit) from `validate_monitoring_config()`
+  - Removed stalled timeout max checks (86400s limit) from `validate_monitoring_config()`
+  - Removed metrics interval max checks (86400s limit) from `validate_logging_config()`
+  - Removed max cache bytes checks (10GB limit) from `validate_resources_config()`
+  - Removed max open streams checks (1000 limit) from `validate_resources_config()`
+  - Removed max inodes checks (10M limit) from `validate_resources_config()`
+  - Removed test `test_validate_exceeds_max_ttl` that tested removed validation
+  - Validation rules reduced from 33 to 19 (42% reduction in validation complexity)
+  - Essential validations preserved: non-empty checks, >0 checks, log level validation, URL format checks
+  - All 23 config tests passing with zero clippy warnings
+  - Reduced code by ~120 lines in `src/config/mod.rs`
+
 - SIMPLIFY-014: Remove DiscoveryResult Struct (Task 1.4.1)
   - Changed `discover_torrents()` return type from `Result<DiscoveryResult>` to `Result<Vec<u64>>`
   - Updated all 3 call sites to handle `Vec<u64>` directly instead of `DiscoveryResult`

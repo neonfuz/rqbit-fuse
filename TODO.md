@@ -83,7 +83,7 @@ Reduce configuration complexity and validation overhead.
   - **Essential rules**: Non-empty URL, parseability, positive numbers, absolute paths, valid log levels
   - **Arbitrary rules**: All upper bounds (TTL < 86400, max_entries < 1M, etc.)
   
-- [ ] **Task 2.1.2**: Remove arbitrary upper bound validations
+- [x] **Task 2.1.2**: Remove arbitrary upper bound validations
   - Remove max TTL checks (86400 limit)
   - Remove max entries checks (1,000,000 limit)
   - Remove max concurrent reads checks (1000 limit)

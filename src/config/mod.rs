@@ -746,13 +746,6 @@ impl Config {
             });
         }
 
-        if self.cache.metadata_ttl > 86400 {
-            return Err(ValidationIssue {
-                field: "cache.metadata_ttl".to_string(),
-                message: "TTL exceeds maximum of 86400 seconds (24 hours)".to_string(),
-            });
-        }
-
         if self.cache.torrent_list_ttl == 0 {
             return Err(ValidationIssue {
                 field: "cache.torrent_list_ttl".to_string(),
@@ -771,13 +764,6 @@ impl Config {
             return Err(ValidationIssue {
                 field: "cache.max_entries".to_string(),
                 message: "max_entries must be greater than 0".to_string(),
-            });
-        }
-
-        if self.cache.max_entries > 1000000 {
-            return Err(ValidationIssue {
-                field: "cache.max_entries".to_string(),
-                message: "max_entries exceeds maximum of 1000000".to_string(),
             });
         }
 
@@ -824,13 +810,6 @@ impl Config {
             });
         }
 
-        if self.performance.read_timeout > 3600 {
-            return Err(ValidationIssue {
-                field: "performance.read_timeout".to_string(),
-                message: "Read timeout exceeds maximum of 3600 seconds (1 hour)".to_string(),
-            });
-        }
-
         if self.performance.max_concurrent_reads == 0 {
             return Err(ValidationIssue {
                 field: "performance.max_concurrent_reads".to_string(),
@@ -838,24 +817,10 @@ impl Config {
             });
         }
 
-        if self.performance.max_concurrent_reads > 1000 {
-            return Err(ValidationIssue {
-                field: "performance.max_concurrent_reads".to_string(),
-                message: "max_concurrent_reads exceeds maximum of 1000".to_string(),
-            });
-        }
-
         if self.performance.readahead_size == 0 {
             return Err(ValidationIssue {
                 field: "performance.readahead_size".to_string(),
                 message: "readahead_size must be greater than 0".to_string(),
-            });
-        }
-
-        if self.performance.readahead_size > 1073741824 {
-            return Err(ValidationIssue {
-                field: "performance.readahead_size".to_string(),
-                message: "readahead_size exceeds maximum of 1GB".to_string(),
             });
         }
 
@@ -870,25 +835,10 @@ impl Config {
             });
         }
 
-        if self.monitoring.status_poll_interval > 3600 {
-            return Err(ValidationIssue {
-                field: "monitoring.status_poll_interval".to_string(),
-                message: "status_poll_interval exceeds maximum of 3600 seconds (1 hour)"
-                    .to_string(),
-            });
-        }
-
         if self.monitoring.stalled_timeout == 0 {
             return Err(ValidationIssue {
                 field: "monitoring.stalled_timeout".to_string(),
                 message: "stalled_timeout must be greater than 0".to_string(),
-            });
-        }
-
-        if self.monitoring.stalled_timeout > 86400 {
-            return Err(ValidationIssue {
-                field: "monitoring.stalled_timeout".to_string(),
-                message: "stalled_timeout exceeds maximum of 86400 seconds (24 hours)".to_string(),
             });
         }
 
@@ -925,14 +875,6 @@ impl Config {
             });
         }
 
-        if self.logging.metrics_interval_secs > 86400 {
-            return Err(ValidationIssue {
-                field: "logging.metrics_interval_secs".to_string(),
-                message: "metrics_interval_secs exceeds maximum of 86400 seconds (24 hours)"
-                    .to_string(),
-            });
-        }
-
         Ok(())
     }
 
@@ -944,13 +886,6 @@ impl Config {
             });
         }
 
-        if self.resources.max_cache_bytes > 10737418240 {
-            return Err(ValidationIssue {
-                field: "resources.max_cache_bytes".to_string(),
-                message: "max_cache_bytes exceeds maximum of 10GB".to_string(),
-            });
-        }
-
         if self.resources.max_open_streams == 0 {
             return Err(ValidationIssue {
                 field: "resources.max_open_streams".to_string(),
@@ -958,24 +893,10 @@ impl Config {
             });
         }
 
-        if self.resources.max_open_streams > 1000 {
-            return Err(ValidationIssue {
-                field: "resources.max_open_streams".to_string(),
-                message: "max_open_streams exceeds maximum of 1000".to_string(),
-            });
-        }
-
         if self.resources.max_inodes == 0 {
             return Err(ValidationIssue {
                 field: "resources.max_inodes".to_string(),
                 message: "max_inodes must be greater than 0".to_string(),
-            });
-        }
-
-        if self.resources.max_inodes > 10000000 {
-            return Err(ValidationIssue {
-                field: "resources.max_inodes".to_string(),
-                message: "max_inodes exceeds maximum of 10000000".to_string(),
             });
         }
 
@@ -1225,14 +1146,6 @@ url = "http://localhost:8083"
     fn test_validate_zero_metadata_ttl() {
         let mut config = Config::default();
         config.cache.metadata_ttl = 0;
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_exceeds_max_ttl() {
-        let mut config = Config::default();
-        config.cache.metadata_ttl = 100000;
         let result = config.validate();
         assert!(result.is_err());
     }
