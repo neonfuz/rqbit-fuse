@@ -2803,6 +2803,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_validate_mount_point_is_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("not_a_directory.txt");
+        std::fs::write(&file_path, "This is a file, not a directory").unwrap();
+
+        let mut config = Config::default();
+        config.mount.mount_point = file_path;
+
+        let metrics = Arc::new(crate::metrics::Metrics::new());
+        let async_worker = create_test_async_worker(Arc::clone(&metrics));
+        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let result = fs.validate_mount_point();
+
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("is not a directory") || error_msg.contains("Not a directory"),
+            "Expected error message about mount point not being a directory, got: {}",
+            error_msg
+        );
+    }
+
+    #[tokio::test]
     async fn test_build_mount_options() {
         let config = Config::default();
         let metrics = Arc::new(crate::metrics::Metrics::new());

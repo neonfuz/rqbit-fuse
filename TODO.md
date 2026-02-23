@@ -507,11 +507,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Empty URL
   - Should fail validation
 
-- [ ] **EDGE-055**: Test invalid mount points
-  - Mount point as file (not directory)
-  - Relative path ("./mount")
-  - Non-existent path
-  - Should fail validation
+- [x] **EDGE-055**: Test invalid mount points
+  - Mount point as file (not directory) - Implemented: `test_validate_mount_point_is_file` in `src/fs/filesystem.rs`
+  - Relative path ("./mount") - Already tested: `test_validate_relative_mount_point` in `src/config/mod.rs`
+  - Non-existent path - Already tested: `test_validate_mount_point_nonexistent` in `src/fs/filesystem.rs`
+  - All cases properly validate and return appropriate errors
 
 - [ ] **EDGE-056**: Test timeout edge cases
   - Timeout = 0

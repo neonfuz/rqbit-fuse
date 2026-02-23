@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-055: Test invalid mount points
+  - Added `test_validate_mount_point_is_file` in `src/fs/filesystem.rs`
+    - Tests that mount point validation fails when path is a file instead of directory
+    - Creates a temporary file and attempts to use it as mount point
+    - Verifies appropriate error message about mount point not being a directory
+  - Relative path validation already exists: `test_validate_relative_mount_point` in `src/config/mod.rs`
+  - Non-existent path validation already exists: `test_validate_mount_point_nonexistent` in `src/fs/filesystem.rs`
+  - All mount point edge cases now have comprehensive test coverage
+
 - EDGE-054: Test invalid URL validation
   - Enhanced `src/config/mod.rs` to validate URL schemes strictly
   - Modified `validate_api_config()` to reject non-http/https schemes
