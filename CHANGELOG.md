@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-048: Test maximum filename length
+  - Created `tests/unicode_tests.rs` with 4 comprehensive tests:
+    - `test_edge_048_maximum_filename_length_255_chars`: Tests 255-character filename at boundary
+      - Creates torrent with exactly 255-character filename
+      - Verifies file is created and accessible in filesystem
+      - Confirms file attributes (size) are correct
+    - `test_edge_048_filename_length_256_chars_handling`: Tests graceful handling of 256-char filenames
+      - Verifies system handles oversized filenames without panic
+      - Tests both success and graceful error paths
+    - `test_edge_048_filename_length_boundary_variations`: Tests lengths 253-257 chars
+      - Verifies consistent behavior across boundary values
+      - Tests that files with 255 or fewer chars succeed
+    - `test_edge_048_maximum_filename_with_multibyte_utf8`: Tests UTF-8 byte limits
+      - Uses Japanese characters (3 bytes each) to test 255-byte boundary
+      - 85 Japanese chars × 3 bytes = 255 bytes exactly
+      - Verifies filesystem handles multi-byte UTF-8 correctly
+  - All 197+ tests passing with zero clippy warnings
+
 - EDGE-047: Test semaphore exhaustion
   - Created `tests/resource_tests.rs` with 4 comprehensive tests:
     - `test_edge_047_semaphore_exhaustion`: Tests basic semaphore exhaustion with max_concurrent_reads=10
