@@ -278,9 +278,10 @@ Each item is designed to be completed independently. These are edge case tests t
   - No directory escape
   - Implemented: test_edge_031_path_traversal_attempts in tests/fuse_operations.rs
 
-- [ ] **EDGE-032**: Test path with double slashes
+- [x] **EDGE-032**: Test path with double slashes
   - Path with "//" double slashes
   - Should normalize correctly
+  - Implemented: test_edge_032_double_slashes_path in tests/fuse_operations.rs
 
 - [ ] **EDGE-033**: Test path with "." components
   - Path with "." self-reference

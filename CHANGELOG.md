@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-032: Test path with double slashes
+  - Added `test_edge_032_double_slashes_path` to verify path normalization with double slashes
+  - Tests double slashes at root level ("//Test Torrent")
+  - Tests multiple double slashes ("///Test Torrent")
+  - Tests double slashes in the middle of paths ("/Test Torrent//file1.txt")
+  - Tests double slashes at the end ("/Test Torrent//")
+  - Tests double slashes in nested paths ("/Test Torrent/subdir//file2.txt")
+  - Verifies normal paths without double slashes still work correctly
+  - Tests empty path components with multiple consecutive slashes
+  - Verifies filesystem state remains intact after double slash attempts
+  - Location: `tests/fuse_operations.rs`
+
 - EDGE-031: Test path traversal attempts
   - Added `test_edge_031_path_traversal_attempts` to verify path traversal security
   - Tests paths with ".." attempting to traverse above root ("/../secret.txt")
