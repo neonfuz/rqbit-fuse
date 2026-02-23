@@ -289,11 +289,18 @@ Each item is designed to be completed independently. These are edge case tests t
   - "./file.txt" should work
   - Implemented: 9 tests in `tests/fuse_operations.rs` covering standalone ".", "./file.txt", middle/nested "." components, and multiple consecutive "." components
 
-- [ ] **EDGE-034**: Test symlink edge cases
+- [x] **EDGE-034**: Test symlink edge cases
   - Circular symlink (a -> b, b -> a)
   - Symlink pointing outside torrent directory
   - Symlink with absolute path
   - Should handle gracefully
+  - **Implemented**: 6 comprehensive tests in `tests/fuse_operations.rs`:
+    - `test_edge_034_circular_symlink`: Tests circular symlinks (a -> b, b -> a)
+    - `test_edge_034_symlink_outside_torrent_directory`: Tests symlinks pointing outside torrent dir
+    - `test_edge_034_symlink_absolute_path`: Tests symlinks with absolute path targets
+    - `test_edge_034_deep_circular_symlink_chain`: Tests deep circular chains (a -> b -> c -> a)
+    - `test_edge_034_self_referential_symlink`: Tests self-referential symlinks
+    - `test_edge_034_symlink_special_path_components`: Tests symlinks with special path components
 
 - [ ] **EDGE-035**: Test case sensitivity
   - On case-insensitive filesystems (macOS)

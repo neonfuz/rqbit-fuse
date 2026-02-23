@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- EDGE-034: Test symlink edge cases
+  - Implemented 6 comprehensive tests for symlink edge cases in `tests/fuse_operations.rs`
+  - Tests verify graceful handling of:
+    - Circular symlinks (a -> b, b -> a)
+    - Deep circular chains (a -> b -> c -> a)
+    - Self-referential symlinks (link -> link)
+    - Symlinks pointing outside torrent directory (../../../etc/passwd)
+    - Symlinks with absolute paths (/Test Torrent/file.txt)
+    - Symlinks with special path components (./, ../, ~)
+  - All tests verify symlinks are created without panic and attributes are correct
+  - All 168+ tests passing with zero clippy warnings
+
 ### Changed
 
 - SIMPLIFY-001E: Remove old error types and clean up exports

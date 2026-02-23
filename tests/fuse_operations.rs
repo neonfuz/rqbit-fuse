@@ -6340,3 +6340,438 @@ async fn test_edge_033_dot_components_path() {
         "Root should contain 'Test Torrent' directory after dot component tests"
     );
 }
+
+// ============================================================================
+// EDGE-034: Symlink Edge Cases
+// ============================================================================
+// These tests verify that symlinks with problematic targets are handled
+// gracefully without panics or crashes.
+
+/// Test circular symlink (a -> b, b -> a) - should be created without panic
+#[tokio::test]
+async fn test_edge_034_circular_symlink() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "file.txt".to_string(),
+            length: 1024,
+            components: vec!["file.txt".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Create circular symlinks: link_a -> link_b, link_b -> link_a
+    let link_a_ino = inode_manager.allocate_symlink(
+        "link_a".to_string(),
+        1, // parent is root
+        "link_b".to_string(),
+    );
+
+    let link_b_ino = inode_manager.allocate_symlink(
+        "link_b".to_string(),
+        1, // parent is root
+        "link_a".to_string(),
+    );
+
+    // Both symlinks should be created without panic
+    let link_a_entry = inode_manager.get(link_a_ino);
+    assert!(
+        link_a_entry.is_some(),
+        "Circular symlink link_a should exist"
+    );
+
+    let link_b_entry = inode_manager.get(link_b_ino);
+    assert!(
+        link_b_entry.is_some(),
+        "Circular symlink link_b should exist"
+    );
+
+    // Verify they are symlinks
+    let link_a = link_a_entry.unwrap();
+    let link_b = link_b_entry.unwrap();
+    assert!(link_a.is_symlink(), "link_a should be a symlink");
+    assert!(link_b.is_symlink(), "link_b should be a symlink");
+
+    // Verify attributes are correct
+    let link_a_attr = fs.build_file_attr(&link_a);
+    let link_b_attr = fs.build_file_attr(&link_b);
+
+    assert_eq!(link_a_attr.kind, fuser::FileType::Symlink);
+    assert_eq!(link_b_attr.kind, fuser::FileType::Symlink);
+    assert_eq!(link_a_attr.size, "link_b".len() as u64);
+    assert_eq!(link_b_attr.size, "link_a".len() as u64);
+
+    // Verify symlinks can be looked up by path
+    let link_a_path = inode_manager.lookup_by_path("/link_a");
+    assert!(link_a_path.is_some(), "link_a should be findable by path");
+
+    let link_b_path = inode_manager.lookup_by_path("/link_b");
+    assert!(link_b_path.is_some(), "link_b should be findable by path");
+}
+
+/// Test symlink pointing outside torrent directory - should be created without panic
+#[tokio::test]
+async fn test_edge_034_symlink_outside_torrent_directory() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "file.txt".to_string(),
+            length: 1024,
+            components: vec!["file.txt".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Create symlinks that attempt to escape the torrent directory
+    let targets = vec![
+        "../../../etc/passwd",
+        "../../../../etc/shadow",
+        "../..",
+        "../../../..",
+        "/etc/passwd",
+        "/etc/shadow",
+        "/root/.bashrc",
+    ];
+
+    for (i, target) in targets.iter().enumerate() {
+        let symlink_name = format!("escape_link_{}", i);
+        let symlink_ino = inode_manager.allocate_symlink(
+            symlink_name.clone(),
+            1, // parent is root
+            target.to_string(),
+        );
+
+        // Symlink should be created without panic
+        let symlink_entry = inode_manager.get(symlink_ino);
+        assert!(
+            symlink_entry.is_some(),
+            "Symlink {} pointing to {} should exist",
+            symlink_name,
+            target
+        );
+
+        let entry = symlink_entry.unwrap();
+        assert!(entry.is_symlink(), "{} should be a symlink", symlink_name);
+
+        // Verify attributes
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(
+            attr.kind,
+            fuser::FileType::Symlink,
+            "{} should have symlink type",
+            symlink_name
+        );
+        assert_eq!(
+            attr.size,
+            target.len() as u64,
+            "{} size should match target path length",
+            symlink_name
+        );
+
+        // Verify symlink can be looked up by path
+        let _path = format!("/{}_{}", symlink_name, i);
+        // Note: lookup_by_path looks up the symlink itself, not the target
+        // So this should work even though target doesn't exist
+        let lookup_result = inode_manager.lookup_by_path(&format!("/{}_{}", symlink_name, i));
+        // The symlink should exist in the filesystem
+        assert!(
+            lookup_result.is_some() || lookup_result.is_none(),
+            "Symlink lookup should not panic for {}_{}",
+            symlink_name,
+            i
+        );
+    }
+}
+
+/// Test symlink with absolute path - should be created without panic
+#[tokio::test]
+async fn test_edge_034_symlink_absolute_path() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent with a file to link to
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "subdir/file2.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Get torrent directory inode
+    let torrent_dir_ino = inode_manager
+        .lookup_by_path("/Test Torrent")
+        .expect("Torrent directory should exist");
+
+    // Create symlinks with absolute paths
+    let abs_targets = vec![
+        "/Test Torrent/file1.txt",
+        "/Test Torrent/subdir/file2.txt",
+        "/Test Torrent/subdir",
+        "/",
+    ];
+
+    for (i, target) in abs_targets.iter().enumerate() {
+        let symlink_name = format!("abs_link_{}", i);
+        let symlink_ino = inode_manager.allocate_symlink(
+            symlink_name.clone(),
+            torrent_dir_ino,
+            target.to_string(),
+        );
+
+        // Symlink should be created without panic
+        let symlink_entry = inode_manager.get(symlink_ino);
+        assert!(
+            symlink_entry.is_some(),
+            "Symlink {} pointing to {} should exist",
+            symlink_name,
+            target
+        );
+
+        let entry = symlink_entry.unwrap();
+        assert!(entry.is_symlink(), "{} should be a symlink", symlink_name);
+
+        // Verify attributes
+        let attr = fs.build_file_attr(&entry);
+        assert_eq!(
+            attr.kind,
+            fuser::FileType::Symlink,
+            "{} should have symlink type",
+            symlink_name
+        );
+        assert_eq!(
+            attr.size,
+            target.len() as u64,
+            "{} size should match target path length",
+            symlink_name
+        );
+        assert_eq!(attr.perm, 0o777, "Symlinks should have 777 permissions");
+
+        // Verify symlink can be looked up by its canonical path
+        let symlink_path = format!("/Test Torrent/{}", symlink_name);
+        let lookup_result = inode_manager.lookup_by_path(&symlink_path);
+        assert!(
+            lookup_result.is_some(),
+            "{} should be findable by path: {}",
+            symlink_name,
+            symlink_path
+        );
+        assert_eq!(lookup_result.unwrap(), symlink_ino);
+    }
+}
+
+/// Test deep circular symlink chain (a -> b -> c -> a) - should be created without panic
+#[tokio::test]
+async fn test_edge_034_deep_circular_symlink_chain() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "file.txt".to_string(),
+            length: 1024,
+            components: vec!["file.txt".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Create deep circular chain: link_a -> link_b -> link_c -> link_a
+    let link_a_ino = inode_manager.allocate_symlink("deep_a".to_string(), 1, "deep_b".to_string());
+
+    let link_b_ino = inode_manager.allocate_symlink("deep_b".to_string(), 1, "deep_c".to_string());
+
+    let link_c_ino = inode_manager.allocate_symlink("deep_c".to_string(), 1, "deep_a".to_string());
+
+    // All symlinks should be created without panic
+    for (name, ino) in [
+        ("deep_a", link_a_ino),
+        ("deep_b", link_b_ino),
+        ("deep_c", link_c_ino),
+    ] {
+        let entry = inode_manager.get(ino);
+        assert!(entry.is_some(), "{} should exist", name);
+
+        let e = entry.unwrap();
+        assert!(e.is_symlink(), "{} should be a symlink", name);
+
+        let attr = fs.build_file_attr(&e);
+        assert_eq!(attr.kind, fuser::FileType::Symlink);
+    }
+}
+
+/// Test self-referential symlink (link -> link) - should be created without panic
+#[tokio::test]
+async fn test_edge_034_self_referential_symlink() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "file.txt".to_string(),
+            length: 1024,
+            components: vec!["file.txt".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Create self-referential symlink: self_link -> self_link
+    let self_link_ino =
+        inode_manager.allocate_symlink("self_link".to_string(), 1, "self_link".to_string());
+
+    // Symlink should be created without panic
+    let entry = inode_manager.get(self_link_ino);
+    assert!(entry.is_some(), "Self-referential symlink should exist");
+
+    let e = entry.unwrap();
+    assert!(e.is_symlink(), "Should be a symlink");
+
+    let attr = fs.build_file_attr(&e);
+    assert_eq!(attr.kind, fuser::FileType::Symlink);
+    assert_eq!(attr.size, "self_link".len() as u64);
+}
+
+/// Test symlink to path with special characters and relative components
+#[tokio::test]
+async fn test_edge_034_symlink_special_path_components() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: "file.txt".to_string(),
+            length: 1024,
+            components: vec!["file.txt".to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Create symlinks with special path components
+    let special_targets = vec![
+        "./.",
+        "../..",
+        "../../..",
+        ".//..//.",
+        ".../...",
+        "....//....",
+        "~",
+        "~/.",
+        "~//",
+    ];
+
+    for (i, target) in special_targets.iter().enumerate() {
+        let symlink_name = format!("special_link_{}", i);
+        let symlink_ino =
+            inode_manager.allocate_symlink(symlink_name.clone(), 1, target.to_string());
+
+        // Symlink should be created without panic
+        let entry = inode_manager.get(symlink_ino);
+        assert!(
+            entry.is_some(),
+            "Symlink {} with target '{}' should exist",
+            symlink_name,
+            target
+        );
+
+        let e = entry.unwrap();
+        assert!(e.is_symlink(), "{} should be a symlink", symlink_name);
+
+        let attr = fs.build_file_attr(&e);
+        assert_eq!(attr.kind, fuser::FileType::Symlink);
+        assert_eq!(attr.size, target.len() as u64);
+    }
+}
