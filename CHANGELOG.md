@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-056: Test timeout edge cases
+  - Created `tests/config_tests.rs` with 10 comprehensive timeout validation tests:
+    - `test_edge_056_timeout_zero`: Validates that timeout=0 fails validation
+    - `test_edge_056_timeout_u64_max`: Validates that u64::MAX fails validation (exceeds 3600s limit)
+    - `test_edge_056_timeout_negative_from_env`: Tests graceful handling of negative values from environment
+    - `test_edge_056_timeout_negative_large_from_env`: Tests handling of large negative values
+    - `test_edge_056_timeout_valid_values`: Tests various valid timeout values (1-3600 seconds)
+    - `test_edge_056_timeout_just_above_max`: Tests rejection of 3601 seconds (just above limit)
+    - `test_edge_056_timeout_one`: Tests minimum valid timeout of 1 second
+    - `test_edge_056_other_timeout_fields`: Tests monitoring timeouts (status_poll_interval, stalled_timeout)
+    - `test_edge_056_metrics_interval_zero_when_enabled`: Tests metrics interval validation
+    - `test_edge_056_invalid_timeout_from_env_handling`: Tests various invalid formats (letters, decimals, empty)
+  - All timeout edge cases now have comprehensive test coverage
+
 - EDGE-055: Test invalid mount points
   - Added `test_validate_mount_point_is_file` in `src/fs/filesystem.rs`
     - Tests that mount point validation fails when path is a file instead of directory

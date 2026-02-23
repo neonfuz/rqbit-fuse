@@ -513,11 +513,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - Non-existent path - Already tested: `test_validate_mount_point_nonexistent` in `src/fs/filesystem.rs`
   - All cases properly validate and return appropriate errors
 
-- [ ] **EDGE-056**: Test timeout edge cases
-  - Timeout = 0
-  - Timeout = u64::MAX
-  - Negative timeout (if parsed from string)
-  - Should validate and reject invalid values
+- [x] **EDGE-056**: Test timeout edge cases
+  - Timeout = 0 - Implemented: test validates rejection
+  - Timeout = u64::MAX - Implemented: test validates rejection (exceeds 3600s limit)
+  - Negative timeout from environment - Implemented: test validates parse failure
+  - Invalid formats (letters, decimals, empty) - Implemented: comprehensive test coverage
+  - **Implemented**: 10 tests in `tests/config_tests.rs` covering all timeout edge cases
 
 - [ ] **EDGE-057**: Test environment variable edge cases
   - Missing required env vars
