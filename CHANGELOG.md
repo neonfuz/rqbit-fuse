@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-027: Test inode 0 allocation attempt
+  - Added `test_inode_0_allocation_attempt` to verify graceful handling of inode 0 insertion
+  - Tests that inserting entry with inode 0 doesn't corrupt the next_inode counter
+  - Verifies normal allocations continue to work correctly after inode 0 handling
+  - Added `test_inode_0_not_returned_from_allocate` to verify allocate() never returns inode 0
+  - Tests allocate 10 entries and verify all have inode >= 2
+  - Tests uniqueness of allocated inodes across multiple allocations
+  - Location: `src/fs/inode_manager.rs`
+
 - SIMPLIFY-001A: Create unified RqbitFuseError enum in src/error.rs
   - Consolidated three separate error types into single unified enum:
     - FuseError from src/fs/error.rs (12 variants)

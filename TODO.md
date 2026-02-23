@@ -236,10 +236,11 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Inode Allocation (src/fs/inode.rs)
 
-- [ ] **EDGE-027**: Test inode 0 allocation attempt
+- [x] **EDGE-027**: Test inode 0 allocation attempt
   - Try to allocate inode 0
   - Should fail gracefully, return 0 or error
   - Should not corrupt inode counter
+  - Implemented: 2 tests in `src/fs/inode_manager.rs`
 
 - [ ] **EDGE-028**: Test max_inodes limit
   - Set max_inodes = 10

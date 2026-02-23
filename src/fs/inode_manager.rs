@@ -760,4 +760,113 @@ mod tests {
         inodes.dedup();
         assert_eq!(inodes.len(), 1000, "Should have 1000 unique inodes");
     }
+
+    #[test]
+    fn test_inode_0_allocation_attempt() {
+        // EDGE-027: Test inode 0 allocation attempt
+        // Try to allocate inode 0
+        // Should fail gracefully, return 0 or error
+        // Should not corrupt inode counter
+
+        let manager = InodeManager::new();
+
+        // Record initial state
+        let initial_next_inode = manager.next_inode();
+        assert_eq!(initial_next_inode, 2, "Initial next_inode should be 2");
+
+        // Attempt to manually insert an entry with inode 0
+        // This simulates what would happen if someone tried to allocate inode 0
+        let entry_with_inode_0 = InodeEntry::File {
+            ino: 0,
+            name: "invalid.txt".to_string(),
+            parent: 1,
+            torrent_id: 1,
+            file_index: 0,
+            size: 100,
+            canonical_path: "/invalid.txt".to_string(),
+        };
+
+        // Try to insert inode 0 directly into the entries map
+        // This should not panic or corrupt the system
+        let insert_result = manager.entries.entry(0);
+        match insert_result {
+            dashmap::mapref::entry::Entry::Vacant(e) => {
+                e.insert(entry_with_inode_0);
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                panic!("Inode 0 should not already exist");
+            }
+        }
+
+        // Verify that inode 0 exists but the counter is not corrupted
+        assert!(manager.contains(0), "Inode 0 should exist after insertion");
+        assert_eq!(
+            manager.next_inode(),
+            initial_next_inode,
+            "Next inode counter should not be corrupted by inode 0 insertion"
+        );
+
+        // Verify normal allocations still work correctly
+        let inode2 = manager.allocate_file("normal.txt".to_string(), 1, 1, 0, 100);
+        assert_eq!(inode2, 2, "Normal allocation should return inode 2");
+        assert!(manager.contains(inode2), "Allocated inode 2 should exist");
+
+        // Verify we can retrieve inode 0
+        let retrieved_0 = manager.get(0);
+        assert!(retrieved_0.is_some(), "Should be able to retrieve inode 0");
+        assert_eq!(
+            retrieved_0.unwrap().ino(),
+            0,
+            "Retrieved entry should have inode 0"
+        );
+
+        // Verify inode_count is correct (root + inode 0 + inode 2)
+        assert_eq!(
+            manager.len(),
+            3,
+            "Should have 3 entries: root, inode 0, and inode 2"
+        );
+
+        // Cleanup: remove inode 0 and verify system is still consistent
+        manager.entries.remove(&0);
+        assert!(!manager.contains(0), "Inode 0 should be removed");
+        assert_eq!(
+            manager.next_inode(),
+            3,
+            "Next inode should be 3 after allocating inode 2"
+        );
+    }
+
+    #[test]
+    fn test_inode_0_not_returned_from_allocate() {
+        // Verify that the public allocate methods never return inode 0
+        let manager = InodeManager::new();
+
+        // Allocate multiple entries and verify none have inode 0
+        for i in 0..10 {
+            let inode = manager.allocate_file(format!("file{}.txt", i), 1, 1, i as u64, 100);
+            assert_ne!(inode, 0, "allocate() should never return inode 0");
+            assert!(inode >= 2, "Allocated inode should be >= 2");
+        }
+
+        // Verify all allocated inodes are unique and non-zero
+        let inodes: Vec<u64> = manager
+            .entries
+            .iter()
+            .map(|e| e.ino())
+            .filter(|&ino| ino != 1) // Exclude root
+            .collect();
+
+        assert!(!inodes.contains(&0), "No allocated inodes should be 0");
+
+        // Verify uniqueness
+        let mut unique_inodes = inodes.clone();
+        unique_inodes.sort();
+        unique_inodes.dedup();
+        assert_eq!(
+            unique_inodes.len(),
+            inodes.len(),
+            "All allocated inodes should be unique"
+        );
+    }
 }
