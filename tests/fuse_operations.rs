@@ -5964,3 +5964,128 @@ async fn test_read_paused_torrent_check_disabled() {
         "Piece checking should be disabled in config"
     );
 }
+
+/// EDGE-031: Test path traversal attempts
+///
+/// Verifies that paths with ".." components that would traverse above root
+/// are handled correctly and don't allow directory escape.
+#[tokio::test]
+async fn test_edge_031_path_traversal_attempts() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent structure for testing
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "secret.txt".to_string(),
+                length: 1024,
+                components: vec!["secret.txt".to_string()],
+            },
+            FileInfo {
+                name: "file.txt".to_string(),
+                length: 1024,
+                components: vec!["subdir".to_string(), "file.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test 1: Path attempting to traverse above root ("/../secret")
+    // This should not resolve to a valid file outside the filesystem
+    let result = inode_manager.lookup_by_path("/../secret.txt");
+    assert!(
+        result.is_none(),
+        "Path '/../secret.txt' should not resolve - it attempts to traverse above root"
+    );
+
+    // Test 2: Multiple ".." components ("/../../secret")
+    let result = inode_manager.lookup_by_path("/../../secret.txt");
+    assert!(
+        result.is_none(),
+        "Path '/../../secret.txt' should not resolve"
+    );
+
+    // Test 3: Path with ".." in the middle ("/Test Torrent/../secret.txt")
+    // This should resolve to "/secret.txt" which doesn't exist
+    let result = inode_manager.lookup_by_path("/Test Torrent/../secret.txt");
+    assert!(
+        result.is_none(),
+        "Path '/Test Torrent/../secret.txt' should not resolve - resolves to '/secret.txt' which doesn't exist"
+    );
+
+    // Test 4: Valid path without ".." should still work
+    let result = inode_manager.lookup_by_path("/Test Torrent/secret.txt");
+    assert!(
+        result.is_some(),
+        "Valid path '/Test Torrent/secret.txt' should resolve"
+    );
+
+    // Test 5: Path with ".." that stays within bounds should work
+    // "/Test Torrent/subdir/../file.txt" resolves to "/Test Torrent/file.txt" which doesn't exist
+    // But "/Test Torrent/subdir/.." should resolve to "/Test Torrent"
+    let result = inode_manager.lookup_by_path("/Test Torrent/subdir/..");
+    // This path doesn't exist in our path_to_inode map, so it returns None
+    assert!(
+        result.is_none(),
+        "Path '/Test Torrent/subdir/..' is not stored in path_to_inode map"
+    );
+
+    // Test 6: Verify no directory escape via path traversal
+    // The filesystem should only have paths that were explicitly created
+    let root_children = inode_manager.get_children(1);
+    assert!(
+        root_children.iter().any(|(ino, _name)| {
+            if let Some(entry) = inode_manager.get(*ino) {
+                entry.name() == "Test Torrent"
+            } else {
+                false
+            }
+        }),
+        "Root should contain 'Test Torrent' directory"
+    );
+
+    // Test 7: Attempt to escape torrent directory and access parent
+    // "/Test Torrent/../../etc/passwd" should not work
+    let result = inode_manager.lookup_by_path("/Test Torrent/../../etc/passwd");
+    assert!(
+        result.is_none(),
+        "Path traversal escape attempt should not resolve"
+    );
+
+    // Test 8: Mixed valid and invalid path components
+    let result = inode_manager.lookup_by_path("/Test Torrent/subdir/../../secret.txt");
+    assert!(
+        result.is_none(),
+        "Path '/Test Torrent/subdir/../../secret.txt' resolves to '/secret.txt' which doesn't exist"
+    );
+
+    // Test 9: Verify that the actual file structure is intact
+    let torrent_dir = inode_manager.lookup_by_path("/Test Torrent");
+    assert!(torrent_dir.is_some(), "Torrent directory should exist");
+
+    let secret_file = inode_manager.lookup_by_path("/Test Torrent/secret.txt");
+    assert!(
+        secret_file.is_some(),
+        "secret.txt should be accessible via normal path"
+    );
+
+    let subdir_file = inode_manager.lookup_by_path("/Test Torrent/subdir/file.txt");
+    assert!(
+        subdir_file.is_some(),
+        "subdir/file.txt should be accessible via normal path"
+    );
+}

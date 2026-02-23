@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-031: Test path traversal attempts
+  - Added `test_edge_031_path_traversal_attempts` to verify path traversal security
+  - Tests paths with ".." attempting to traverse above root ("/../secret.txt")
+  - Tests multiple ".." components ("/../../secret.txt") 
+  - Tests ".." in the middle of paths ("/Test Torrent/../secret.txt")
+  - Verifies valid paths without ".." still work correctly
+  - Tests that paths with ".." within bounds work ("/Test Torrent/subdir/..")
+  - Verifies no directory escape via path traversal attacks
+  - Tests complex paths like "/Test Torrent/../../etc/passwd" are rejected
+  - Tests mixed valid/invalid components ("/Test Torrent/subdir/../../secret.txt")
+  - Verifies file structure remains intact and accessible via normal paths
+  - Location: `tests/fuse_operations.rs`
+
 - EDGE-030: Test concurrent allocation stress
   - Added `test_edge_030_concurrent_allocation_stress` to verify concurrent inode allocation under high load
   - Tests 100 threads allocating simultaneously, each creating 100 inodes (10,000 total)

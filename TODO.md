@@ -272,10 +272,11 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Path Handling (src/fs/inode.rs)
 
-- [ ] **EDGE-031**: Test path traversal attempts
+- [x] **EDGE-031**: Test path traversal attempts
   - Path with ".." traversing above root ("/../secret")
   - Should resolve to root or return error
   - No directory escape
+  - Implemented: test_edge_031_path_traversal_attempts in tests/fuse_operations.rs
 
 - [ ] **EDGE-032**: Test path with double slashes
   - Path with "//" double slashes
