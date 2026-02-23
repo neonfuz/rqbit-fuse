@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-041: Test concurrent discovery
+  - Implemented test `test_edge_041_concurrent_discovery` in `tests/integration_tests.rs`
+  - Verifies atomic check-and-set mechanism prevents duplicate torrent creation
+  - Tests concurrent `refresh_torrents()` calls using barrier synchronization
+  - Confirms only one torrent is created despite concurrent discovery operations
+  - Tests cooldown mechanism prevents rapid successive discoveries
+  - All tests pass with zero clippy warnings
+
 - EDGE-040: Test read while torrent being removed
   - Implemented comprehensive test `test_edge_040_read_while_torrent_being_removed` in `tests/integration_tests.rs`
   - Tests graceful handling when file handles exist for removed torrents

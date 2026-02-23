@@ -374,11 +374,15 @@ Each item is designed to be completed independently. These are edge case tests t
   - Tests multiple handles with various states (active reads, prefetching)
   - Tests graceful cleanup of stale handles
 
-- [ ] **EDGE-041**: Test concurrent discovery
+- [x] **EDGE-041**: Test concurrent discovery
   - Trigger discovery from readdir
   - Simultaneously trigger from background task
   - Should not create duplicate torrents
   - Atomic check-and-set should work
+  - **Implemented**: `test_edge_041_concurrent_discovery` in `tests/integration_tests.rs`
+  - Tests concurrent refresh_torrents() calls with barrier synchronization
+  - Verifies only one torrent is created despite concurrent discoveries
+  - Tests cooldown mechanism prevents duplicate discoveries
 
 - [ ] **EDGE-042**: Test mount/unmount race
   - Start mount operation

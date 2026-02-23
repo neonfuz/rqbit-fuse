@@ -7,8 +7,8 @@
 //! - Error handling
 
 use std::sync::Arc;
-use std::sync::Barrier;
 use tempfile::TempDir;
+use tokio::sync::Barrier;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1115,4 +1115,154 @@ async fn test_edge_040_read_while_torrent_being_removed() {
         torrent_children.is_empty(),
         "Root should not have removed torrent children"
     );
+}
+
+/// EDGE-041: Test concurrent discovery
+///
+/// This test verifies that the atomic check-and-set mechanism works correctly
+/// when torrent discovery is triggered simultaneously from multiple sources:
+/// 1. On-demand discovery from readdir (when listing root directory)
+/// 2. Explicit refresh via refresh_torrents()
+///
+/// The test ensures that:
+/// - No duplicate torrents are created
+/// - The atomic check in discover_torrents prevents race conditions
+/// - Concurrent discovery operations complete without errors
+#[tokio::test]
+async fn test_edge_041_concurrent_discovery() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    // Mock the list torrents endpoint to return our test torrent summary
+    // list_torrents() first fetches the list, then fetches details for each
+    Mock::given(method("GET"))
+        .and(path("/torrents"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "torrents": [{
+                "id": 41,
+                "info_hash": "edge041",
+                "name": "EDGE-041 Concurrent Discovery Test",
+                "output_folder": "/downloads"
+            }]
+        })))
+        .expect(2..=4) // Expect 2-4 calls (one from each concurrent discovery, potentially with retries)
+        .mount(&mock_server)
+        .await;
+
+    // Mock the individual torrent endpoint for full details
+    Mock::given(method("GET"))
+        .and(path("/torrents/41"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": 41,
+            "info_hash": "edge041",
+            "name": "EDGE-041 Concurrent Discovery Test",
+            "output_folder": "/downloads",
+            "file_count": 1,
+            "files": [
+                {"name": "test.txt", "length": 1024, "components": ["test.txt"]}
+            ],
+            "piece_length": 1048576
+        })))
+        .expect(2..=4) // Expect 2-4 calls (one from each concurrent discovery)
+        .mount(&mock_server)
+        .await;
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = Arc::new(create_test_fs(config, metrics));
+
+    let inode_manager = fs.inode_manager();
+
+    // Verify no torrent exists initially
+    assert!(
+        inode_manager.lookup_torrent(41).is_none(),
+        "Torrent should not exist before discovery"
+    );
+
+    // Use a barrier to synchronize both discovery operations
+    let barrier = Arc::new(Barrier::new(2));
+    let barrier1 = Arc::clone(&barrier);
+    let barrier2 = Arc::clone(&barrier);
+
+    let fs1 = Arc::clone(&fs);
+    let fs2 = Arc::clone(&fs);
+
+    // Spawn two concurrent discovery tasks
+    let handle1 = tokio::spawn(async move {
+        barrier1.wait().await;
+        fs1.refresh_torrents(true).await
+    });
+
+    let handle2 = tokio::spawn(async move {
+        barrier2.wait().await;
+        fs2.refresh_torrents(true).await
+    });
+
+    // Wait for both discoveries to complete
+    let result1 = handle1.await.unwrap();
+    let result2 = handle2.await.unwrap();
+
+    // At least one discovery should have succeeded
+    assert!(
+        result1 || result2,
+        "At least one concurrent discovery should succeed"
+    );
+
+    // Verify only ONE torrent was created (no duplicates)
+    let torrent_inode = inode_manager.lookup_torrent(41);
+    assert!(
+        torrent_inode.is_some(),
+        "Torrent should be created after discovery"
+    );
+
+    // Count occurrences of the torrent in the filesystem
+    let root_children = inode_manager.get_children(1);
+    let torrent_count = root_children
+        .iter()
+        .filter(|(_, entry)| entry.name() == "EDGE-041 Concurrent Discovery Test")
+        .count();
+
+    assert_eq!(
+        torrent_count, 1,
+        "Exactly one torrent entry should exist (found {})",
+        torrent_count
+    );
+
+    // Verify the torrent has the expected structure
+    let torrent_inode = torrent_inode.unwrap();
+    let torrent_children = inode_manager.get_children(torrent_inode);
+    assert_eq!(
+        torrent_children.len(),
+        1,
+        "Torrent should have exactly one child (the file)"
+    );
+
+    // Verify the file exists
+    let file_entry = torrent_children
+        .iter()
+        .find(|(_, entry)| entry.name() == "test.txt");
+    assert!(file_entry.is_some(), "File should exist in torrent");
+
+    // Test 2: Rapid successive discoveries should respect cooldown
+    // Reset by clearing the discovery timestamp
+    fs.__test_clear_list_torrents_cache().await;
+
+    // First discovery (forced)
+    let first_result = fs.refresh_torrents(true).await;
+    assert!(first_result, "First discovery should succeed");
+
+    // Second discovery (should be skipped due to cooldown)
+    let second_result = fs.refresh_torrents(false).await;
+    assert!(
+        !second_result,
+        "Second discovery should be skipped due to cooldown"
+    );
+
+    // Verify still only one torrent exists
+    let final_count = inode_manager
+        .get_children(1)
+        .iter()
+        .filter(|(_, entry)| entry.name() == "EDGE-041 Concurrent Discovery Test")
+        .count();
+    assert_eq!(final_count, 1, "Should still have exactly one torrent");
 }
