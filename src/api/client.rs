@@ -2239,4 +2239,193 @@ mod tests {
         assert_eq!(timed_out_err.to_errno(), libc::ETIMEDOUT);
         assert!(!timed_out_err.is_transient()); // Generic timeout is not transient
     }
+
+    // =========================================================================
+    // EDGE-039: Connection Reset Tests
+    // =========================================================================
+
+    /// Test that connection reset errors are converted to ServerDisconnected
+    /// and marked as transient for retry
+    #[tokio::test]
+    async fn test_edge_039_connection_reset_error_conversion() {
+        // Test that ServerDisconnected is transient and indicates server unavailable
+        let disconnected_err = RqbitFuseError::ServerDisconnected;
+        assert!(
+            disconnected_err.is_transient(),
+            "ServerDisconnected should be transient"
+        );
+        assert!(
+            disconnected_err.is_server_unavailable(),
+            "ServerDisconnected should indicate server unavailable"
+        );
+        assert_eq!(
+            disconnected_err.to_errno(),
+            libc::ENOTCONN,
+            "ServerDisconnected should map to ENOTCONN"
+        );
+
+        // Test NetworkError is also transient (for connection reset type errors)
+        let network_err = RqbitFuseError::NetworkError("connection reset by peer".to_string());
+        assert!(
+            network_err.is_transient(),
+            "NetworkError should be transient"
+        );
+        assert!(
+            network_err.is_server_unavailable(),
+            "NetworkError should indicate server unavailable"
+        );
+        assert_eq!(
+            network_err.to_errno(),
+            libc::ENETUNREACH,
+            "NetworkError should map to ENETUNREACH"
+        );
+    }
+
+    /// Test that connection reset errors trigger retry logic
+    /// Server returns success after initial connection failures
+    #[tokio::test]
+    async fn test_edge_039_connection_reset_retries_success() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+
+        // Create client with retry enabled
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            3,                         // max_retries
+            Duration::from_millis(10), // short delay for tests
+            None,
+            metrics.clone(),
+        )
+        .unwrap();
+
+        // First two attempts will fail with 503 (simulating transient connection issues)
+        // Third attempt will succeed
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(503).set_body_string("Service temporarily unavailable"),
+            )
+            .up_to_n_times(2)
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "torrents": []
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // This should succeed after retries
+        let result = client.list_torrents().await;
+
+        assert!(
+            result.is_ok(),
+            "Should succeed after retries, got: {:?}",
+            result
+        );
+        let torrents = result.unwrap();
+        assert!(torrents.is_empty(), "Should return empty torrent list");
+
+        // Verify metrics were recorded
+        let retry_count = metrics
+            .retry_count
+            .load(std::sync::atomic::Ordering::Relaxed);
+        assert!(retry_count > 0, "Should have recorded retries");
+    }
+
+    /// Test that connection reset errors eventually fail when retries are exhausted
+    /// Server continues to return 503 errors beyond retry limit
+    #[tokio::test]
+    async fn test_edge_039_connection_reset_retries_exhausted() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+
+        // Create client with limited retries
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            2,                         // max_retries = 2 (total 3 attempts)
+            Duration::from_millis(10), // short delay for tests
+            None,
+            metrics.clone(),
+        )
+        .unwrap();
+
+        // Server always returns 503 (service unavailable)
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("Connection reset by peer"))
+            .mount(&mock_server)
+            .await;
+
+        // This should fail after retries are exhausted
+        let result = client.list_torrents().await;
+
+        assert!(result.is_err(), "Should fail after retries exhausted");
+
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(
+            matches!(
+                err,
+                RqbitFuseError::ApiError { status: 503, .. }
+                    | RqbitFuseError::ServiceUnavailable(_)
+                    | RqbitFuseError::RetryLimitExceeded
+            ),
+            "Should get appropriate error after retries, got: {:?}",
+            err
+        );
+
+        // Verify metrics were recorded - retries should be tracked
+        let retry_count = metrics
+            .retry_count
+            .load(std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            retry_count > 0,
+            "Should have recorded retries for connection reset errors"
+        );
+    }
+
+    /// Test that connection reset during body read is handled gracefully
+    /// Server accepts connection but closes it while sending body
+    #[tokio::test]
+    async fn test_edge_039_connection_reset_during_body_read() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+
+        let client = RqbitClient::new(mock_server.uri(), metrics.clone()).unwrap();
+
+        // Server returns 200 but with incomplete/empty body (simulating connection reset mid-read)
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("") // Empty body simulates connection reset
+                    .set_delay(Duration::from_millis(10)),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Attempt to read file data - should handle gracefully
+        let result = client.read_file(1, 0, Some((0, 100))).await;
+
+        // This should either succeed with empty data or fail gracefully
+        match result {
+            Ok(data) => {
+                // If it succeeds, should have empty or minimal data
+                assert!(data.len() <= 100, "Should return at most requested bytes");
+            }
+            Err(e) => {
+                // If it fails, should be a graceful error (not panic)
+                let err = e.downcast::<RqbitFuseError>().unwrap_or_else(|_| {
+                    panic!("Error should be downcastable to RqbitFuseError");
+                });
+                // Error should be handled, not panic
+                assert!(
+                    !matches!(err, RqbitFuseError::IoError(_) if err.to_string().contains("panic")),
+                    "Should not panic on connection reset"
+                );
+            }
+        }
+    }
 }

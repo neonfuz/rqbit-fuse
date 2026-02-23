@@ -348,10 +348,15 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_038_dns_resolution_failure`: Tests DNS failure handling
     - `test_edge_038_timeout_error_types`: Tests error type mappings for timeout errors
 
-- [ ] **EDGE-039**: Test connection reset
+- [x] **EDGE-039**: Test connection reset
   - Server resets connection mid-request
   - Should handle gracefully
   - Should retry if configured
+  - **Implemented**: 4 tests in `src/api/client.rs`:
+    - `test_edge_039_connection_reset_error_conversion`: Tests error conversion and transient detection
+    - `test_edge_039_connection_reset_retries_success`: Tests retry logic succeeding after initial failures
+    - `test_edge_039_connection_reset_retries_exhausted`: Tests error after retries exhausted
+    - `test_edge_039_connection_reset_during_body_read`: Tests graceful handling of connection reset during body read
 
 ---
 

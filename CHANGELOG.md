@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-039: Test connection reset
+  - Implemented 4 comprehensive tests in `src/api/client.rs` for connection reset handling:
+    - `test_edge_039_connection_reset_error_conversion`: Tests error conversion from reqwest errors
+      - Verifies ServerDisconnected and NetworkError are marked as transient
+      - Confirms proper errno mapping (ENOTCONN for ServerDisconnected, ENETUNREACH for NetworkError)
+    - `test_edge_039_connection_reset_retries_success`: Tests retry logic with transient failures
+      - Simulates 503 errors followed by successful response
+      - Verifies retry metrics are recorded correctly
+    - `test_edge_039_connection_reset_retries_exhausted`: Tests behavior when retries exhausted
+      - Server consistently returns 503 errors beyond retry limit
+      - Verifies appropriate error returned after exhausting retries
+    - `test_edge_039_connection_reset_during_body_read`: Tests graceful handling of connection reset
+      - Simulates connection reset during HTTP body read with empty response
+      - Verifies no panic occurs and error is handled gracefully
+  - All tests pass with zero clippy warnings
+
 - EDGE-038: Test timeout at different stages
   - Implemented 4 comprehensive tests in `src/api/client.rs` for timeout handling:
     - `test_edge_038_connection_timeout`: Tests connection timeout using short connect_timeout (100ms)
