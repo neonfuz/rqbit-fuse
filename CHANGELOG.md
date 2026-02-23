@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Research
+
+- Task 1.1.1: Status Monitoring Analysis
+  - Created `research/status-monitoring-analysis.md` documenting the background status monitoring task
+  - Analyzed usage of `torrent_statuses` cache across the codebase
+  - **Key Finding**: Status monitoring provides NO critical functionality
+    - All piece availability checking uses API client's separate bitfield cache
+    - Status monitoring only provides informational status and early-exit optimizations
+    - Safe to remove without impacting core read operations
+  - Identified 17 usage sites of `torrent_statuses` - all are non-critical
+  - Documented that removing this feature would:
+    - Eliminate 1 of 3 background tasks
+    - Remove ~70 lines of code from filesystem.rs
+    - Remove need for `TorrentStatus` and `TorrentState` types
+    - Reduce memory usage (no status cache)
+    - Remove dependency on `monitoring.status_poll_interval` and `stalled_timeout` config options
+
 ### Changed
 
 - SIMPLIFY-010: Simplify Test Structure

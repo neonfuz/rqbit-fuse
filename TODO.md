@@ -1,693 +1,511 @@
-# rqbit-fuse Edge Case Testing Checklist
+# TODO.md - rqbit-fuse Code Reduction Roadmap
 
-> **Last Updated:** February 22, 2026
-> 
-> **Recent Changes:**
-> - ✅ Marked SIMPLIFY-004 and SIMPLIFY-005 as completed
-> - ✅ Removed EDGE-044 (duplicate of EDGE-008)
-> - 🔄 Updated priorities: SIMPLIFY-001 and SIMPLIFY-002 are now HIGH priority
-> - 📝 Updated file sizes: filesystem.rs is 3,116 lines (was 1,434)
-> - ⬇️ Lowered SIMPLIFY-003 priority (minimal benefit for breaking change)
-
-## How to Use This File
-
-Each item is designed to be completed independently. These are edge case tests to improve test coverage beyond the standard scenarios.
-
-**Workflow:**
-1. Pick an unchecked item
-2. Read the test description and implementation notes
-3. Write the test(s)
-4. Ensure test passes
-5. Check the box
-6. Commit your changes
+Based on code review in `review-r4.md`, this roadmap reduces the codebase by ~70% while preserving core functionality.
 
 ---
 
-## Phase 1: Read/Offset Boundary Edge Cases
+## Phase 1: High Priority Removals (Immediate Impact)
 
-### FUSE Read Operations (tests/fuse_operations.rs)
+These changes have the highest impact with lowest risk. Remove unused/abandoned features.
 
-- [x] **EDGE-001**: Test read at EOF boundary
-  - Read at offset = `file_size - 1` (only 1 byte remaining)
-  - Read at offset exactly equal to file_size (should return 0 bytes/EOF)
-  - Verify no panic or error, just empty data
-  - Test file sizes: 1 byte, 4096 bytes (block size), 1MB, 1GB
-  - Implemented: 9 tests across streaming and fuse_operations modules
+### 1.1 Remove Status Monitoring Background Task
+- [x] **Task 1.1.1**: Research - Document current status monitoring implementation
+  - See research/status-monitoring-analysis.md
+  - **Key Finding**: Status monitoring provides NO critical functionality. All piece availability checking uses API client's separate cache. Safe to remove.
+  
+- [ ] **Task 1.1.2**: Remove `start_status_monitoring()` method
+  - Delete method from `src/fs/filesystem.rs`
+  - Remove call to this method in filesystem initialization
+  - Remove `monitor_handle` field from TorrentFS struct
+  - Remove `stop_status_monitoring()` method
+  
+- [ ] **Task 1.1.3**: Remove `TorrentStatus` and related types if unused
+  - Check if `torrent_statuses: Arc<DashMap<u64, TorrentStatus>>` is used elsewhere
+  - If only used by monitoring task, remove field and imports
+  - Update struct initialization
 
-- [x] **EDGE-002**: Test zero-byte reads
-  - Read with size = 0 at various offsets
-  - Read at offset = 0 with size = 0
-  - Should return success with empty data, not error
-  - Implemented: 3 tests in tests/fuse_operations.rs
+### 1.2 Remove Mount Info Display Feature
+- [ ] **Task 1.2.1**: Remove `get_mount_info()` function
+  - Delete from `src/mount.rs` lines 106-143
+  - Remove `MountInfo` struct
+  - Remove import of `MountInfo` from `src/main.rs`
+  
+- [ ] **Task 1.2.2**: Update Status command to remove mount info
+  - Modify `run_status()` in `src/main.rs` to remove mount info display
+  - Remove filesystem, size, used, available fields from text output
+  - Keep only "MOUNTED" / "NOT MOUNTED" status
 
-- [x] **EDGE-003**: Test negative offset handling
-  - Read with offset = -1 (i64::MAX as u64 overflow)
-  - Read with offset = i64::MIN
-  - Should handle gracefully without panic
-  - Implemented: 3 tests in tests/fuse_operations.rs covering negative offsets, i64::MIN, and overflow scenarios
+### 1.3 Remove JSON Status Output
+- [ ] **Task 1.3.1**: Remove JSON output format from Status command
+  - Delete `OutputFormat` enum from `src/main.rs`
+  - Remove `--format` CLI argument from Status subcommand
+  - Delete JSON serialization structs (`StatusOutput`, `ConfigOutput`, `MountInfoOutput`)
+  - Keep only text format output
+  
+- [ ] **Task 1.3.2**: Update CLI to remove format option
+  - Remove format parameter from `Commands::Status` variant
+  - Update `run_status()` signature to remove format parameter
 
-- [x] **EDGE-004**: Test read beyond EOF
-  - Request more bytes than remaining in file
-  - Read starting at offset > file_size
-  - Should return available bytes or empty, not error
-  - Implemented: 4 tests in tests/fuse_operations.rs
-
-- [x] **EDGE-005**: Test piece boundary reads
-  - Read starting exactly at piece boundary
-  - Read ending exactly at piece boundary
-  - Read spanning multiple piece boundaries
-  - Verify correct data returned across boundaries
-
----
-
-## Phase 2: File Handle Edge Cases
-
-### File Handle Management (src/types/handle.rs)
-
-- [x] **EDGE-006**: Test double release of handle
-  - Allocate handle, release it, release same handle again
-  - Should not panic, should handle gracefully
-  - Verify no memory corruption
-  - **Completed**: Test already exists in `src/types/handle.rs:test_file_handle_removal` - verifies second removal returns `None` without panic
-
-- [x] **EDGE-007**: Test read from released handle
-  - Open file, get handle, release handle, try to read
-  - Should return EBADF error
-  - Verify no panic or crash
-  - Implemented: test_read_from_released_handle in src/types/handle.rs
-
-- [x] **EDGE-008**: Test handle exhaustion
-  - Open files until handle limit reached (50 streams)
-  - Try to open one more file
-  - Should return appropriate error (EMFILE or EAGAIN)
-  - Verify proper error message
-  - Implemented: test_handle_exhaustion in src/types/handle.rs with max_handles=5
-
-- [x] **EDGE-009**: Test handle overflow
-  - Simulate handle allocation wrapping past u64::MAX
-  - Verify handle uniqueness is maintained
-  - Should not allocate handle 0
-  - Implemented: `test_handle_overflow` in src/types/handle.rs with overflow protection in allocate() method
-
-- [x] **EDGE-010**: Test TTL expiration of handles
-  - Create handle, wait for TTL (1 hour), access handle
-  - Should be cleaned up and return error
-  - Test with artificially shortened TTL for test speed
-  - Implemented: 3 tests covering basic TTL expiration, multiple handles with staggered creation, and direct is_expired() method testing
+### 1.4 Remove DiscoveryResult Struct
+- [ ] **Task 1.4.1**: Replace DiscoveryResult with Vec<u64>
+  - Change `discover_torrents()` return type from `Result<DiscoveryResult>` to `Result<Vec<u64>>`
+  - Update all call sites to handle Vec<u64> instead of DiscoveryResult
+  - Remove `DiscoveryResult` struct definition
+  - Remove `#[allow(dead_code)]` attribute
 
 ---
 
-## Phase 3: Directory Operations Edge Cases
+## Phase 2: Configuration Simplification
 
-### Directory Listing (src/fs/filesystem.rs)
+Reduce configuration complexity and validation overhead.
 
-- [x] **EDGE-011**: Test readdir with invalid offsets
-  - Offset > number of entries
-  - Offset = i64::MAX
-  - Negative offset
-  - Should handle gracefully
-  - Implemented: 4 tests in tests/fuse_operations.rs
+### 2.1 Simplify Configuration Validation
+- [ ] **Task 2.1.1**: Research - Document validation rules to keep
+  - List all 50+ validation rules in `src/config/mod.rs` lines 708-983
+  - Write analysis to `research/config-validation-analysis.md`
+  - Identify which are essential (non-empty URL, positive numbers)
+  - Identify which are arbitrary (TTL < 86400, max_entries < 1M)
+  - Reference: "See research/config-validation-analysis.md"
+  
+- [ ] **Task 2.1.2**: Remove arbitrary upper bound validations
+  - Remove max TTL checks (86400 limit)
+  - Remove max entries checks (1,000,000 limit)
+  - Remove max concurrent reads checks (1000 limit)
+  - Remove readahead size checks (1GB limit)
+  - Remove stalled timeout checks (86400 limit)
+  - Remove metrics interval checks
+  - Remove resource limit checks (10GB, 1000 streams, 10M inodes)
+  
+- [ ] **Task 2.1.3**: Simplify URL validation
+  - Remove scheme validation (allow any valid URL, not just http/https)
+  - Keep only: non-empty check and parseability check
+  
+- [ ] **Task 2.1.4**: Consolidate validation methods
+  - Merge 7 separate validation methods into 1-2 methods
+  - Remove per-field validation methods
+  - Keep only essential validations in main `validate()` method
 
-- [x] **EDGE-012**: Test readdir on non-directory
-  - Try to list contents of a file
-  - Should return ENOTDIR error
-  - Implemented: `test_error_enotdir_file_as_directory` in `tests/fuse_operations.rs` tests that files have no children and nested lookups inside files fail
+### 2.2 Reduce Configuration Surface Area
+- [ ] **Task 2.2.1**: Research - Identify config fields to remove
+  - Analyze all 27 config fields in `src/config/mod.rs`
+  - Document which fields are commonly changed vs never used
+  - Write findings to `research/config-fields-usage.md`
+  - Reference: "See research/config-fields-usage.md"
+  
+- [ ] **Task 2.2.2**: Remove MountConfig options
+  - Remove `allow_other` field - always use default (false)
+  - Remove `auto_unmount` field - always use default (true)
+  - Remove `uid` and `gid` fields - always use current user
+  - Keep only: `mount_point`
+  
+- [ ] **Task 2.2.3**: Remove PerformanceConfig options
+  - Remove `prefetch_enabled` - feature doesn't work well
+  - Remove `check_pieces_before_read` - always check
+  - Keep only: `read_timeout`, `max_concurrent_reads`, `readahead_size`
+  
+- [ ] **Task 2.2.4**: Remove MonitoringConfig
+  - Remove entire `MonitoringConfig` struct
+  - Remove `status_poll_interval` field
+  - Remove `stalled_timeout` field
+  - Remove related env var parsing
+  
+- [ ] **Task 2.2.5**: Remove LoggingConfig options
+  - Remove `log_fuse_operations` - always log at debug level
+  - Remove `log_api_calls` - always log at debug level
+  - Remove `metrics_enabled` - removing metrics system
+  - Remove `metrics_interval_secs` - removing metrics system
+  - Keep only: `level`
+  
+- [ ] **Task 2.2.6**: Remove ResourceLimitsConfig
+  - Remove entire `ResourceLimitsConfig` struct
+  - Remove all resource limit fields
+  - Remove related env var parsing
+  - Use hardcoded reasonable defaults instead
+  
+- [ ] **Task 2.2.7**: Simplify CacheConfig
+  - Keep only: `metadata_ttl`, `max_entries`
+  - Remove: `torrent_list_ttl`, `piece_ttl` (use metadata_ttl for all)
+  - Update all usages to use simplified config
 
-- [x] **EDGE-013**: Test lookup of special entries
-  - Lookup "." in root directory
-  - Lookup ".." in various directories
-  - Should resolve correctly
-  - Implemented: Added special handling for "." and ".." in lookup() callback and 5 comprehensive tests
-
-- [x] **EDGE-014**: Test empty directory listing
-  - Create empty directory, list contents
-  - Should return "." and ".." only  
-  - Verify no crash or error
-  - Implemented: test_edge_014_empty_directory_listing in tests/fuse_operations.rs
-
-- [x] **EDGE-015**: Test directory with many files
-  - Create directory with 1000+ files
-  - List contents with various offsets
-  - Verify pagination/offset works correctly
-  - Implemented: test_edge_015_directory_with_many_files in tests/fuse_operations.rs
-
----
-
-## Phase 4: Cache Edge Cases
-
-### Cache Operations (src/cache.rs)
-
-- [x] **EDGE-016**: Test cache entry expiration during access
-  - Insert entry with short TTL
-  - Start get() operation
-  - Let entry expire during operation
-  - Should return None, not panic
-  - **Completed**: Added `test_cache_entry_expiration_during_access` and `test_cache_expiration_race_condition` tests
-
-- [x] **EDGE-017**: Test cache at exact capacity
-  - Fill cache to exactly max_entries
-  - Insert one more entry (should trigger eviction)
-  - Verify eviction count increments
-  - Verify oldest entry is evicted
-  - **Completed**: Verified by existing `test_cache_lru_eviction` test in src/cache.rs
-
-- [x] **EDGE-018**: Test rapid insert/remove cycles
-  - Insert and remove same key 1000 times rapidly
-  - Should maintain consistency
-  - No memory leaks
-  - Implemented: `test_cache_rapid_insert_remove_cycles` and `test_cache_rapid_mixed_key_cycles` in src/cache.rs
-
-- [x] **EDGE-019**: Test concurrent insert of same key
-  - 10 threads try to insert same key simultaneously
-  - One should succeed, others should handle gracefully
-  - Cache should have exactly one entry
-  - **Implemented**: `test_concurrent_insert_same_key` in `src/cache.rs`
-
-- [x] **EDGE-020**: Test cache statistics edge cases
-  - Hit rate with 0 total requests
-  - Hit rate with 0 hits, many misses
-  - Hit rate with 0 misses, many hits
-  - Should not divide by zero
-
----
-
-## Phase 5: Streaming Edge Cases
-
-### HTTP Streaming (src/api/streaming.rs)
-
-- [x] **EDGE-021**: Test server returning 200 instead of 206
-  - Request range, server returns full file (200 OK)
-  - Should handle correctly, skip to offset
-  - Verify data correctness
-  - Implemented: 3 tests in `src/api/streaming.rs`
-
-- [x] **EDGE-022**: Test empty response body
-  - Server returns 200/206 with empty body
-  - Should handle gracefully, return empty bytes
-  - No panic or infinite loop
-  - Implemented: 3 tests in `src/api/streaming.rs`
-    - `test_edge_022_empty_response_body_200`: Tests 200 OK with empty body
-    - `test_edge_022_empty_response_body_206`: Tests 206 Partial Content with empty body
-    - `test_edge_022_empty_response_at_offset`: Tests empty response at non-zero offset
-
-- [x] **EDGE-023**: Test network disconnect during read
-  - Start reading stream
-  - Simulate network failure mid-read
-  - Should return error, clean up properly
-  - No resource leaks
-  - **Implemented**: 3 tests in `src/api/streaming.rs`
-    - `test_edge_023_network_disconnect_during_read`: Tests graceful handling of network issues
-    - `test_edge_023_stream_marked_invalid_after_error`: Verifies stream invalidation on error
-    - `test_edge_023_stream_manager_cleanup_invalid_stream`: Tests manager cleanup of invalid streams
-
-- [x] **EDGE-024**: Test slow server response
-  - Server sends data very slowly
-  - Should respect timeout
-  - Should not block indefinitely
-  - Implemented: 3 tests in `src/api/streaming.rs`
-    - `test_edge_024_slow_server_response`: Tests timeout with 5s delay vs 100ms client timeout
-    - `test_edge_024_slow_server_partial_response`: Tests timeout during body read
-    - `test_edge_024_normal_server_response`: Control test verifying normal operation
-
-- [x] **EDGE-025**: Test wrong content-length
-  - Server returns more/less data than Content-Length header
-  - Should handle gracefully
-  - Return error or available data
-  - Implemented: 3 tests in `src/api/streaming.rs`
-    - `test_edge_025_content_length_more_than_header`: Tests when server sends more data than header indicates
-    - `test_edge_025_content_length_less_than_header`: Tests when server sends less data than header indicates
-    - `test_edge_025_content_length_mismatch_at_offset`: Tests mismatch at non-zero offset
-    - Note: HTTP layer (hyper) detects mismatch and returns error, which streaming layer handles gracefully
-
-- [x] **EDGE-026**: Test seek patterns
-  - Seek backward by 1 byte (should create new stream)
-  - Seek forward exactly MAX_SEEK_FORWARD bytes
-  - Rapid alternating forward/backward seeks
-  - Verify stream creation/reuse logic
-  - Implemented: 4 comprehensive tests in `src/api/streaming.rs`:
-    - `test_forward_seek_exactly_max_boundary`: Tests boundary at MAX_SEEK_FORWARD
-    - `test_forward_seek_just_beyond_max_boundary`: Tests gap > MAX_SEEK_FORWARD creates new stream
-    - `test_rapid_alternating_seeks`: Tests rapid forward/backward seek patterns
-    - `test_backward_seek_one_byte_creates_new_stream`: Tests 1-byte backward seek creates new stream
+### 2.3 Update CLI Arguments
+- [ ] **Task 2.3.1**: Remove CLI args for removed config options
+  - Remove `--allow-other` from Mount command
+  - Remove `--auto-unmount` from Mount command
+  - Remove any other args corresponding to removed config fields
+  
+- [ ] **Task 2.3.2**: Update env var parsing
+  - Remove env var parsing for all removed config fields
+  - Keep only: API_URL, MOUNT_POINT, METADATA_TTL, MAX_ENTRIES, READ_TIMEOUT, LOG_LEVEL, AUTH credentials
 
 ---
 
-## Phase 6: Inode Management Edge Cases
+## Phase 3: Error System Simplification
 
-### Inode Allocation (src/fs/inode.rs)
+Reduce 28 error types to 8 essential types.
 
-- [x] **EDGE-027**: Test inode 0 allocation attempt
-  - Try to allocate inode 0
-  - Should fail gracefully, return 0 or error
-  - Should not corrupt inode counter
-  - Implemented: 2 tests in `src/fs/inode_manager.rs`
+### 3.1 Research Error Usage Patterns
+- [ ] **Task 3.1.1**: Research - Document error type usage
+  - Search for all usages of each RqbitFuseError variant
+  - Group variants by how they're handled (mapped to errno)
+  - Write findings to `research/error-usage-analysis.md`
+  - Identify which variants can be merged
+  - Reference: "See research/error-usage-analysis.md"
 
-- [x] **EDGE-028**: Test max_inodes limit
-  - Set max_inodes = 10
-  - Allocate 11 inodes
-  - 11th allocation should fail (return 0)
-  - Verify no panic
-  - Implemented: `test_max_inodes_limit` in `src/fs/inode_manager.rs`
-
-- [x] **EDGE-029**: Test allocation after clear_torrents
-  - Allocate some inodes
-  - Call clear_torrents()
-  - Allocate more inodes
-  - Should reuse inode numbers correctly
-  - No duplicates
-  - **Completed**: Added `test_allocation_after_clear_torrents` in `src/fs/inode_manager.rs`
-  - Tests 7 phases: initial allocation, clear verification, new allocation, duplicate check, lookup verification, path lookup, multiple clear cycles
-  - Verifies inodes are properly reused and no duplicates exist after multiple clear cycles
-
-- [x] **EDGE-030**: Test concurrent allocation stress
-  - 100 threads allocating simultaneously
-  - Each thread allocates 100 inodes
-  - Verify all inodes are unique
-  - No duplicates, no gaps
-  - Implemented: `test_edge_030_concurrent_allocation_stress` in `src/fs/inode_manager.rs`
-
----
-
-## Phase 7: Path Resolution Edge Cases
-
-### Path Handling (src/fs/inode.rs)
-
-- [x] **EDGE-031**: Test path traversal attempts
-  - Path with ".." traversing above root ("/../secret")
-  - Should resolve to root or return error
-  - No directory escape
-  - Implemented: test_edge_031_path_traversal_attempts in tests/fuse_operations.rs
-
-- [x] **EDGE-032**: Test path with double slashes
-  - Path with "//" double slashes
-  - Should normalize correctly
-  - Implemented: test_edge_032_double_slashes_path in tests/fuse_operations.rs
-
-- [x] **EDGE-033**: Test path with "." components
-  - Path with "." self-reference
-  - Should resolve correctly
-  - "./file.txt" should work
-  - Implemented: 9 tests in `tests/fuse_operations.rs` covering standalone ".", "./file.txt", middle/nested "." components, and multiple consecutive "." components
-
-- [x] **EDGE-034**: Test symlink edge cases
-  - Circular symlink (a -> b, b -> a)
-  - Symlink pointing outside torrent directory
-  - Symlink with absolute path
-  - Should handle gracefully
-  - **Implemented**: 6 comprehensive tests in `tests/fuse_operations.rs`:
-    - `test_edge_034_circular_symlink`: Tests circular symlinks (a -> b, b -> a)
-    - `test_edge_034_symlink_outside_torrent_directory`: Tests symlinks pointing outside torrent dir
-    - `test_edge_034_symlink_absolute_path`: Tests symlinks with absolute path targets
-    - `test_edge_034_deep_circular_symlink_chain`: Tests deep circular chains (a -> b -> c -> a)
-    - `test_edge_034_self_referential_symlink`: Tests self-referential symlinks
-    - `test_edge_034_symlink_special_path_components`: Tests symlinks with special path components
-
-- [x] **EDGE-035**: Test case sensitivity
-  - On case-sensitive filesystems (Linux), "file.txt" and "FILE.txt" are different files
-  - Created 3 files with different cases: "file.txt", "FILE.txt", "File.txt"
-  - Verified they all have unique inodes and correct sizes
-  - Verified case-sensitive lookups work correctly
-  - Added `file_size()` method to `InodeEntry` for size retrieval
-  - **Test**: `test_edge_035_case_sensitivity` in `tests/fuse_operations.rs`
+### 3.2 Consolidate Error Types
+- [ ] **Task 3.2.1**: Create simplified error enum
+  - Define new minimal RqbitFuseError with 8 variants
+  - Keep: NotFound, PermissionDenied, TimedOut, NetworkError(String), IoError(String), InvalidArgument, NotReady, Other(String)
+  - Remove all other 20 variants
+  
+- [ ] **Task 3.2.2**: Update error mappings
+  - Update `to_errno()` method for new variants
+  - Ensure all existing error mappings are preserved
+  - Update `is_transient()` method
+  - Update `is_server_unavailable()` method
+  
+- [ ] **Task 3.2.3**: Update error conversions
+  - Update `From<std::io::Error>` implementation
+  - Update `From<reqwest::Error>` implementation
+  - Update `From<serde_json::Error>` implementation
+  - Update `From<toml::de::Error>` implementation
+  
+- [ ] **Task 3.2.4**: Update all error usage sites
+  - Find and replace all usages of removed error variants
+  - Map old variants to appropriate new variants
+  - Update error messages to be user-friendly
 
 ---
 
-## Phase 8: Error Handling Edge Cases
+## Phase 4: Metrics System Reduction
 
-### API Error Scenarios (src/api/client.rs)
+Replace 520 lines of metrics with 3 essential metrics.
 
-- [x] **EDGE-036**: Test HTTP 429 Too Many Requests
-  - Server returns 429 with Retry-After header
-  - Should respect rate limit
-  - Should retry appropriately
-  - **Implemented**: 4 tests in `src/api/client.rs`:
-    - `test_edge_036_rate_limit_with_retry_after_header`: Tests respecting Retry-After header
-    - `test_edge_036_rate_limit_without_retry_after_uses_default_delay`: Tests fallback to default delay
-    - `test_edge_036_rate_limit_exhausts_retries`: Tests error when retries exhausted
-    - `test_edge_036_multiple_rate_limits_eventually_succeed`: Tests multiple 429s before success
+### 4.1 Research Metrics Usage
+- [ ] **Task 4.1.1**: Research - Document metrics usage
+  - Search for all calls to metrics recording methods
+  - Identify which metrics are actually logged/displayed
+  - Write findings to `research/metrics-usage-analysis.md`
+  - Determine which 3 metrics are most valuable
+  - Reference: "See research/metrics-usage-analysis.md"
 
-- [x] **EDGE-037**: Test malformed JSON response
-  - Server returns invalid JSON
-  - Should return parse error
-  - Should not panic
-  - **Completed**: 5 comprehensive tests in `src/api/client.rs`:
-    - `test_edge_037_malformed_json_list_torrents`: Tests incomplete JSON structure
-    - `test_edge_037_malformed_json_get_torrent`: Tests invalid escape sequences
-    - `test_edge_037_invalid_json_type`: Tests type mismatches (string instead of number)
-    - `test_edge_037_empty_json_response`: Tests empty response body
-    - `test_edge_037_json_with_null_required_fields`: Tests null values for required fields
-
-- [x] **EDGE-038**: Test timeout at different stages
-  - DNS resolution timeout
-  - Connection timeout
-  - Read timeout
-  - Each should return appropriate error
-  - Implemented: 4 tests in `src/api/client.rs`:
-    - `test_edge_038_connection_timeout`: Tests connection timeout with short connect_timeout
-    - `test_edge_038_read_timeout`: Tests read timeout with delayed response
-    - `test_edge_038_dns_resolution_failure`: Tests DNS failure handling
-    - `test_edge_038_timeout_error_types`: Tests error type mappings for timeout errors
-
-- [x] **EDGE-039**: Test connection reset
-  - Server resets connection mid-request
-  - Should handle gracefully
-  - Should retry if configured
-  - **Implemented**: 4 tests in `src/api/client.rs`:
-    - `test_edge_039_connection_reset_error_conversion`: Tests error conversion and transient detection
-    - `test_edge_039_connection_reset_retries_success`: Tests retry logic succeeding after initial failures
-    - `test_edge_039_connection_reset_retries_exhausted`: Tests error after retries exhausted
-    - `test_edge_039_connection_reset_during_body_read`: Tests graceful handling of connection reset during body read
+### 4.2 Simplify Metrics System
+- [ ] **Task 4.2.1**: Create minimal metrics struct
+  - Define new `Metrics` struct with only: bytes_read, error_count, cache_hits, cache_misses
+  - Remove FuseMetrics, ApiMetrics, CacheMetrics structs
+  - Keep only atomic counters, remove all helper methods
+  
+- [ ] **Task 4.2.2**: Remove metrics recording calls
+  - Remove all metrics recording except for the 4 essential counters
+  - Delete calls to record_getattr, record_setattr, record_lookup, etc.
+  - Keep only: record_read (for bytes_read), record_error, record_cache_hit, record_cache_miss
+  
+- [ ] **Task 4.2.3**: Remove periodic logging
+  - Remove `spawn_periodic_logging()` method
+  - Remove `log_periodic()` method
+  - Remove `log_full_summary()` method
+  - Keep only simple logging on shutdown if needed
+  
+- [ ] **Task 4.2.4**: Update all metrics usages
+  - Update `src/lib.rs` to use simplified metrics
+  - Update `src/fs/filesystem.rs` to use simplified metrics
+  - Update `src/cache.rs` to use simplified metrics
+  - Update `src/api/client.rs` to remove ApiMetrics usage
 
 ---
 
-## Phase 9: Concurrency Edge Cases
+## Phase 5: File Handle Tracking Simplification
 
-### Race Conditions (tests/concurrent_tests.rs)
+Remove prefetching code and state tracking.
 
-- [x] **EDGE-040**: Test read while torrent being removed
-  - Start reading file
-  - Remove torrent mid-read
-  - Should handle gracefully
-  - No crash or data corruption
-  - Implemented: `test_edge_040_read_while_torrent_being_removed` in `tests/integration_tests.rs`
-  - Tests file handles existing for removed torrents without panic
-  - Tests multiple handles with various states (active reads, prefetching)
-  - Tests graceful cleanup of stale handles
+### 5.1 Remove Prefetching Infrastructure
+- [ ] **Task 5.1.1**: Research - Document prefetching code
+  - Read `src/types/handle.rs` and identify prefetching-related code
+  - Check if prefetching is ever enabled in practice
+  - Write findings to `research/prefetching-analysis.md`
+  - Reference: "See research/prefetching-analysis.md"
+  
+- [ ] **Task 5.1.2**: Remove FileHandleState struct
+  - Delete `FileHandleState` struct from `src/types/handle.rs`
+  - Remove `state: Option<FileHandleState>` field from FileHandle
+  - Remove `init_state()`, `update_state()`, `is_sequential()`, `sequential_count()` methods
+  - Remove `set_prefetching()`, `is_prefetching()` methods
+  
+- [ ] **Task 5.1.3**: Remove FileHandleManager state methods
+  - Remove `update_state()` method
+  - Remove `set_prefetching()` method
+  - Remove any methods that operated on state
+  
+- [ ] **Task 5.1.4**: Remove prefetching from filesystem
+  - Remove `track_and_prefetch()` method from `src/fs/filesystem.rs`
+  - Remove `do_prefetch()` method
+  - Remove call to `track_and_prefetch()` in read handler
+  - Remove `prefetch_enabled` config check
 
-- [x] **EDGE-041**: Test concurrent discovery
-  - Trigger discovery from readdir
-  - Simultaneously trigger from background task
-  - Should not create duplicate torrents
-  - Atomic check-and-set should work
-  - **Implemented**: `test_edge_041_concurrent_discovery` in `tests/integration_tests.rs`
-  - Tests concurrent refresh_torrents() calls with barrier synchronization
-  - Verifies only one torrent is created despite concurrent discoveries
-  - Tests cooldown mechanism prevents duplicate discoveries
-
-- [x] **EDGE-042**: Test mount/unmount race
-  - Start mount operation
-  - Immediately unmount
-  - Should not panic
-  - Resources should be cleaned up
-  - **Implemented**: 2 tests in `tests/integration_tests.rs`:
-    - `test_edge_042_mount_unmount_race`: Tests immediate unmount during mount
-    - `test_edge_042b_rapid_mount_unmount_cycles`: Tests multiple rapid cycles
-
-- [x] **EDGE-043**: Test cache eviction during get
-  - Start get() operation
-  - Trigger cache eviction simultaneously
-  - Should handle gracefully
-  - Return valid data or None
-  - Implemented: 2 tests in `src/cache.rs`:
-    - `test_cache_eviction_during_get`: Tests concurrent get operations during cache evictions
-    - `test_cache_eviction_during_get_specific_key`: Tests race condition when specific key being retrieved gets evicted
-
----
-
-## Phase 10: Resource Limit Edge Cases
-
-### Resource Exhaustion (tests/resource_tests.rs)
-
-- [x] **EDGE-044**: ~~Test stream limit exhaustion~~
-  - ✅ **DUPLICATE**: Already implemented as EDGE-008 in handle.rs
-  - Tests handle exhaustion with max_handles=5 (configurable)
-  - See `test_handle_exhaustion` in src/types/handle.rs
-
-- [x] **EDGE-045**: Test inode limit exhaustion
-  - Set max_inodes = 100
-  - Create 101 torrents
-  - 101st should fail gracefully
-  - No memory corruption
-  - Implemented: `test_edge_045_inode_limit_exhaustion_with_torrents` in `src/fs/inode_manager.rs`
-
-- [x] **EDGE-046**: Test cache memory limit
-  - Set max_cache_bytes = 1MB
-  - Insert data exceeding limit
-  - Should trigger eviction
-  - Should not crash
-  - **Implemented**: Added `Cache::with_memory_limit()` constructor and comprehensive test in `src/cache.rs`
-
-- [x] **EDGE-047**: Test semaphore exhaustion
-  - Trigger max_concurrent_reads simultaneously
-  - 11th read should wait or fail
-  - Should not deadlock
-  - **Completed**: Created `tests/resource_tests.rs` with 4 comprehensive tests:
-    - `test_edge_047_semaphore_exhaustion`: Tests basic semaphore exhaustion with max_concurrent_reads=10
-    - `test_edge_047b_semaphore_multiple_waiters`: Verifies FIFO ordering of waiters
-    - `test_edge_047c_semaphore_permit_release_on_cancel`: Tests permit cleanup on drop
-    - `test_edge_047d_concurrency_stats_accuracy`: Verifies stats accurately reflect available permits
+### 5.2 Simplify File Handle Cleanup
+- [ ] **Task 5.2.1**: Remove TTL-based cleanup
+  - Remove `created_at` field from FileHandle
+  - Remove `is_expired()` method
+  - Remove `remove_expired_handles()` from FileHandleManager
+  - Remove `count_expired()` method
+  - Remove `start_handle_cleanup()` from filesystem
+  - Remove `stop_handle_cleanup()` from filesystem
+  - Remove cleanup_handle field from TorrentFS
+  
+- [ ] **Task 5.2.2**: Remove memory tracking
+  - Remove `memory_usage()` method from FileHandleManager
+  - Remove calls to memory usage tracking
+  
+- [ ] **Task 5.2.3**: Simplify FileHandle struct
+  - Keep only: fh, inode, torrent_id, flags
+  - Remove all other fields and methods
 
 ---
 
-## Phase 11: Unicode/Path Edge Cases
+## Phase 6: FUSE Logging Simplification
 
-### Filename Handling (tests/unicode_tests.rs)
+Replace macros with direct tracing calls.
 
-- [x] **EDGE-048**: Test maximum filename length
-  - Filename with 255 characters (max)
-  - Should work
-  - 256 characters should fail
-  - **Implemented**: `tests/unicode_tests.rs` with 4 tests covering 255-char, 256-char, boundary variations, and multi-byte UTF-8 scenarios
-
-- [x] **EDGE-049**: Test null byte in filename
-  - Filename containing \0
-  - Should sanitize or reject
-  - No panic
-  - Implemented: 3 tests in `tests/unicode_tests.rs`:
-    - `test_edge_049_null_byte_in_filename`: Tests null bytes at start, middle, end, and multiple occurrences
-    - `test_edge_049_null_byte_positions`: Tests filename consisting only of null bytes
-    - `test_edge_049_null_byte_with_valid_files`: Verifies null byte handling doesn't affect other files
-
-- [x] **EDGE-050**: Test control characters
-  - Filename with \n, \t, \r, etc.
-  - Should sanitize or reject
-  - Implemented: 3 tests in `tests/unicode_tests.rs`:
-    - `test_edge_050_control_characters_in_filename`: Tests common control chars (\n, \t, \r, SOH, US, DEL)
-    - `test_edge_050_multiple_control_characters`: Tests combinations of control characters
-    - `test_edge_050_control_chars_with_valid_files`: Verifies control char handling doesn't affect other files
-
-- [x] **EDGE-051**: Test UTF-8 edge cases
-  - Emoji (multi-byte sequences)
-  - CJK characters (Chinese, Japanese, Korean)
-  - Right-to-left text (Arabic, Hebrew)
-  - Zero-width joiners (emoji sequences)
-  - Should handle all correctly
-  - **Implemented**: 5 tests in `tests/unicode_tests.rs`:
-    - `test_edge_051_emoji_filenames`: Tests emoji including multi-codepoint and ZWJ sequences
-    - `test_edge_051_cjk_filenames`: Tests Chinese, Japanese (Katakana/Hiragana), and Korean
-    - `test_edge_051_rtl_filenames`: Tests Arabic, Hebrew, Persian, and mixed LTR/RTL
-    - `test_edge_051_zero_width_joiner_filenames`: Tests ZWJ emoji sequences
-    - `test_edge_051_other_utf8_edge_cases`: Tests accented Latin, mathematical symbols, etc.
-
-- [x] **EDGE-052**: Test path normalization
-  - NFD vs NFC unicode normalization
-  - File created with one form, looked up with other
-  - Behavior should be consistent
-  - Implemented: 5 tests in `tests/unicode_tests.rs` covering NFC normalization, NFD normalization, consistency between forms, various normalization cases, and already-normalized strings
-
-- [x] **EDGE-053**: Test maximum path length
-  - Path with 4096 characters
-  - Should work up to limit
-  - 4097 should fail gracefully
-  - Implemented: 4 tests in `tests/unicode_tests.rs`:
-    - `test_edge_053_path_length_handling`: Tests paths of various lengths (100-3000 chars)
-    - `test_edge_053_path_length_near_boundary`: Tests paths with 350+ nested directories
-    - `test_edge_053_path_length_various_depths`: Tests nesting depths from 10-300 levels
-    - `test_edge_053_maximum_path_with_multibyte_utf8`: Tests UTF-8 paths with multi-byte characters
+### 6.1 Replace FUSE Macros
+- [ ] **Task 6.1.1**: Research - Document macro usage
+  - Find all usages of fuse_log!, fuse_error!, fuse_ok! macros
+  - Find all usages of reply_* macros
+  - Write findings to `research/fuse-macro-usage.md`
+  - Reference: "See research/fuse-macro-usage.md"
+  
+- [ ] **Task 6.1.2**: Replace fuse_log! macro
+  - Replace all `fuse_log!` calls with `tracing::debug!`
+  - Remove conditional check (tracing handles filtering)
+  - Update `src/fs/filesystem.rs`
+  
+- [ ] **Task 6.1.3**: Replace fuse_error! macro
+  - Replace all `fuse_error!` calls with `tracing::debug!` or `tracing::error!`
+  - Include error code in message
+  - Update all error logging sites
+  
+- [ ] **Task 6.1.4**: Replace fuse_ok! macro
+  - Replace all `fuse_ok!` calls with `tracing::debug!`
+  - Include success info in message
+  - Update all success logging sites
+  
+- [ ] **Task 6.1.5**: Replace reply_* macros
+  - Replace `reply_ino_not_found!` with direct error recording and reply
+  - Replace `reply_not_directory!` with direct error recording and reply
+  - Replace `reply_not_file!` with direct error recording and reply
+  - Replace `reply_no_permission!` with direct error recording and reply
+  
+- [ ] **Task 6.1.6**: Remove macro definitions
+  - Delete `src/fs/macros.rs` file
+  - Remove module declaration from `src/fs/mod.rs`
+  - Remove macro imports from `src/fs/filesystem.rs`
 
 ---
 
-## Phase 12: Configuration Edge Cases
+## Phase 7: Cache Layer Simplification
 
-### Config Validation (tests/config_tests.rs)
+Remove redundant caching and simplify cache implementation.
 
-- [x] **EDGE-054**: Test invalid URLs
-  - URL without scheme ("localhost:3030")
-  - URL with invalid scheme ("ftp://...")
-  - Empty URL
-  - Should fail validation
+### 7.1 Remove Bitfield Cache
+- [ ] **Task 7.1.1**: Research - Document bitfield cache usage
+  - Analyze `status_bitfield_cache` in `src/api/client.rs`
+  - Check if it's actually providing value vs fetching fresh
+  - Write findings to `research/bitfield-cache-analysis.md`
+  - Reference: "See research/bitfield-cache-analysis.md"
+  
+- [ ] **Task 7.1.2**: Remove bitfield cache fields
+  - Remove `status_bitfield_cache` field from RqbitClient
+  - Remove `status_bitfield_cache_ttl` field
+  - Remove `TorrentStatusWithBitfield` struct if unused
+  
+- [ ] **Task 7.1.3**: Update get_torrent_status_with_bitfield
+  - Change to fetch fresh data without caching
+  - Or remove method if only used for caching
+  - Update all call sites
+  
+- [ ] **Task 7.1.4**: Update check_range_available
+  - Ensure it works without cached bitfield
+  - May need to fetch bitfield synchronously
 
-- [x] **EDGE-055**: Test invalid mount points
-  - Mount point as file (not directory) - Implemented: `test_validate_mount_point_is_file` in `src/fs/filesystem.rs`
-  - Relative path ("./mount") - Already tested: `test_validate_relative_mount_point` in `src/config/mod.rs`
-  - Non-existent path - Already tested: `test_validate_mount_point_nonexistent` in `src/fs/filesystem.rs`
-  - All cases properly validate and return appropriate errors
-
-- [x] **EDGE-056**: Test timeout edge cases
-  - Timeout = 0 - Implemented: test validates rejection
-  - Timeout = u64::MAX - Implemented: test validates rejection (exceeds 3600s limit)
-  - Negative timeout from environment - Implemented: test validates parse failure
-  - Invalid formats (letters, decimals, empty) - Implemented: comprehensive test coverage
-  - **Implemented**: 10 tests in `tests/config_tests.rs` covering all timeout edge cases
-
-- [x] **EDGE-057**: Test environment variable edge cases
-  - Missing required env vars - defaults used gracefully
-  - Empty string env var value - handled without panic
-  - Very long env var value (>4096 chars) - preserved correctly
-  - Whitespace-only values - handled appropriately
-  - Empty numeric fields - fail to parse with proper error
-  - Case sensitivity - uppercase env vars take precedence
-  - **Implemented**: 6 tests in `tests/config_tests.rs` with sequential execution via mutex
-
----
-
-*Generated from edge case analysis - February 16, 2026*
-
----
-
-## Phase 13: Code Simplification Tasks
-
-### Architecture Simplifications
-
-- [x] **SIMPLIFY-001**: Consolidate Error Types **[HIGH PRIORITY]**
-  - Create single `RqbitFuseError` enum replacing:
-    - `FuseError` in `fs/error.rs` (178 lines) - ✅ Removed
-    - `ApiError` in `api/types.rs` (lines 23-164) - ✅ Removed
-    - `ConfigError` in `config/mod.rs` (lines 466-476) - ✅ Removed
-  - Currently have duplicate error mappings (e.g., ENOENT in both FuseError and ApiError)
-  - Implement `std::error::Error` for all error variants
-  - Use `thiserror` derive macros for consistency
-  - Update all `anyhow::Result` usages in library code
-    - **Sub-tasks:**
-    - [x] **SIMPLIFY-001A**: Create unified RqbitFuseError enum in src/error.rs
-    - [x] **SIMPLIFY-001B**: Migrate api/ module from ApiError to RqbitFuseError
-    - [x] **SIMPLIFY-001C**: Migrate fs/ module from FuseError to RqbitFuseError
-    - [x] **SIMPLIFY-001D**: Migrate config/ module from ConfigError to RqbitFuseError
-    - [x] **SIMPLIFY-001E**: Remove old error types and clean up exports
-  - **Completed**: Removed 162 lines of dead code from src/api/types.rs (old ApiError enum and DataUnavailableReason)
-
-- [x] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
-  - Split `src/fs/inode.rs` (1,051 lines) into smaller modules:
-    - `src/fs/inode_entry.rs` (~350 lines) - InodeEntry enum and methods
-    - `src/fs/inode_manager.rs` (~850 lines) - InodeManager struct and methods
-  - Maintained backward compatibility through re-exports in `inode.rs`
-  - Updated `fs/mod.rs` to include new module declarations
-  - All tests pass, zero clippy warnings
-  - **See:** [research/file-splitting-strategy.md](research/file-splitting-strategy.md) for detailed plan
-  - **Note:** filesystem.rs split deferred - requires careful coordination with SIMPLIFY-001 (Consolidate Error Types)
-
-- [x] **SIMPLIFY-003**: Simplify Configuration System **[LOW PRIORITY]**
-  - ~~Remove JSON config file support~~ - Keep both, works seamlessly
-  - Remove niche options:
-    - `piece_check_enabled` (always check pieces)
-    - `return_eagain` (always use consistent behavior)
-  - Consider using `config` crate instead of custom loading
-  - Document breaking changes in migration guide
-  - **Note:** Removing JSON provides minimal benefit for breaking change cost
-
-- [x] **SIMPLIFY-004**: Remove Unused Types
-  - ✅ **COMPLETED**: Analysis shows:
-    - `types/torrent.rs` doesn't exist (no separate Torrent struct to remove)
-    - `TorrentSummary` is actively used in `api/types.rs` (line 159)
-    - `FileStats` doesn't exist (already removed or never existed)
-  - No action needed - types are either already removed or actively used
-
-### Performance Simplifications
-
-- [x] **SIMPLIFY-005**: Simplify Metrics Collection
-  - ✅ **COMPLETED**: Already using simple `AtomicU64` counters in `src/metrics.rs`
-  - No sharded counters exist in the codebase
-  - Metrics are working efficiently with atomic operations
-
-- [x] **SIMPLIFY-006**: Consolidate Test Helpers
-  - ✅ Create `tests/common/test_helpers.rs` module with consolidated test infrastructure
-  - ✅ Extract shared mock setup code from integration tests (removed ~110 lines of duplication)
-  - ✅ Create helper functions for:
-    - Mock server setup (`setup_mock_server()`)
-    - Test torrent creation (`torrent_helpers` module)
-    - File handle allocation patterns (`handle_helpers` module)
-  - ✅ Created `TestEnvironment` struct for comprehensive test setup
-  - ✅ Updated integration_tests.rs, fuse_operations.rs, unicode_tests.rs, resource_tests.rs to use common helpers
-  - ✅ Fixed pre-existing compilation errors in common modules (type mismatches, API changes)
-
-### API Simplifications
-
-- [x] **SIMPLIFY-007**: Simplify AsyncFuseWorker
-  - ~~Consider if `tokio::sync::mpsc` can be replaced with `std::sync::mpsc`~~ - Not viable (see [research/asyncfuseworker-simplification.md](research/asyncfuseworker-simplification.md))
-  - [x] Remove redundant `new_for_test` method
-  - [x] Add inline documentation explaining the async/sync bridge pattern
-  - [x] Document why two different channel types are used
-
-- [x] **SIMPLIFY-008**: Consolidate Type Definitions
-  - ✅ **COMPLETED**: Type consolidation already done
-  - `types/torrent.rs::Torrent` was dead code - already removed
-  - `api/types.rs::TorrentDetails` never existed (no implementation found)
-  - `api/types.rs::TorrentInfo` is the canonical representation
-  - Remaining types serve different purposes (summary vs details vs stats) and are not duplicates
-
-### Documentation Simplifications
-
-- [x] **SIMPLIFY-009**: Consolidate Documentation
-  - ✅ Removed redundant architecture diagram from README.md (kept canonical version in lib.rs)
-  - ✅ Moved implementation details from README "How It Works" section to code docs (lib.rs already had comprehensive documentation)
-  - ✅ Consolidated "Implementation Status" section - replaced verbose phase list with concise status summary
-  - ✅ Fixed outdated references: changed TASKS.md to TODO.md in README.md and AGENTS.md
-  - README is now focused on user-facing documentation rather than implementation details
-  - Configuration documentation remains in README with examples (appropriate for user docs)
-  - All technical implementation details are now in lib.rs rustdoc comments (canonical source)
-
-### Testing Simplifications
-
-- [x] **SIMPLIFY-010**: Simplify Test Structure
-  - Removed 2 duplicate tests from `fuse_operations.rs` that already existed in `integration_tests.rs`:
-    - `test_filesystem_creation_and_initialization` (13 lines)
-    - `test_unicode_and_special_characters` (53 lines)
-  - Fixed pre-existing clippy error: removed redundant `.skip(0)` call
-  - Reduced `fuse_operations.rs` from 6894 to 6828 lines (-66 lines)
-  - All tests pass (95 in fuse_operations, 19 in integration_tests)
+### 7.2 Simplify Cache Implementation
+- [ ] **Task 7.2.1**: Research - Document cache wrapper value
+  - Analyze if Cache struct in `src/cache.rs` adds value over direct moka usage
+  - Check if stats tracking is worth the overhead
+  - Write findings to `research/cache-wrapper-analysis.md`
+  - Reference: "See research/cache-wrapper-analysis.md"
+  
+- [ ] **Task 7.2.2**: Consider direct moka usage
+  - Evaluate replacing Cache wrapper with direct MokaCache usage
+  - If keeping wrapper, remove stats tracking
+  - Simplify to minimal wrapper
 
 ---
 
-## Quick Reference for Simplifications
+## Phase 8: Test Suite Trimming
 
-### Priority Order (Updated Feb 22, 2026)
+Remove tests that verify external crate behavior.
 
-**HIGH PRIORITY:**
-1. **SIMPLIFY-002** (Split Large Files) - `filesystem.rs` is 3,116 lines (not 1,434 as documented)
-2. **SIMPLIFY-001** (Consolidate errors) - 3 error types cause confusion and duplicate mappings
+### 8.1 Trim Cache Tests
+- [ ] **Task 8.1.1**: Identify tests to remove
+  - Review all tests in `src/cache.rs` lines 221-1214
+  - Mark tests that verify moka behavior vs our code
+  - Keep only: basic operations, one TTL test, one concurrent test
+  
+- [ ] **Task 8.1.2**: Remove redundant cache tests
+  - Remove LRU eviction tests (moka's responsibility)
+  - Remove edge case tests (expiration during access, race conditions)
+  - Remove performance tests (hardware dependent)
+  - Remove memory limit tests
+  - Keep ~200 lines of tests
 
-**MEDIUM PRIORITY:**
-3. **SIMPLIFY-006** (Test helpers) - Reduce test duplication
-4. **Phase 4-6 Edge Cases** - Cache, streaming, and inode tests
+### 8.2 Trim Streaming Tests
+- [ ] **Task 8.2.1**: Identify tests to remove
+  - Review all tests in `src/api/streaming.rs` test section
+  - Mark tests that verify reqwest/wiremock behavior
+  - Keep only: basic stream test, one 200-vs-206 test, one concurrent test
+  
+- [ ] **Task 8.2.2**: Remove redundant streaming tests
+  - Remove forward seek within/beyond limit tests (behavioral, not correctness)
+  - Remove backward seek tests
+  - Remove EOF boundary tests (checked at FUSE layer)
+  - Remove rapid alternating seek tests
+  - Keep ~150 lines of tests
 
-**LOW PRIORITY:**
-5. **SIMPLIFY-003** (Remove JSON config) - Breaking change with minimal benefit
-6. **Phase 7+ Edge Cases** - Path resolution, error handling, concurrency, resources, unicode, config
-
-**COMPLETED:**
-- ✅ SIMPLIFY-004 (Remove dead code)
-- ✅ SIMPLIFY-005 (Simplify metrics)
-
-### Before Simplifying
-
-1. Run full test suite: `cargo test`
-2. Run clippy: `cargo clippy -- -D warnings`
-3. Check for dead code: `cargo deadlinks` (if available)
-4. Review usage with: `cargo check --all-features`
-
-### After Simplifying
-
-1. Verify all tests pass
-2. Update documentation
-3. Check for API breakage
-4. Update CHANGELOG if applicable
-
-### Tools to Help
-
-```bash
-# Find unused code
-cargo deadlinks
-
-# Check for complexity
-cargo clippy -- -W clippy::complexity
-
-# Find duplicate code
-cargo bloat --crates
-
-# Check module sizes
-cargo modules structure
-```
+### 8.3 Review Other Test Files
+- [ ] **Task 8.3.1**: Review `tests/performance_tests.rs`
+  - Keep if valuable for CI
+  - Consider moving to benchmarks only
+  
+- [ ] **Task 8.3.2**: Review `benches/performance.rs`
+  - Keep benchmarks for performance tracking
+  - Remove if not used in CI
 
 ---
 
-*Simplification tasks added - February 22, 2026*
+## Phase 9: Documentation Trimming
+
+Remove verbose documentation that duplicates README.
+
+### 9.1 Trim Module Documentation
+- [ ] **Task 9.1.1**: Simplify `src/lib.rs` documentation
+  - Remove ASCII art architecture diagram
+  - Keep one-paragraph module description
+  - Remove detailed usage examples (keep in README)
+  - Remove troubleshooting section (keep in README)
+  - Remove performance tips section (keep in README)
+  - Remove security considerations section (keep in README)
+  
+- [ ] **Task 9.1.2**: Simplify `src/config/mod.rs` documentation
+  - Remove 174 lines of doc comments before Config struct
+  - Keep one-sentence description per config section
+  - Remove TOML example (keep in README)
+  - Remove JSON example (keep in README)
+  - Remove minimal configuration example
+  - Remove environment variable examples
+  
+- [ ] **Task 9.1.3**: Review other module docs
+  - Ensure all modules have <= 5 lines of documentation
+  - Remove verbose examples from inline docs
+  - Keep API documentation minimal
+
+---
+
+## Phase 10: Final Cleanup
+
+Remove dead code and consolidate.
+
+### 10.1 Remove Dead Code
+- [ ] **Task 10.1.1**: Run cargo dead code detection
+  - Use `cargo +nightly rustc -- -Zlints` or similar
+  - Identify unused functions, structs, enums
+  - Remove all dead code
+  
+- [ ] **Task 10.1.2**: Remove unused imports
+  - Run `cargo clippy` and fix warnings
+  - Remove all unused imports across codebase
+  
+- [ ] **Task 10.1.3**: Remove unused dependencies
+  - Check `Cargo.toml` for unused crates
+  - Remove dependencies that are no longer needed
+
+### 10.2 Consolidate Remaining Code
+- [ ] **Task 10.2.1**: Review module structure
+  - Consider merging small modules
+  - Ensure logical organization
+  
+- [ ] **Task 10.2.2**: Final review
+  - Read through entire codebase
+  - Identify any remaining complexity that could be removed
+  - Ensure consistency in style and approach
+
+### 10.3 Update Documentation
+- [ ] **Task 10.3.1**: Update README.md
+  - Document simplified configuration options
+  - Remove references to removed features
+  - Update examples to use minimal config
+  
+- [ ] **Task 10.3.2**: Update CHANGELOG.md
+  - Document all breaking changes
+  - List removed features
+  - Explain migration path
+
+---
+
+## Research Tasks Summary
+
+Research tasks should be completed before their dependent tasks:
+
+1. **Task 1.1.1**: Status monitoring analysis → research/status-monitoring-analysis.md
+2. **Task 2.1.1**: Config validation analysis → research/config-validation-analysis.md
+3. **Task 2.2.1**: Config fields usage → research/config-fields-usage.md
+4. **Task 3.1.1**: Error usage analysis → research/error-usage-analysis.md
+5. **Task 4.1.1**: Metrics usage analysis → research/metrics-usage-analysis.md
+6. **Task 5.1.1**: Prefetching analysis → research/prefetching-analysis.md
+7. **Task 6.1.1**: FUSE macro usage → research/fuse-macro-usage.md
+8. **Task 7.1.1**: Bitfield cache analysis → research/bitfield-cache-analysis.md
+9. **Task 7.2.1**: Cache wrapper analysis → research/cache-wrapper-analysis.md
+
+---
+
+## Definition of Done
+
+Each task is complete when:
+- [ ] Code changes are implemented
+- [ ] Tests pass: `nix-shell --run 'cargo test'`
+- [ ] No warnings: `nix-shell --run 'cargo clippy'`
+- [ ] Formatted: `nix-shell --run 'cargo fmt'`
+- [ ] Changes are documented in commit message
+- [ ] Checkbox is checked off in this TODO.md
+
+---
+
+## Estimated Timeline
+
+- **Phase 1** (High Priority Removals): 1-2 days
+- **Phase 2** (Configuration): 2-3 days
+- **Phase 3** (Error System): 1-2 days
+- **Phase 4** (Metrics): 1-2 days
+- **Phase 5** (File Handles): 1-2 days
+- **Phase 6** (FUSE Logging): 1 day
+- **Phase 7** (Cache): 1-2 days
+- **Phase 8** (Tests): 1-2 days
+- **Phase 9** (Documentation): 1 day
+- **Phase 10** (Cleanup): 1-2 days
+
+**Total: 12-19 days** (depending on complexity discovered)
+
+---
+
+## Success Metrics
+
+- [ ] Codebase reduced from ~5400 lines to ~1600 lines (70% reduction)
+- [ ] Binary size reduced by ~30%
+- [ ] Compilation time reduced by ~40%
+- [ ] Test execution time reduced by ~50%
+- [ ] All existing functionality preserved
+- [ ] No regression in read performance
+- [ ] Simpler configuration (6 fields vs 27)
+- [ ] Fewer background tasks (0 vs 3)
+
+---
+
+*Created: 2026-02-23*
+*Based on: review-r4.md*
