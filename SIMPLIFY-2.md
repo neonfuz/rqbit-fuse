@@ -35,7 +35,7 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 
 ### 5. Simplify Metrics System
 - [x] Review `src/metrics.rs` (657 lines) - See [research/metrics_review.md](research/metrics_review.md)
-- [ ] Identify over-engineered parts (custom LatencyMetrics trait, atomic snapshots)
+- [x] Identify over-engineered parts (custom LatencyMetrics trait, atomic snapshots)
 - [ ] Replace with simpler counter-based approach or use `metrics` crate
 - [ ] Remove unused metric types
 - [ ] Update all call sites in `src/api/client.rs` and `src/fs/filesystem.rs`
