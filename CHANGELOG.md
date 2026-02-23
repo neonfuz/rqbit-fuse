@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Research
 
+- SIMPLIFY-2-010: Evaluate merging FuseError and ApiError types
+  - Analyzed `FuseError` in `src/fs/error.rs` (12 variants, FUSE-specific)
+  - Analyzed `ApiError` in `src/api/types.rs` (18 variants, API-specific)
+  - Reviewed current integration via `ToFuseError` trait
+  - **Conclusion**: Error types should NOT be merged
+  - Rationale: Clean separation of concerns (filesystem vs HTTP API)
+  - Existing ToFuseError trait provides adequate integration
+  - Merging would create unnecessarily complex "god enum"
+  - Both types are domain-specific and appropriately designed
+  - Created research document: `research/error_types_merge_analysis.md`
+  - Location: `src/fs/error.rs`, `src/api/types.rs`
+
 - SIMPLIFY-2-009: Verify proptest dev dependency usage
   - Analyzed proptest usage across the codebase
   - Found declaration in `Cargo.toml:37` but no actual usage
