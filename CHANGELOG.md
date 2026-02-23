@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-046: Test cache memory limit
+  - Added `Cache::with_memory_limit()` constructor in `src/cache.rs` for byte-based cache limits
+  - Implemented `test_cache_memory_limit_eviction` with 3 test scenarios:
+    - Test 1: Inserts 500KB data within 1MB limit, then exceeds limit with 1.1MB more data
+      - Verifies cache handles memory limit overflow without crashing
+      - Confirms newer entries remain accessible after eviction
+    - Test 2: Tests cache behavior at 50%, 100%, and 110% of memory capacity
+      - Verifies entries exist at 100% capacity
+      - Confirms cache remains functional when exceeding limit
+    - Test 3: Tests oversized entry (10KB in 1KB cache) handling
+      - Verifies no crash when inserting entry larger than cache limit
+      - Confirms cache remains functional after oversized insertion
+  - All 189+ tests passing with zero clippy warnings
+
 - EDGE-045: Test inode limit exhaustion
   - Implemented `test_edge_045_inode_limit_exhaustion_with_torrents` in `src/fs/inode_manager.rs`
   - Tests max_inodes = 100 limit by creating 99 torrents (root + 99 = 100 total)

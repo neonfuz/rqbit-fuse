@@ -420,11 +420,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - No memory corruption
   - Implemented: `test_edge_045_inode_limit_exhaustion_with_torrents` in `src/fs/inode_manager.rs`
 
-- [ ] **EDGE-046**: Test cache memory limit
+- [x] **EDGE-046**: Test cache memory limit
   - Set max_cache_bytes = 1MB
   - Insert data exceeding limit
   - Should trigger eviction
   - Should not crash
+  - **Implemented**: Added `Cache::with_memory_limit()` constructor and comprehensive test in `src/cache.rs`
 
 - [ ] **EDGE-047**: Test semaphore exhaustion
   - Trigger max_concurrent_reads simultaneously

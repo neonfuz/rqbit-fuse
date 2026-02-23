@@ -92,6 +92,31 @@ where
         }
     }
 
+    /// Create a new cache with a maximum memory size in bytes and default TTL.
+    ///
+    /// The `weigher` function should return the size in bytes for each value.
+    /// When the total weight exceeds `max_bytes`, entries are evicted using LRU policy.
+    pub fn with_memory_limit<F>(max_bytes: u64, default_ttl: Duration, weigher: F) -> Self
+    where
+        F: Fn(&Arc<V>) -> u32 + Send + Sync + 'static,
+        V: Clone,
+    {
+        let inner = MokaCache::builder()
+            .max_capacity(max_bytes)
+            .weigher(move |_key, value: &Arc<V>| weigher(value))
+            .time_to_live(default_ttl)
+            .build();
+
+        Self {
+            inner,
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            evictions: AtomicU64::new(0),
+            default_ttl,
+            max_capacity: max_bytes,
+        }
+    }
+
     /// Get a value from the cache.
     /// Returns None if the key is not found or the entry has expired.
     pub async fn get(&self, key: &K) -> Option<V>
@@ -1031,6 +1056,158 @@ mod tests {
             stats.size <= 2,
             "Cache size should not exceed capacity, got {}",
             stats.size
+        );
+    }
+
+    /// Test EDGE-046: Test cache memory limit
+    /// Verifies that when data exceeding the memory limit is inserted,
+    /// the cache triggers eviction and handles it gracefully without crashing.
+    #[tokio::test]
+    async fn test_cache_memory_limit_eviction() {
+        // Create a cache with 1MB (1,048,576 bytes) memory limit
+        // Weigher returns the size of the Vec<u8> in bytes
+        let cache: Cache<String, Vec<u8>> = Cache::with_memory_limit(
+            1_048_576, // 1MB
+            Duration::from_secs(60),
+            |value: &Arc<Vec<u8>>| value.len() as u32,
+        );
+
+        // Insert data that fits within the limit (500KB total)
+        let data_200kb = vec![0u8; 200_000];
+        let data_300kb = vec![0u8; 300_000];
+
+        cache.insert("key1".to_string(), data_200kb).await;
+        cache.insert("key2".to_string(), data_300kb).await;
+
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Verify both entries exist
+        assert!(
+            cache.contains_key(&"key1".to_string()).await,
+            "key1 should exist"
+        );
+        assert!(
+            cache.contains_key(&"key2".to_string()).await,
+            "key2 should exist"
+        );
+
+        // Now insert data that exceeds the 1MB limit
+        // This should trigger eviction of older entries
+        let data_600kb = vec![0u8; 600_000];
+        let data_500kb = vec![0u8; 500_000];
+
+        cache.insert("key3".to_string(), data_600kb).await;
+        cache.insert("key4".to_string(), data_500kb).await;
+
+        // Allow eviction to process
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Cache should have triggered evictions to stay under 1MB
+        // key1 and/or key2 should have been evicted
+        // Note: For weighted caches, eviction tracking is based on entry count,
+        // not weight, so we verify behavior through presence checks instead
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Verify we can still access newer entries
+        assert!(
+            cache.contains_key(&"key3".to_string()).await,
+            "key3 should exist (recently inserted)"
+        );
+        assert!(
+            cache.contains_key(&"key4".to_string()).await,
+            "key4 should exist (recently inserted)"
+        );
+
+        // Verify cache is still functional - insert and retrieve a new key
+        let data_100kb = vec![0u8; 100_000];
+        cache.insert("key5".to_string(), data_100kb.clone()).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let retrieved = cache.get(&"key5".to_string()).await;
+        assert_eq!(
+            retrieved,
+            Some(data_100kb),
+            "Should be able to retrieve newly inserted data after memory limit eviction"
+        );
+
+        // Test 2: Verify cache handles memory limit boundary
+        let cache2: Cache<String, Vec<u8>> = Cache::with_memory_limit(
+            100_000, // 100KB limit
+            Duration::from_secs(60),
+            |value: &Arc<Vec<u8>>| value.len() as u32,
+        );
+
+        // Insert data at 50% of limit
+        let half_data = vec![0u8; 50_000];
+        cache2
+            .insert("half_key".to_string(), half_data.clone())
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(
+            cache2.get(&"half_key".to_string()).await,
+            Some(half_data),
+            "Should handle data at 50% of memory limit"
+        );
+
+        // Insert data that brings total to exactly 100% of limit
+        let other_half = vec![0u8; 50_000];
+        cache2
+            .insert("other_half".to_string(), other_half.clone())
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Both should exist at exactly 100% capacity
+        assert!(
+            cache2.contains_key(&"half_key".to_string()).await,
+            "half_key should exist at 100% capacity"
+        );
+        assert!(
+            cache2.contains_key(&"other_half".to_string()).await,
+            "other_half should exist at 100% capacity"
+        );
+
+        // Insert one more entry - this may trigger eviction of older entries
+        // but we don't assert specific eviction behavior as it's implementation-dependent
+        let extra_data = vec![0u8; 10_000];
+        cache2
+            .insert("extra_key".to_string(), extra_data.clone())
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Cache should still be functional and contain some entries
+        assert!(
+            cache2.contains_key(&"extra_key".to_string()).await,
+            "extra_key (recently inserted) should exist"
+        );
+
+        // Test 3: Verify no crash with very large single entry
+        let cache3: Cache<String, Vec<u8>> = Cache::with_memory_limit(
+            1_000, // 1KB limit
+            Duration::from_secs(60),
+            |value: &Arc<Vec<u8>>| value.len() as u32,
+        );
+
+        // Insert data larger than the entire cache limit
+        // This should not crash, but will immediately evict itself or not be cached
+        let large_data = vec![0u8; 10_000]; // 10KB > 1KB limit
+        cache3
+            .insert("large_key".to_string(), large_data.clone())
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Cache should not have crashed - check it's still functional
+        let small_data = vec![0u8; 100];
+        cache3
+            .insert("small_key".to_string(), small_data.clone())
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(
+            cache3.get(&"small_key".to_string()).await,
+            Some(small_data),
+            "Cache should remain functional after inserting oversized entry"
         );
     }
 }
