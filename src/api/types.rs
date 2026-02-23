@@ -281,7 +281,7 @@ pub struct ListTorrentsResult {
     /// Successfully loaded torrents with full details
     pub torrents: Vec<TorrentInfo>,
     /// Failed torrent fetches: (id, name, error)
-    pub errors: Vec<(u64, String, ApiError)>,
+    pub errors: Vec<(u64, String, crate::error::RqbitFuseError)>,
 }
 
 impl ListTorrentsResult {

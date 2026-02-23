@@ -1,5 +1,6 @@
 use crate::api::streaming::PersistentStreamManager;
 use crate::api::types::*;
+use crate::error::RqbitFuseError;
 use crate::metrics::ApiMetrics;
 use anyhow::{Context, Result};
 use base64::Engine;
@@ -75,14 +76,15 @@ impl RqbitClient {
         metrics: Arc<ApiMetrics>,
     ) -> Result<Self> {
         // Validate URL at construction time (fail fast on invalid URL)
-        let _ = reqwest::Url::parse(&base_url)
-            .map_err(|e| ApiError::ClientInitializationError(format!("Invalid URL: {}", e)))?;
+        let _ = reqwest::Url::parse(&base_url).map_err(|e| {
+            RqbitFuseError::ClientInitializationError(format!("Invalid URL: {}", e))
+        })?;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
             .build()
-            .map_err(|e| ApiError::ClientInitializationError(e.to_string()))?;
+            .map_err(|e| RqbitFuseError::ClientInitializationError(e.to_string()))?;
 
         let stream_manager = PersistentStreamManager::new(
             client.clone(),
@@ -161,7 +163,7 @@ impl RqbitClient {
                     break;
                 }
                 Err(e) => {
-                    let api_error: ApiError = e.into();
+                    let api_error: RqbitFuseError = e.into();
                     last_error = Some(api_error.clone());
 
                     // Check if error is transient and we should retry
@@ -197,7 +199,7 @@ impl RqbitClient {
             }
             None => {
                 // All retries exhausted with transient errors
-                let error = last_error.unwrap_or(ApiError::RetryLimitExceeded);
+                let error = last_error.unwrap_or(RqbitFuseError::RetryLimitExceeded);
                 self.metrics.record_failure(endpoint, &error.to_string());
                 Err(error.into())
             }
@@ -212,7 +214,7 @@ impl RqbitClient {
             Ok(response)
         } else if status == StatusCode::UNAUTHORIZED {
             let message = response.text().await.unwrap_or_default();
-            Err(ApiError::AuthenticationError(format!(
+            Err(RqbitFuseError::AuthenticationError(format!(
                 "Authentication failed: {}",
                 if message.is_empty() {
                     "Invalid credentials".to_string()
@@ -225,14 +227,14 @@ impl RqbitClient {
             let message = match response.text().await {
                 Ok(text) => text,
                 Err(e) => {
-                    return Err(ApiError::NetworkError(format!(
+                    return Err(RqbitFuseError::NetworkError(format!(
                         "Failed to read error response body: {}",
                         e
                     ))
                     .into());
                 }
             };
-            Err(ApiError::ApiError {
+            Err(RqbitFuseError::ApiError {
                 status: status.as_u16(),
                 message,
             }
@@ -346,11 +348,11 @@ impl RqbitClient {
                         error = %e,
                         "Failed to get full details for torrent"
                     );
-                    // Convert anyhow::Error to ApiError for storage
-                    let api_err = if let Some(api_err) = e.downcast_ref::<ApiError>() {
+                    // Convert anyhow::Error to RqbitFuseError for storage
+                    let api_err = if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
                         api_err.clone()
                     } else {
-                        ApiError::HttpError(e.to_string())
+                        RqbitFuseError::HttpError(e.to_string())
                     };
                     result
                         .errors
@@ -394,9 +396,9 @@ impl RqbitClient {
             }
             Err(e) => {
                 // Check if it's a 404 error from the API
-                if let Some(api_err) = e.downcast_ref::<ApiError>() {
-                    if matches!(api_err, ApiError::ApiError { status: 404, .. }) {
-                        return Err(ApiError::TorrentNotFound(id).into());
+                if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
+                    if matches!(api_err, RqbitFuseError::ApiError { status: 404, .. }) {
+                        return Err(RqbitFuseError::TorrentNotFound(id).into());
                     }
                 }
                 Err(e)
@@ -466,9 +468,9 @@ impl RqbitClient {
             }
             Err(e) => {
                 // Check if it's a 404 error from the API
-                if let Some(api_err) = e.downcast_ref::<ApiError>() {
-                    if matches!(api_err, ApiError::ApiError { status: 404, .. }) {
-                        return Err(ApiError::TorrentNotFound(id).into());
+                if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
+                    if matches!(api_err, RqbitFuseError::ApiError { status: 404, .. }) {
+                        return Err(RqbitFuseError::TorrentNotFound(id).into());
                     }
                 }
                 Err(e)
@@ -496,7 +498,7 @@ impl RqbitClient {
             .await?;
 
         match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
+            StatusCode::NOT_FOUND => Err(RqbitFuseError::TorrentNotFound(id).into()),
             _ => {
                 let response = self.check_response(response).await?;
 
@@ -584,7 +586,7 @@ impl RqbitClient {
     /// # Returns
     /// * `Ok(true)` - All pieces in the range are available
     /// * `Ok(false)` - At least one piece in the range is not available
-    /// * `Err(ApiError)` - Failed to fetch torrent status
+    /// * `Err(RqbitFuseError)` - Failed to fetch torrent status
     #[instrument(
         skip(self),
         fields(api_op = "check_range_available", torrent_id, offset, size)
@@ -601,7 +603,9 @@ impl RqbitClient {
             return Ok(true);
         }
         if piece_length == 0 {
-            return Err(ApiError::InvalidRange("piece_length cannot be zero".to_string()).into());
+            return Err(
+                RqbitFuseError::InvalidRange("piece_length cannot be zero".to_string()).into(),
+            );
         }
 
         // Get cached status with bitfield
@@ -642,7 +646,7 @@ impl RqbitClient {
         // Add Range header if specified
         if let Some((start, end)) = range {
             if start > end {
-                return Err(ApiError::InvalidRange(format!(
+                return Err(RqbitFuseError::InvalidRange(format!(
                     "Invalid range: start ({}) > end ({})",
                     start, end
                 ))
@@ -655,9 +659,9 @@ impl RqbitClient {
         // Handle request clone failure gracefully
         // First clone is validated; subsequent clones during retries are safe since
         // GET requests have no body and can always be cloned
-        let request = request
-            .try_clone()
-            .ok_or_else(|| ApiError::RequestCloneError("Request body not cloneable".to_string()))?;
+        let request = request.try_clone().ok_or_else(|| {
+            RqbitFuseError::RequestCloneError("Request body not cloneable".to_string())
+        })?;
 
         let response = self
             .execute_with_retry(&endpoint, move || {
@@ -668,7 +672,7 @@ impl RqbitClient {
             .await?;
 
         match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::FileNotFound {
+            StatusCode::NOT_FOUND => Err(RqbitFuseError::FileNotFound {
                 torrent_id,
                 file_idx,
             }
@@ -677,14 +681,14 @@ impl RqbitClient {
                 let message = match response.text().await {
                     Ok(text) => text,
                     Err(e) => {
-                        return Err(ApiError::NetworkError(format!(
+                        return Err(RqbitFuseError::NetworkError(format!(
                             "Failed to read range error response body: {}",
                             e
                         ))
                         .into());
                     }
                 };
-                Err(ApiError::InvalidRange(message).into())
+                Err(RqbitFuseError::InvalidRange(message).into())
             }
             _ => {
                 let status = response.status();
@@ -835,7 +839,7 @@ impl RqbitClient {
             .await?;
 
         match response.status() {
-            StatusCode::NOT_FOUND => Err(ApiError::TorrentNotFound(id).into()),
+            StatusCode::NOT_FOUND => Err(RqbitFuseError::TorrentNotFound(id).into()),
             _ => {
                 self.check_response(response).await?;
                 debug!(
@@ -899,7 +903,7 @@ impl RqbitClient {
                 }
             }
             Err(e) => {
-                let api_error: ApiError = e.into();
+                let api_error: RqbitFuseError = e.into();
                 warn!("Health check failed: {}", api_error);
                 Ok(false)
             }
@@ -934,7 +938,7 @@ impl RqbitClient {
             }
         }
 
-        Err(ApiError::ServerDisconnected.into())
+        Err(RqbitFuseError::ServerDisconnected.into())
     }
 
     /// Clear the list_torrents cache (for integration tests).
@@ -1012,77 +1016,80 @@ mod tests {
     fn test_api_error_mapping() {
         use libc;
 
-        assert_eq!(ApiError::TorrentNotFound(1).to_fuse_error(), libc::ENOENT);
+        assert_eq!(RqbitFuseError::TorrentNotFound(1).to_errno(), libc::ENOENT);
 
         assert_eq!(
-            ApiError::FileNotFound {
+            RqbitFuseError::FileNotFound {
                 torrent_id: 1,
                 file_idx: 0
             }
-            .to_fuse_error(),
+            .to_errno(),
             libc::ENOENT
         );
 
         assert_eq!(
-            ApiError::InvalidRange("test".to_string()).to_fuse_error(),
+            RqbitFuseError::InvalidRange("test".to_string()).to_errno(),
             libc::EINVAL
         );
 
         // Test new error mappings
-        assert_eq!(ApiError::ConnectionTimeout.to_fuse_error(), libc::EAGAIN);
-        assert_eq!(ApiError::ReadTimeout.to_fuse_error(), libc::EAGAIN);
-        assert_eq!(ApiError::ServerDisconnected.to_fuse_error(), libc::ENOTCONN);
+        assert_eq!(RqbitFuseError::ConnectionTimeout.to_errno(), libc::EAGAIN);
+        assert_eq!(RqbitFuseError::ReadTimeout.to_errno(), libc::EAGAIN);
         assert_eq!(
-            ApiError::NetworkError("test".to_string()).to_fuse_error(),
+            RqbitFuseError::ServerDisconnected.to_errno(),
+            libc::ENOTCONN
+        );
+        assert_eq!(
+            RqbitFuseError::NetworkError("test".to_string()).to_errno(),
             libc::ENETUNREACH
         );
-        assert_eq!(ApiError::CircuitBreakerOpen.to_fuse_error(), libc::EAGAIN);
-        assert_eq!(ApiError::RetryLimitExceeded.to_fuse_error(), libc::EAGAIN);
+        assert_eq!(RqbitFuseError::CircuitBreakerOpen.to_errno(), libc::EAGAIN);
+        assert_eq!(RqbitFuseError::RetryLimitExceeded.to_errno(), libc::EAGAIN);
 
         // Test HTTP status code mappings
         assert_eq!(
-            ApiError::ApiError {
+            RqbitFuseError::ApiError {
                 status: 404,
                 message: "not found".to_string()
             }
-            .to_fuse_error(),
+            .to_errno(),
             libc::ENOENT
         );
         assert_eq!(
-            ApiError::ApiError {
+            RqbitFuseError::ApiError {
                 status: 403,
                 message: "forbidden".to_string()
             }
-            .to_fuse_error(),
+            .to_errno(),
             libc::EACCES
         );
         assert_eq!(
-            ApiError::ApiError {
+            RqbitFuseError::ApiError {
                 status: 503,
                 message: "unavailable".to_string()
             }
-            .to_fuse_error(),
+            .to_errno(),
             libc::EAGAIN
         );
     }
 
     #[test]
     fn test_api_error_is_transient() {
-        assert!(ApiError::ConnectionTimeout.is_transient());
-        assert!(ApiError::ReadTimeout.is_transient());
-        assert!(ApiError::ServerDisconnected.is_transient());
-        assert!(ApiError::NetworkError("test".to_string()).is_transient());
-        assert!(ApiError::CircuitBreakerOpen.is_transient());
-        assert!(ApiError::RetryLimitExceeded.is_transient());
-        assert!(ApiError::ApiError {
+        assert!(RqbitFuseError::ConnectionTimeout.is_transient());
+        assert!(RqbitFuseError::ReadTimeout.is_transient());
+        assert!(RqbitFuseError::ServerDisconnected.is_transient());
+        assert!(RqbitFuseError::NetworkError("test".to_string()).is_transient());
+        assert!(RqbitFuseError::CircuitBreakerOpen.is_transient());
+        assert!(RqbitFuseError::RetryLimitExceeded.is_transient());
+        assert!(RqbitFuseError::ApiError {
             status: 503,
             message: "unavailable".to_string()
         }
         .is_transient());
 
-        assert!(!ApiError::TorrentNotFound(1).is_transient());
-        assert!(!ApiError::InvalidRange("test".to_string()).is_transient());
-        assert!(!ApiError::ApiError {
+        assert!(!RqbitFuseError::TorrentNotFound(1).is_transient());
+        assert!(!RqbitFuseError::InvalidRange("test".to_string()).is_transient());
+        assert!(!RqbitFuseError::ApiError {
             status: 404,
             message: "not found".to_string()
         }
@@ -1291,8 +1298,8 @@ mod tests {
 
         let result = client.get_torrent(999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
     }
 
     #[tokio::test]
@@ -1519,10 +1526,10 @@ mod tests {
 
         let result = client.read_file(1, 99, None).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
         assert!(matches!(
             err,
-            ApiError::FileNotFound {
+            RqbitFuseError::FileNotFound {
                 torrent_id: 1,
                 file_idx: 99
             }
@@ -1544,8 +1551,8 @@ mod tests {
 
         let result = client.read_file(1, 0, Some((100, 200))).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::InvalidRange(_)));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::InvalidRange(_)));
     }
 
     #[tokio::test]
@@ -1577,8 +1584,8 @@ mod tests {
 
         let result = client.pause_torrent(999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
     }
 
     #[tokio::test]
@@ -1610,8 +1617,8 @@ mod tests {
 
         let result = client.start_torrent(999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
     }
 
     #[tokio::test]
@@ -1643,8 +1650,8 @@ mod tests {
 
         let result = client.forget_torrent(999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
     }
 
     #[tokio::test]
@@ -1676,8 +1683,8 @@ mod tests {
 
         let result = client.delete_torrent(999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::TorrentNotFound(999)));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
     }
 
     #[tokio::test]
@@ -1762,7 +1769,7 @@ mod tests {
 
         let result = client.list_torrents().await;
         assert!(result.is_err());
-        let err = result.unwrap_err().downcast::<ApiError>().unwrap();
-        assert!(matches!(err, ApiError::ApiError { status: 500, .. }));
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        assert!(matches!(err, RqbitFuseError::ApiError { status: 500, .. }));
     }
 }

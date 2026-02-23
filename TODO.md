@@ -472,11 +472,10 @@ Each item is designed to be completed independently. These are edge case tests t
   - Update all `anyhow::Result` usages in library code
     - **Sub-tasks:**
     - [x] **SIMPLIFY-001A**: Create unified RqbitFuseError enum in src/error.rs
-    - [ ] **SIMPLIFY-001B**: Implement From traits for backward compatibility
-    - [ ] **SIMPLIFY-001C**: Migrate api/ module from ApiError to RqbitFuseError
-    - [ ] **SIMPLIFY-001D**: Migrate fs/ module from FuseError to RqbitFuseError
-    - [ ] **SIMPLIFY-001E**: Migrate config/ module from ConfigError to RqbitFuseError
-    - [ ] **SIMPLIFY-001F**: Remove old error types and clean up exports
+    - [x] **SIMPLIFY-001B**: Migrate api/ module from ApiError to RqbitFuseError
+    - [ ] **SIMPLIFY-001C**: Migrate fs/ module from FuseError to RqbitFuseError
+    - [ ] **SIMPLIFY-001D**: Migrate config/ module from ConfigError to RqbitFuseError
+    - [ ] **SIMPLIFY-001E**: Remove old error types and clean up exports
 
 - [x] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
   - Split `src/fs/inode.rs` (1,051 lines) into smaller modules:

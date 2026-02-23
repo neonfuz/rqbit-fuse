@@ -1944,9 +1944,9 @@ impl Filesystem for TorrentFS {
             error!("unlink: failed to remove torrent {}: {}", torrent_id, e);
 
             // Map error appropriately
-            let error_code = if let Some(api_err) = e.downcast_ref::<crate::api::types::ApiError>()
+            let error_code = if let Some(api_err) = e.downcast_ref::<crate::error::RqbitFuseError>()
             {
-                api_err.to_fuse_error()
+                api_err.to_errno()
             } else {
                 libc::EIO
             };

@@ -1,4 +1,4 @@
-use crate::api::types::ApiError;
+use crate::error::RqbitFuseError;
 use anyhow::{Context, Result};
 use base64::Engine;
 use bytes::{Bytes, BytesMut};
@@ -88,9 +88,11 @@ impl PersistentStream {
 
         // Check if we got a successful response
         if !status.is_success() && status != StatusCode::PARTIAL_CONTENT {
-            return Err(
-                ApiError::HttpError(format!("Failed to create stream: HTTP {}", status)).into(),
-            );
+            return Err(RqbitFuseError::HttpError(format!(
+                "Failed to create stream: HTTP {}",
+                status
+            ))
+            .into());
         }
 
         // Check if server returned 200 OK for a range request (rqbit bug workaround)

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SIMPLIFY-001B: Migrate api/ module from ApiError to RqbitFuseError
+  - Migrated all api/ module files to use unified RqbitFuseError type
+  - Updated `src/api/client.rs`: Replaced all ApiError usages with RqbitFuseError
+  - Updated `src/api/streaming.rs`: Replaced ApiError import with RqbitFuseError
+  - Updated `src/api/types.rs`: Changed ListTorrentsResult to use RqbitFuseError for errors field
+  - Updated `src/api/mod.rs`: Re-exported RqbitFuseError as ApiError for backward compatibility
+  - Updated `src/fs/filesystem.rs`: Changed ApiError reference to RqbitFuseError with to_errno()
+  - All existing tests updated to use RqbitFuseError variants and methods
+  - Maintained backward compatibility through type alias in api/mod.rs
+  - All tests passing (89 unit tests, 15 integration tests, 10 performance tests)
+  - Zero clippy warnings
+
 ### Added
 
 - EDGE-032: Test path with double slashes
