@@ -187,6 +187,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - File reduced from 1079 lines to 765 lines (-314 lines, -29%)
   - Location: `src/fs/inode.rs`
 
+- Reviewed metrics system in `src/metrics.rs` (657 lines)
+  - Identified over-engineered components: LatencyMetrics trait, atomic snapshot loops, record_op! macro
+  - Created research document at `research/metrics_review.md` with detailed analysis
+  - Documented simplification recommendations for future implementation
+
 ### Fixed
 
 ### Security
