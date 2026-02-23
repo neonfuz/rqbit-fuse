@@ -242,11 +242,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should not corrupt inode counter
   - Implemented: 2 tests in `src/fs/inode_manager.rs`
 
-- [ ] **EDGE-028**: Test max_inodes limit
+- [x] **EDGE-028**: Test max_inodes limit
   - Set max_inodes = 10
   - Allocate 11 inodes
   - 11th allocation should fail (return 0)
   - Verify no panic
+  - Implemented: `test_max_inodes_limit` in `src/fs/inode_manager.rs`
 
 - [ ] **EDGE-029**: Test allocation after clear_torrents
   - Allocate some inodes

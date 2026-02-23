@@ -869,4 +869,84 @@ mod tests {
             "All allocated inodes should be unique"
         );
     }
+
+    #[test]
+    fn test_max_inodes_limit() {
+        // EDGE-028: Test max_inodes limit
+        // Set max_inodes = 10
+        // Allocate 11 inodes
+        // 11th allocation should fail (return 0)
+        // Verify no panic
+
+        let manager = InodeManager::with_max_inodes(10);
+
+        // Verify initial state
+        assert_eq!(manager.max_inodes(), 10);
+        assert_eq!(manager.len(), 1, "Only root inode should exist initially");
+        assert!(
+            manager.can_allocate(),
+            "Should be able to allocate initially"
+        );
+
+        // Allocate 9 more entries (to reach limit of 10 total including root)
+        let mut allocated_inodes = Vec::new();
+        for i in 0..9 {
+            let inode = manager.allocate_file(format!("file{}.txt", i), 1, 1, i as u64, 100);
+            assert_ne!(inode, 0, "Allocation {} should succeed", i);
+            allocated_inodes.push(inode);
+        }
+
+        // Should now have exactly 10 entries (root + 9 files)
+        assert_eq!(manager.len(), 10, "Should have exactly 10 entries");
+        assert!(
+            !manager.can_allocate(),
+            "Should not be able to allocate at limit"
+        );
+
+        // 11th allocation should fail and return 0
+        let failed_inode = manager.allocate_file("overflow.txt".to_string(), 1, 1, 99, 100);
+        assert_eq!(failed_inode, 0, "11th allocation should fail and return 0");
+
+        // Verify state hasn't changed
+        assert_eq!(manager.len(), 10, "Should still have exactly 10 entries");
+        assert_eq!(manager.inode_count(), 9, "Should have 9 non-root inodes");
+
+        // Verify all previously allocated inodes still exist
+        for inode in &allocated_inodes {
+            assert!(
+                manager.contains(*inode),
+                "Allocated inode {} should still exist",
+                inode
+            );
+        }
+
+        // Test with different entry types (directory, symlink)
+        // First clear and start fresh with smaller limit
+        let manager2 = InodeManager::with_max_inodes(5);
+
+        // Allocate root + 4 more = 5 total
+        manager2.allocate_torrent_directory(1, "torrent1".to_string(), 1);
+        manager2.allocate_torrent_directory(2, "torrent2".to_string(), 1);
+        manager2.allocate_file("file1.txt".to_string(), 1, 1, 0, 100);
+        manager2.allocate_symlink("link1".to_string(), 1, "/target".to_string());
+
+        assert_eq!(manager2.len(), 5, "Should have exactly 5 entries");
+
+        // 6th allocation should fail
+        let failed_dir = manager2.allocate_torrent_directory(3, "torrent3".to_string(), 1);
+        assert_eq!(failed_dir, 0, "6th allocation (directory) should fail");
+
+        let failed_file = manager2.allocate_file("file2.txt".to_string(), 1, 1, 1, 100);
+        assert_eq!(failed_file, 0, "6th allocation (file) should fail");
+
+        let failed_symlink =
+            manager2.allocate_symlink("link2".to_string(), 1, "/target2".to_string());
+        assert_eq!(failed_symlink, 0, "6th allocation (symlink) should fail");
+
+        // Test that can_allocate() correctly reflects the limit
+        assert!(
+            !manager2.can_allocate(),
+            "can_allocate should return false at limit"
+        );
+    }
 }

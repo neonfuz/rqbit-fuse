@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-028: Test max_inodes limit
+  - Added `test_max_inodes_limit` to verify inode limit enforcement
+  - Tests that 11th allocation fails with return value 0 when max_inodes=10
+  - Verifies no panic occurs when limit is reached
+  - Tests all entry types (files, directories, symlinks) respect the limit
+  - Verifies `can_allocate()` correctly reflects limit status
+  - Location: `src/fs/inode_manager.rs`
+
 - EDGE-027: Test inode 0 allocation attempt
   - Added `test_inode_0_allocation_attempt` to verify graceful handling of inode 0 insertion
   - Tests that inserting entry with inode 0 doesn't corrupt the next_inode counter
