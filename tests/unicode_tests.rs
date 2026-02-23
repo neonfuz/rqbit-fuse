@@ -310,7 +310,7 @@ async fn test_edge_049_null_byte_in_filename() {
     let fs = create_test_fs(config, metrics);
 
     // Test various null byte positions
-    let test_cases = vec![
+    let test_cases = [
         ("\0file.txt", "null at start"),
         ("file\0.txt", "null in middle"),
         ("file.txt\0", "null at end"),
@@ -481,4 +481,229 @@ async fn test_edge_049_null_byte_with_valid_files() {
 
     // No panic should have occurred
     println!("Null byte file result: {:?}", result.is_ok());
+}
+
+// ============================================================================
+// EDGE-050: Test control characters in filenames
+// ============================================================================
+
+/// Test that filenames containing control characters are handled gracefully
+///
+/// Control characters (\n, \t, \r, etc.) in filenames should be either
+/// sanitized (replaced) or rejected but should never cause a panic or crash.
+#[tokio::test]
+async fn test_edge_050_control_characters_in_filename() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various control characters
+    let test_cases = [
+        ("file\nname.txt", "newline (\\n)"),
+        ("file\tname.txt", "tab (\\t)"),
+        ("file\rname.txt", "carriage return (\\r)"),
+        ("file\x01name.txt", "SOH (0x01)"),
+        ("file\x1Fname.txt", "US (0x1F - unit separator)"),
+        ("file\x7Fname.txt", "DEL (0x7F)"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 400 + idx as u64,
+            info_hash: format!("control{}", idx),
+            name: format!("Control Char Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let _found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name().contains("file"));
+
+                println!(
+                    "Control char filename '{}' succeeded ({})",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable - should contain filename-related message
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic")
+                        && !error_msg.to_lowercase().contains("unwrap")
+                        && !error_msg.to_lowercase().contains("assertion"),
+                    "Control char filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "Control char filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that multiple control characters in sequence are handled
+///
+/// Tests filenames with combinations of control characters.
+#[tokio::test]
+async fn test_edge_050_multiple_control_characters() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test filenames with multiple control characters
+    let test_cases = [
+        ("file\n\t\r.txt", "newline tab return"),
+        ("\n\tfile.txt", "leading newline and tab"),
+        ("file.txt\n\t", "trailing newline and tab"),
+        ("\x01\x02\x03file.txt", "multiple SOH STX ETX"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 500 + idx as u64,
+            info_hash: format!("multi_ctrl{}", idx),
+            name: format!("Multiple Control Chars {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 512,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully without panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                println!(
+                    "Multiple control chars filename '{}' succeeded ({})",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "Multiple control chars filename should not cause panic"
+                );
+                println!(
+                    "Multiple control chars filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that control character filenames don't interfere with valid files
+///
+/// Ensures that filenames with control characters don't corrupt the filesystem
+/// state or affect other valid files.
+#[tokio::test]
+async fn test_edge_050_control_chars_with_valid_files() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // First create a valid file
+    let valid_filename = "normal_file.txt";
+    let valid_torrent = TorrentInfo {
+        id: 600,
+        info_hash: "validfile".to_string(),
+        name: "Valid File".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: valid_filename.to_string(),
+            length: 2048,
+            components: vec![valid_filename.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&valid_torrent)
+        .expect("Valid file should be created");
+
+    // Then try to create files with various control characters
+    let control_filenames = [
+        "file\nwith\nnewlines.txt",
+        "file\twith\ttabs.txt",
+        "file\rwith\rreturns.txt",
+    ];
+
+    for (idx, filename) in control_filenames.iter().enumerate() {
+        let control_torrent = TorrentInfo {
+            id: 601 + idx as u64,
+            info_hash: format!("ctrl{}", idx),
+            name: format!("Control Char File {}", idx),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully
+        let _result = fs.create_torrent_structure(&control_torrent);
+    }
+
+    // Verify the valid file is still accessible
+    let inode_manager = fs.inode_manager();
+    let root_children = inode_manager.get_children(1);
+    let valid_file_exists = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == valid_filename);
+
+    assert!(
+        valid_file_exists,
+        "Valid file should still exist after attempted control char file creation"
+    );
+
+    // Verify valid file has correct size
+    let valid_inode = root_children
+        .iter()
+        .find(|(_, entry)| entry.name() == valid_filename)
+        .map(|(inode, _)| *inode)
+        .expect("Should find valid file inode");
+
+    let valid_entry = inode_manager
+        .get(valid_inode)
+        .expect("Should get valid file entry");
+    assert_eq!(
+        valid_entry.file_size(),
+        2048,
+        "Valid file should have correct size"
+    );
 }

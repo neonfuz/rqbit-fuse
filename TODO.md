@@ -458,9 +458,13 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_049_null_byte_positions`: Tests filename consisting only of null bytes
     - `test_edge_049_null_byte_with_valid_files`: Verifies null byte handling doesn't affect other files
 
-- [ ] **EDGE-050**: Test control characters
+- [x] **EDGE-050**: Test control characters
   - Filename with \n, \t, \r, etc.
   - Should sanitize or reject
+  - Implemented: 3 tests in `tests/unicode_tests.rs`:
+    - `test_edge_050_control_characters_in_filename`: Tests common control chars (\n, \t, \r, SOH, US, DEL)
+    - `test_edge_050_multiple_control_characters`: Tests combinations of control characters
+    - `test_edge_050_control_chars_with_valid_files`: Verifies control char handling doesn't affect other files
 
 - [ ] **EDGE-051**: Test UTF-8 edge cases
   - Emoji (multi-byte sequences)

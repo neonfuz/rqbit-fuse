@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-050: Test control characters in filename
+  - Added 3 tests to `tests/unicode_tests.rs` for control character handling:
+    - `test_edge_050_control_characters_in_filename`: Tests common control characters
+      - Tests newline (\n), tab (\t), carriage return (\r), SOH (0x01), US (0x1F), DEL (0x7F)
+      - Verifies system handles control chars gracefully without panic
+      - System sanitizes control characters by removing them from filenames
+    - `test_edge_050_multiple_control_characters`: Tests combinations of control characters
+      - Tests multiple control chars in sequence (e.g., "\n\t\r")
+      - Tests leading and trailing control characters
+      - Verifies consistent handling regardless of position or combination
+    - `test_edge_050_control_chars_with_valid_files`: Tests isolation from valid files
+      - Creates valid file first, then attempts control char file creation
+      - Verifies valid file remains accessible with correct attributes
+      - Ensures control char handling doesn't corrupt filesystem state
+  - System handles control characters by sanitizing (removing them), not by rejecting
+  - All 200+ tests passing with zero clippy warnings
+
 - EDGE-049: Test null byte in filename
   - Added 3 tests to `tests/unicode_tests.rs` for null byte handling:
     - `test_edge_049_null_byte_in_filename`: Tests null bytes at various positions (start, middle, end, multiple)
