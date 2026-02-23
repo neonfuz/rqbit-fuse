@@ -736,11 +736,26 @@ impl Config {
             });
         }
 
-        if let Err(e) = reqwest::Url::parse(&self.api.url) {
-            return Err(ValidationIssue {
-                field: "api.url".to_string(),
-                message: format!("Invalid URL format: {}", e),
-            });
+        match reqwest::Url::parse(&self.api.url) {
+            Ok(url) => {
+                // Check for valid scheme (http or https only)
+                let scheme = url.scheme();
+                if scheme != "http" && scheme != "https" {
+                    return Err(ValidationIssue {
+                        field: "api.url".to_string(),
+                        message: format!(
+                            "Invalid URL scheme: '{}'. Only 'http' and 'https' are supported",
+                            scheme
+                        ),
+                    });
+                }
+            }
+            Err(e) => {
+                return Err(ValidationIssue {
+                    field: "api.url".to_string(),
+                    message: format!("Invalid URL format: {}", e),
+                });
+            }
         }
 
         Ok(())
@@ -1202,6 +1217,29 @@ url = "http://localhost:8083"
         config.api.url = "not-a-url".to_string();
         let result = config.validate();
         assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, RqbitFuseError::ValidationError(_)));
+    }
+
+    #[test]
+    fn test_validate_url_without_scheme() {
+        let mut config = Config::default();
+        config.api.url = "localhost:3030".to_string();
+        let result = config.validate();
+        assert!(result.is_err(), "URL without scheme should fail validation");
+        let err = result.unwrap_err();
+        assert!(matches!(err, RqbitFuseError::ValidationError(_)));
+    }
+
+    #[test]
+    fn test_validate_url_with_invalid_scheme() {
+        let mut config = Config::default();
+        config.api.url = "ftp://localhost:3030".to_string();
+        let result = config.validate();
+        assert!(
+            result.is_err(),
+            "URL with invalid scheme should fail validation"
+        );
         let err = result.unwrap_err();
         assert!(matches!(err, RqbitFuseError::ValidationError(_)));
     }

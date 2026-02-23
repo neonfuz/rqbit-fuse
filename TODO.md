@@ -501,7 +501,7 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Config Validation (tests/config_tests.rs)
 
-- [ ] **EDGE-054**: Test invalid URLs
+- [x] **EDGE-054**: Test invalid URLs
   - URL without scheme ("localhost:3030")
   - URL with invalid scheme ("ftp://...")
   - Empty URL

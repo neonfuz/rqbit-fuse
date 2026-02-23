@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-054: Test invalid URL validation
+  - Enhanced `src/config/mod.rs` to validate URL schemes strictly
+  - Modified `validate_api_config()` to reject non-http/https schemes
+  - Added 2 comprehensive tests in `src/config/mod.rs`:
+    - `test_validate_url_without_scheme`: Tests that URLs like "localhost:3030" fail validation
+    - `test_validate_url_with_invalid_scheme`: Tests that URLs with invalid schemes like "ftp://localhost:3030" fail validation
+  - URL validation now explicitly checks for valid scheme before accepting configuration
+  - All 328 tests passing with zero clippy warnings
+
 - EDGE-053: Test maximum path length
   - Added 4 comprehensive tests to `tests/unicode_tests.rs` for path length handling:
     - `test_edge_053_path_length_handling`: Tests paths at various lengths (100-3000 chars)
