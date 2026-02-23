@@ -355,142 +355,36 @@ systemctl --user start rqbit-fuse
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Filesystem                          │
-│  /mnt/torrents/                                              │
-│  ├── ubuntu-24.04.iso/                                       │
-│  └── big-buck-bunny/                                         │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  rqbit-fuse FUSE Client                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │ FUSE Handler │  │ HTTP Client  │  │ Cache Mgr    │       │
-│  │ (fuser)      │  │ (reqwest)    │  │ (in-mem)     │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                         HTTP API
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    rqbit Server                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │ BitTorrent   │  │ HTTP API     │  │ Piece Mgr    │       │
-│  │ Protocol     │  │ (port 3030)  │  │ (lib)        │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
-└─────────────────────────────────────────────────────────────┘
-```
+For detailed architecture documentation, see the [API documentation](https://docs.rs/rqbit-fuse) or the source code in `src/lib.rs`.
 
-### Component Details
-
-**FUSE Client (rqbit-fuse)**
-- Handles FUSE callbacks (lookup, readdir, read, getattr)
-- Manages inode allocation and directory structure
-- Implements LRU cache with TTL for metadata and pieces
-- HTTP client with retry logic, circuit breaker, and exponential backoff
-- Background torrent status monitoring with stalled detection
-
-**rqbit Server (external dependency)**
-- Runs as separate daemon managing torrent downloads
-- Exposes HTTP API on port 3030
-- Handles BitTorrent protocol, DHT, peer connections
-- Automatic piece prioritization with 32MB readahead for streaming
+At a high level, rqbit-fuse implements a FUSE filesystem that translates file operations into HTTP Range requests to the rqbit server. Files are downloaded on-demand when accessed, enabling streaming of torrent content without waiting for complete downloads.
 
 ## How It Works
 
-### File Reading Flow
+When you access a file through the FUSE filesystem:
 
-When you read from a file in the FUSE filesystem:
+1. **On-Demand Access**: Files are downloaded only when you read them
+2. **HTTP Range Requests**: File reads are translated to HTTP Range requests
+3. **Piece Prioritization**: rqbit prioritizes downloading pieces needed for your read
+4. **Smart Caching**: Frequently accessed metadata and pieces are cached in memory
+5. **Read-Ahead**: Sequential file reads trigger prefetching for better performance
 
-1. **FUSE Callback**: Kernel sends `read(inode, offset, size)` request
-2. **Offset Translation**: FUSE offset is translated to HTTP Range request
-3. **HTTP Range Request**: Client requests specific byte range from rqbit
-4. **Piece Prioritization**: rqbit prioritizes pieces needed for the range
-5. **On-Demand Download**: rqbit downloads pieces from peers as needed
-6. **Streaming**: Data streams directly to FUSE as pieces become available
-7. **Caching**: Metadata and frequently accessed pieces cached in memory
-8. **Read-Ahead**: Sequential reads trigger prefetching of upcoming pieces
+### Error Handling
 
-### HTTP Range Requests
+- **Automatic Retries**: Temporary failures are retried with exponential backoff
+- **Graceful Degradation**: Returns EAGAIN when pieces aren't available yet
+- **Path Security**: Sanitizes filenames and prevents directory traversal attacks
 
-```
-FUSE Request:                    HTTP Request:
-read(inode=42,                   GET /torrents/123/stream/0
-     offset=1048576,             Range: bytes=1048576-1114111
-     size=65536)
-                                        │
-                                        ▼
-                              ┌──────────────────┐
-                              │   rqbit Server   │
-                              │  - Maps range to │
-                              │    pieces 45-50  │
-                              │  - Prioritizes   │
-                              │    those pieces │
-                              │  - Downloads     │
-                              │    with readahead│
-                              └──────────────────┘
-```
+## Project Status
 
-### Error Handling Strategy
+rqbit-fuse is feature-complete with comprehensive test coverage:
 
-- **Connection failures**: Automatic retry with exponential backoff (3 attempts)
-- **Server unavailable**: Circuit breaker opens after 5 failures, recovers after 30s
-- **Timeout handling**: Configurable timeouts with EAGAIN for non-blocking behavior
-- **Piece unavailability**: Returns EAGAIN when pieces aren't downloaded yet
-- **Path traversal protection**: Sanitizes filenames and prevents `..` attacks
+- **Core Features**: Full FUSE filesystem implementation with on-demand downloading
+- **Performance**: LRU cache, read-ahead optimization, connection pooling
+- **Reliability**: 350+ tests, zero clippy warnings, comprehensive error handling
+- **Edge Cases**: Symlinks, unicode, large files, path traversal protection
 
-## Implementation Status
-
-### ✅ Completed
-
-**Phase 1-5: Core Implementation**
-- Rust project structure with all dependencies
-- Core data structures (Torrent, InodeEntry, FileAttr)
-- Complete rqbit HTTP API client with retry logic
-- Configuration system (file, env vars, CLI)
-- Full FUSE implementation with all callbacks
-- Inode management with DashMap for concurrent access
-- Directory operations (lookup, readdir, mkdir, rmdir)
-- File attributes (getattr, setattr)
-- Read operations with HTTP Range support
-- LRU cache with TTL and eviction policies (Moka-based)
-- Read-ahead optimization with sequential detection
-- Torrent lifecycle management (add, monitor, remove)
-- Comprehensive error handling with circuit breaker
-- Edge case handling (symlinks, unicode, large files, path traversal)
-- CLI with subcommands (mount, umount, status)
-- Extended attributes for torrent status
-- Background status monitoring with stalled detection
-- AsyncFuseWorker for safe async/sync bridging (prevents deadlocks)
-- FuseError types for proper FUSE error mapping
-- ShardedCounter for high-performance metrics collection
-- Signal handling for graceful shutdown
-
-**Current Stats:**
-- 50+ unit tests passing
-- 8+ integration tests
-- Zero clippy warnings
-- Full error handling coverage
-
-### 🚧 In Progress
-
-**Phase 6: User Experience**
-- Structured logging with tracing (partially implemented)
-- Performance metrics and observability
-
-### 📋 Planned
-
-**Phase 7-8: Testing & Release**
-- Additional integration tests with actual rqbit server
-- Performance benchmarking
-- CI/CD pipeline with GitHub Actions
-- Multi-platform release builds
-- Security audit and final documentation
-
-See [TASKS.md](TASKS.md) for the complete development roadmap.
+See [TODO.md](TODO.md) for remaining documentation and testing tasks.
 
 ## Limitations and Known Issues
 

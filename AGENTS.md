@@ -74,7 +74,7 @@ The reference directory contains **external documentation** that should **NOT be
 ### During implementation:
 1. Follow the technical design in the spec files
 2. Reference API documentation when implementing API calls
-3. Add new issues to the "Discovered Issues" section in `TASKS.md`
+3. Add new issues to the "Discovered Issues" section in TODO.md
 4. Update the spec with any new designs implemented and fix any mistakes in the spec
 5. Update "Completed" section as tasks finish
 
@@ -82,7 +82,7 @@ The reference directory contains **external documentation** that should **NOT be
 1. Run tests: `nix-shell --run 'cargo test'`
 2. Run linting: `nix-shell --run 'cargo clippy'`
 3. Format code: `nix-shell --run 'cargo fmt'`
-4. Mark relevant tasks as completed in `TASKS.md`
+4. Mark relevant tasks as completed in TODO.md
 
 ## Building
 

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-009: Consolidate Documentation
+  - Removed redundant architecture diagram from README.md (~29 lines of ASCII art)
+  - Simplified "How It Works" section in README.md - removed implementation-specific details
+  - Consolidated verbose "Implementation Status" section (~90 lines) into concise summary (~5 lines)
+  - Fixed outdated references: changed TASKS.md → TODO.md in README.md and AGENTS.md
+  - README.md is now focused on user-facing documentation
+  - All technical implementation details remain in lib.rs rustdoc (canonical source)
+  - No loss of information - documentation is now better organized by audience
+
 - SIMPLIFY-008: Consolidate Type Definitions
   - ✅ **COMPLETED**: Type consolidation already done - no code changes required
   - `types/torrent.rs::Torrent` was dead code - already removed in prior cleanup
