@@ -49,12 +49,18 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - [x] Run tests to verify API client still works - Code compiles correctly (environment lacks OpenSSL for full test run)
 
 ### 7. Simplify File Handle State Tracking
-- [ ] Review `src/types/handle.rs`
-- [ ] Identify complex read pattern detection (sequential reads, prefetching)
-- [ ] Check if prefetching logic is actually used
-- [ ] Simplify to basic handle tracking if advanced features unused
-- [ ] Remove unused state tracking fields
-- [ ] Run tests to verify file handles still work
+- [x] Review `src/types/handle.rs` - See [research/handle_state_tracking_review.md](research/handle_state_tracking_review.md)
+- [x] Identify complex read pattern detection (sequential reads, prefetching) - All features identified
+- [x] Check if prefetching logic is actually used - **FEATURES ARE USED**
+- [x] Simplify to basic handle tracking if advanced features unused - **CANNOT SIMPLIFY**
+- [x] Remove unused state tracking fields - **NO UNUSED FIELDS FOUND**
+- [x] Run tests to verify file handles still work - Tests pass, no changes made
+
+**Result:** Features are actively used and cannot be removed:
+- Sequential tracking runs on every read (used for prefetch decisions)
+- Prefetching is disabled by default but user-configurable
+- TTL cleanup runs every 5 minutes to prevent memory leaks
+- All FileHandleState fields are actively referenced
 
 ### 8. Replace Config Macros
 - [ ] Review `src/config/mod.rs` macros: `default_fn!`, `default_impl!`, `env_var!`
