@@ -63,13 +63,13 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - All FileHandleState fields are actively referenced
 
 ### 8. Replace Config Macros
-- [ ] Review `src/config/mod.rs` macros: `default_fn!`, `default_impl!`, `env_var!`
-- [ ] Replace with standard Rust patterns:
+- [x] Review `src/config/mod.rs` macros: `default_fn!`, `default_impl!`, `env_var!`
+- [x] Replace with standard Rust patterns:
   - `default_fn!` → `impl Default` or `const fn`
   - `default_impl!` → derive `Default` or manual impl
   - `env_var!` → standard env var parsing with `std::env::var`
-- [ ] Remove macro definitions (~35 lines)
-- [ ] Run tests to verify config still loads correctly
+- [x] Remove macro definitions (~35 lines)
+- [x] Run tests to verify config still loads correctly
 
 ## Lower Priority
 

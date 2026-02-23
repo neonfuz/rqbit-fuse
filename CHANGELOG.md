@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Simplified
 
+- SIMPLIFY-2-008: Replace config macros with standard Rust patterns in `src/config/mod.rs`
+  - Removed `default_fn!` macro (28 lines) and replaced with inline `impl Default` blocks
+  - Removed `default_impl!` macro (10 lines) and replaced with explicit Default implementations
+  - Removed `env_var!` macro (15 lines) and replaced with standard `std::env::var` calls
+  - Replaced 27 `default_fn!` invocations with 7 explicit `impl Default` blocks
+  - Replaced 35+ `env_var!` invocations with explicit `if let Ok(val)` blocks
+  - Total: ~35 lines of macro definitions removed, ~120 lines of macro calls replaced with ~180 lines of explicit code
+  - Benefits: Easier to understand, better IDE support, clearer error messages, standard Rust idioms
+  - Location: `src/config/mod.rs`
+
 - SIMPLIFY-2-005: Simplify metrics system in `src/metrics.rs`
   - Removed custom `LatencyMetrics` trait (28 lines)
   - Removed `record_op!` macro and replaced with explicit methods (35 lines)
