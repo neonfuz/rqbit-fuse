@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Research
 
+- SIMPLIFY-2-012: Review config fields for unused/unimplemented features
+  - Analyzed `piece_check_enabled` in `PerformanceConfig`
+  - Analyzed `prefetch_enabled` in `PerformanceConfig`
+  - Verified `piece_check_enabled` is used in `src/fs/filesystem.rs:888` for piece availability checks
+  - Verified `prefetch_enabled` is used in `src/fs/filesystem.rs:944` for prefetch triggering
+  - **Conclusion**: All config fields are legitimately used and implemented
+  - Rationale: Both fields are working configuration options with real implementations
+  - `piece_check_enabled`: Controls piece verification (default: true)
+  - `prefetch_enabled`: Controls read-ahead prefetching (default: false)
+  - No unused or placeholder config fields found
+  - Created research document: `research/config_fields_usage_analysis.md`
+  - Location: `src/config/mod.rs`, `src/fs/filesystem.rs`
+
 - SIMPLIFY-2-011: Evaluate consolidating inode types across modules
   - Analyzed `InodeEntry` data type in `src/types/inode.rs` (292 lines)
   - Analyzed `InodeManager` in `src/fs/inode.rs` (765 lines)
