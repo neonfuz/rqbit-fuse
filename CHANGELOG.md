@@ -1042,3 +1042,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary background task that was polling torrent status
 - Status monitoring provided no critical functionality (piece availability checking uses API client's separate cache)
 - One less background task running (reduced from 3 to 2 tasks)
+
+## 2026-02-23 - Phase 1.1.3: Remove TorrentStatus and Related Types
+
+### Removed
+- Removed `torrent_statuses: Arc<DashMap<u64, TorrentStatus>>` field from TorrentFS struct
+- Removed all related imports (TorrentStatus, DashMap)
+- Removed status monitoring methods:
+  - `get_torrent_status()` - public API method (unused internally)
+  - `monitor_torrent()` - added torrents to status cache
+  - `unmonitor_torrent()` - removed torrents from status cache
+  - `list_torrent_statuses()` - returned all monitored statuses
+- Removed calls to `monitor_torrent()` and `unmonitor_torrent()` in torrent lifecycle methods
+- Removed `torrent_statuses` cleanup from torrent removal handlers (3 locations)
+- Simplified `check_pieces_available()` method - now returns false since status cache is removed
+- Removed early EAGAIN checks in read handler that depended on torrent status cache
+- Updated `getxattr()` to return ENOATTR for `user.torrent.status` attribute
+- Removed initial `TorrentStatus` struct creation in `create_torrent_structure()`
+
+### Impact
+- Reduced codebase by ~207 lines (220 changed, 21 added, 199 removed from filesystem.rs)
+- Eliminated the `torrent_statuses` DashMap cache entirely
+- No critical functionality lost - all piece availability checking uses API client's bitfield cache
+- Simplified read operation logic (removed non-critical early-exit optimizations)
+- Status information still available via API client when needed
+- All 360+ tests pass successfully
+
+### Rationale
+Per research in `research/status-monitoring-analysis.md`, the status monitoring provided no critical functionality:
+- Real piece availability checking uses `api_client.check_range_available()` with separate bitfield cache
+- Status monitoring was informational only - not used for decisions
+- Early EAGAIN optimizations could be removed without affecting correctness
+- Extended attribute for status was purely diagnostic
+

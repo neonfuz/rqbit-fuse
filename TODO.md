@@ -19,10 +19,16 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
   - Remove `monitor_handle` field from TorrentFS struct
   - Remove `stop_status_monitoring()` method
   
-- [ ] **Task 1.1.3**: Remove `TorrentStatus` and related types if unused
+- [x] **Task 1.1.3**: Remove `TorrentStatus` and related types if unused
   - Check if `torrent_statuses: Arc<DashMap<u64, TorrentStatus>>` is used elsewhere
   - If only used by monitoring task, remove field and imports
   - Update struct initialization
+  - **Completed**: Removed `torrent_statuses` field and all related code from filesystem.rs
+  - Simplified `check_pieces_available()` method since status monitoring is no longer used
+  - Removed early EAGAIN checks in read handler that depended on status cache
+  - Updated `getxattr` to return ENOATTR since status monitoring removed
+  - Removed `monitor_torrent()` and `unmonitor_torrent()` calls
+  - Removed status-related imports (TorrentStatus, DashMap)
 
 ### 1.2 Remove Mount Info Display Feature
 - [ ] **Task 1.2.1**: Remove `get_mount_info()` function

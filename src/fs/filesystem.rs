@@ -1,6 +1,6 @@
 use crate::api::client::RqbitClient;
 use crate::api::create_api_client;
-use crate::api::types::{TorrentState, TorrentStatus};
+
 use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeEntry;
@@ -12,7 +12,6 @@ use crate::fs::macros::{
 use crate::metrics::Metrics;
 use crate::types::handle::FileHandleManager;
 use anyhow::{Context, Result};
-use dashmap::DashMap;
 use dashmap::DashSet;
 use fuser::Filesystem;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -65,8 +64,6 @@ pub struct TorrentFS {
     initialized: bool,
     /// File handle manager for tracking open files
     file_handles: Arc<FileHandleManager>,
-    /// Cache of torrent statuses for monitoring
-    torrent_statuses: Arc<DashMap<u64, TorrentStatus>>,
     /// Set of known torrent IDs for detecting removals
     known_torrents: Arc<DashSet<u64>>,
     /// Handle to the torrent discovery task
@@ -128,7 +125,6 @@ impl TorrentFS {
             inode_manager,
             initialized: false,
             file_handles: Arc::new(FileHandleManager::new()),
-            torrent_statuses: Arc::new(DashMap::new()),
             known_torrents: Arc::new(DashSet::new()),
             discovery_handle: Arc::new(Mutex::new(None)),
             cleanup_handle: Arc::new(Mutex::new(None)),
@@ -177,7 +173,6 @@ impl TorrentFS {
         let last_discovery = Arc::clone(&self.last_discovery);
         let known_torrents = Arc::clone(&self.known_torrents);
         let file_handles = Arc::clone(&self.file_handles);
-        let torrent_statuses = Arc::clone(&self.torrent_statuses);
         let metrics = Arc::clone(&self.metrics);
         let poll_interval = Duration::from_secs(30);
 
@@ -228,9 +223,6 @@ impl TorrentFS {
                                         inode, torrent_id
                                     );
                                 }
-
-                                // Remove from torrent statuses
-                                torrent_statuses.remove(&torrent_id);
 
                                 // Remove from known torrents
                                 known_torrents.remove(&torrent_id);
@@ -392,9 +384,6 @@ impl TorrentFS {
                     inode, torrent_id
                 );
             }
-
-            // Remove from torrent statuses
-            self.torrent_statuses.remove(&torrent_id);
 
             // Remove from known torrents
             self.known_torrents.remove(&torrent_id);
@@ -693,28 +682,6 @@ impl TorrentFS {
         Ok(())
     }
 
-    /// Get the current status of a torrent
-    pub fn get_torrent_status(&self, torrent_id: u64) -> Option<TorrentStatus> {
-        self.torrent_statuses.get(&torrent_id).map(|s| s.clone())
-    }
-
-    /// Add a torrent to status monitoring
-    pub fn monitor_torrent(&self, torrent_id: u64, initial_status: TorrentStatus) {
-        self.torrent_statuses.insert(torrent_id, initial_status);
-        debug!("Started monitoring torrent {}", torrent_id);
-    }
-
-    /// Remove a torrent from status monitoring
-    pub fn unmonitor_torrent(&self, torrent_id: u64) {
-        self.torrent_statuses.remove(&torrent_id);
-        debug!("Stopped monitoring torrent {}", torrent_id);
-    }
-
-    /// Get all monitored torrent statuses
-    pub fn list_torrent_statuses(&self) -> Vec<TorrentStatus> {
-        self.torrent_statuses.iter().map(|e| e.clone()).collect()
-    }
-
     /// Returns a reference to the API client
     pub fn api_client(&self) -> &Arc<RqbitClient> {
         &self.api_client
@@ -806,40 +773,14 @@ impl TorrentFS {
     #[allow(dead_code)]
     fn check_pieces_available(
         &self,
-        torrent_id: u64,
-        offset: u64,
-        size: u64,
-        piece_length: u64,
+        _torrent_id: u64,
+        _offset: u64,
+        _size: u64,
+        _piece_length: u64,
     ) -> bool {
-        // Get the status to check piece availability
-        if let Some(status) = self.torrent_statuses.get(&torrent_id) {
-            // If torrent is complete, all pieces are available
-            if status.is_complete() {
-                return true;
-            }
-
-            // Calculate piece indices for the requested range
-            let start_piece = offset / piece_length;
-            let end_piece = ((offset + size - 1) / piece_length) + 1;
-
-            // If we have no piece information, assume not available
-            if status.total_pieces == 0 {
-                return false;
-            }
-
-            // Check if we have enough pieces downloaded
-            // This is a simplified check - ideally we'd check the actual bitfield
-            // For now, use progress percentage as approximation
-            let progress = status.progress_pct / 100.0;
-            let pieces_needed = end_piece - start_piece;
-            let pieces_available = (status.total_pieces as f64 * progress) as u64;
-
-            // Conservative check: require more pieces to be available than needed
-            pieces_available >= pieces_needed
-        } else {
-            // No status available, assume not ready
-            false
-        }
+        // Status monitoring has been removed. Piece availability is checked
+        // directly via the API client's bitfield cache when needed.
+        false
     }
 
     /// Track read patterns and trigger prefetch for sequential reads.
@@ -1124,85 +1065,6 @@ impl Filesystem for TorrentFS {
             range_start = offset,
             range_end = end
         );
-
-        // Check if we should return EAGAIN for unavailable pieces
-        if let Some(status) = self.torrent_statuses.get(&torrent_id) {
-            // If torrent hasn't started (0 progress) or is in error state, return EAGAIN
-            if status.progress_bytes == 0 || status.state == crate::api::types::TorrentState::Error
-            {
-                fuse_error!(self, "read", "EAGAIN", reason = "torrent_not_ready");
-                reply.error(libc::EAGAIN);
-                return;
-            }
-        } else {
-            // No status available, torrent not monitored yet
-            fuse_error!(self, "read", "EAGAIN", reason = "torrent_not_monitored");
-            reply.error(libc::EAGAIN);
-            return;
-        }
-
-        // Check piece availability for paused torrents
-        if self.config.performance.check_pieces_before_read {
-            if let Some(status) = self.torrent_statuses.get(&torrent_id) {
-                // Skip piece check for completed torrents - they have all pieces available
-                if status.is_complete() {
-                    trace!(
-                        fuse_op = "read",
-                        torrent_id = torrent_id,
-                        "Skipping piece check for completed torrent"
-                    );
-                } else if status.state == crate::api::types::TorrentState::Paused {
-                    // Calculate the actual read size
-                    let actual_size = std::cmp::min(size as u64, file_size.saturating_sub(offset));
-
-                    if actual_size > 0 {
-                        // Check if pieces are available
-                        let timeout = Duration::from_secs(5);
-                        match self.async_worker.check_pieces_available(
-                            torrent_id,
-                            offset,
-                            actual_size,
-                            timeout,
-                        ) {
-                            Ok(false) => {
-                                // Pieces not available - return I/O error
-                                self.metrics.fuse.record_pieces_unavailable();
-                                fuse_error!(
-                                    self,
-                                    "read",
-                                    "EIO",
-                                    reason = "pieces_not_available",
-                                    torrent_id = torrent_id,
-                                    offset = offset,
-                                    size = actual_size
-                                );
-                                reply.error(libc::EIO);
-                                return;
-                            }
-                            Ok(true) => {
-                                // Pieces available - continue with read
-                                trace!(
-                                    fuse_op = "read",
-                                    torrent_id = torrent_id,
-                                    offset = offset,
-                                    size = actual_size,
-                                    "All pieces available for paused torrent"
-                                );
-                            }
-                            Err(e) => {
-                                // Error checking pieces - log but continue (fail open)
-                                warn!(
-                                    fuse_op = "read",
-                                    torrent_id = torrent_id,
-                                    error = %e,
-                                    "Failed to check piece availability, continuing with read"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         // Perform the read using the async worker to avoid blocking async in sync callbacks
         // This eliminates the deadlock risk from block_in_place + block_on pattern
@@ -1588,7 +1450,6 @@ impl Filesystem for TorrentFS {
             let last_discovery = Arc::clone(&self.last_discovery);
             let known_torrents = Arc::clone(&self.known_torrents);
             let file_handles = Arc::clone(&self.file_handles);
-            let torrent_statuses = Arc::clone(&self.torrent_statuses);
             let metrics = Arc::clone(&self.metrics);
 
             tokio::spawn(async move {
@@ -1642,9 +1503,6 @@ impl Filesystem for TorrentFS {
                                             inode, torrent_id
                                         );
                                     }
-
-                                    // Remove from torrent statuses
-                                    torrent_statuses.remove(&torrent_id);
 
                                     // Remove from known torrents
                                     known_torrents.remove(&torrent_id);
@@ -1884,7 +1742,7 @@ impl Filesystem for TorrentFS {
         _req: &fuser::Request<'_>,
         ino: u64,
         name: &std::ffi::OsStr,
-        size: u32,
+        _size: u32,
         reply: fuser::ReplyXattr,
     ) {
         let name_str = name.to_string_lossy();
@@ -1927,41 +1785,8 @@ impl Filesystem for TorrentFS {
             return;
         }
 
-        // Get the status
-        match self.torrent_statuses.get(&torrent_id) {
-            Some(status) => {
-                match status.to_json() {
-                    Ok(json) => {
-                        let data = json.as_bytes();
-
-                        if size == 0 {
-                            // Return the size needed
-                            reply.size(data.len() as u32);
-                        } else if data.len() <= size as usize {
-                            // Return the data
-                            reply.data(data);
-                        } else {
-                            // Buffer too small
-                            reply.error(libc::ERANGE);
-                        }
-                    }
-                    Err(_) => {
-                        reply.error(libc::EIO);
-                    }
-                }
-            }
-            None => {
-                // Torrent not being monitored yet, return empty status
-                let json = format!(r#"{{"torrent_id":{},"state":"unknown"}}"#, torrent_id);
-                let data = json.as_bytes();
-
-                if size == 0 {
-                    reply.size(data.len() as u32);
-                } else {
-                    reply.data(data);
-                }
-            }
-        }
+        // Status monitoring has been removed, return attribute not found
+        reply.error(ENOATTR);
     }
 
     /// List extended attributes.
@@ -2367,19 +2192,6 @@ impl TorrentFS {
             info!(torrent_id = torrent_id, "Finished processing all files");
         }
 
-        // Start monitoring this torrent's status
-        let initial_status = TorrentStatus {
-            torrent_id,
-            state: TorrentState::Unknown,
-            progress_pct: 0.0,
-            progress_bytes: 0,
-            total_bytes: torrent_info.files.iter().map(|f| f.length).sum(),
-            downloaded_pieces: 0,
-            total_pieces: 0,
-            last_updated: Instant::now(),
-        };
-        self.monitor_torrent(torrent_id, initial_status);
-
         info!(
             "Created filesystem structure for torrent {} with {} files",
             torrent_id,
@@ -2558,15 +2370,11 @@ impl TorrentFS {
     /// Remove a torrent from the filesystem and rqbit.
     ///
     /// This method:
-    /// 1. Stops monitoring the torrent
-    /// 2. Removes the torrent from rqbit (forget - keeps files)
-    /// 3. Removes all inodes associated with the torrent
-    /// 4. Removes the torrent directory from root's children
+    /// 1. Removes the torrent from rqbit (forget - keeps files)
+    /// 2. Removes all inodes associated with the torrent
+    /// 3. Removes the torrent directory from root's children
     fn remove_torrent(&self, torrent_id: u64, torrent_inode: u64) -> Result<()> {
         debug!("Removing torrent {} (inode {})", torrent_id, torrent_inode);
-
-        // Stop monitoring this torrent
-        self.unmonitor_torrent(torrent_id);
 
         // Remove from rqbit (forget - keeps downloaded files) using async worker
         // This avoids the dangerous block_in_place + block_on pattern
