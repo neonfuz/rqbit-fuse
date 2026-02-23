@@ -84,11 +84,12 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
   - [x] Verified dependencies removed
 
 ### 10. Merge Duplicate Error Types
-- [ ] Review `src/fs/error.rs` (FuseError) and `src/api/types.rs` (ApiError)
-- [ ] Identify overlapping error variants
-- [ ] Merge into unified error type or simplify hierarchy
-- [ ] Update all error conversions (`to_fuse_error()`)
-- [ ] Run tests to verify error handling still works
+- [x] Review `src/fs/error.rs` (FuseError) and `src/api/types.rs` (ApiError) - See [research/error_types_merge_analysis.md](research/error_types_merge_analysis.md)
+- [x] **DECISION: Do NOT merge** - Error types are appropriately separated by domain:
+  - FuseError: FUSE filesystem-level errors (12 variants)
+  - ApiError: HTTP API-level errors (17 variants with thiserror)
+  - Clean integration via ToFuseError trait, no benefit to merging
+- [x] No code changes needed - design is correct as-is
 
 ### 11. Consolidate Inode Types
 - [ ] Review `src/types/inode.rs` and `src/fs/inode.rs`
