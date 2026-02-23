@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Research
 
+- SIMPLIFY-2-011: Evaluate consolidating inode types across modules
+  - Analyzed `InodeEntry` data type in `src/types/inode.rs` (292 lines)
+  - Analyzed `InodeManager` in `src/fs/inode.rs` (765 lines)
+  - Reviewed separation of concerns between data and logic
+  - **Conclusion**: Types should NOT be consolidated
+  - Rationale: Clean separation - data model vs. management logic
+  - `types/inode.rs` defines the InodeEntry data structure
+  - `fs/inode.rs` implements allocation and lifecycle management
+  - Merging would create unnecessarily large mixed-concern module
+  - Current design follows Single Responsibility Principle
+  - Created research document: `research/inode_types_consolidation_analysis.md`
+  - Location: `src/types/inode.rs`, `src/fs/inode.rs`
+
 - SIMPLIFY-2-010: Evaluate merging FuseError and ApiError types
   - Analyzed `FuseError` in `src/fs/error.rs` (12 variants, FUSE-specific)
   - Analyzed `ApiError` in `src/api/types.rs` (18 variants, API-specific)
