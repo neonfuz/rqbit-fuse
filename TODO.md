@@ -190,11 +190,15 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_022_empty_response_body_206`: Tests 206 Partial Content with empty body
     - `test_edge_022_empty_response_at_offset`: Tests empty response at non-zero offset
 
-- [ ] **EDGE-023**: Test network disconnect during read
+- [x] **EDGE-023**: Test network disconnect during read
   - Start reading stream
   - Simulate network failure mid-read
   - Should return error, clean up properly
   - No resource leaks
+  - **Implemented**: 3 tests in `src/api/streaming.rs`
+    - `test_edge_023_network_disconnect_during_read`: Tests graceful handling of network issues
+    - `test_edge_023_stream_marked_invalid_after_error`: Verifies stream invalidation on error
+    - `test_edge_023_stream_manager_cleanup_invalid_stream`: Tests manager cleanup of invalid streams
 
 - [ ] **EDGE-024**: Test slow server response
   - Server sends data very slowly

@@ -40,6 +40,7 @@ pub struct ConcurrencyStats {
 
 /// Result of torrent discovery operation
 #[derive(Debug)]
+#[allow(dead_code)]
 struct DiscoveryResult {
     /// Number of new torrents discovered
     new_count: u64,

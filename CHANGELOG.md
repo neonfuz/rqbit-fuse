@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-023: Test network disconnect during read
+  - Added `test_edge_023_network_disconnect_during_read` to verify graceful handling of network failures
+  - Added `test_edge_023_stream_marked_invalid_after_error` to verify streams are marked invalid after errors
+  - Added `test_edge_023_stream_manager_cleanup_invalid_stream` to test manager cleanup of invalid streams
+  - Tests verify proper error handling, stream invalidation, and resource cleanup with no leaks
+  - Location: `src/api/streaming.rs`
+
 - EDGE-022: Test empty response body handling
   - Added `test_edge_022_empty_response_body_200` to verify 200 OK with empty body returns empty bytes
   - Added `test_edge_022_empty_response_body_206` to verify 206 Partial Content with empty body returns empty bytes

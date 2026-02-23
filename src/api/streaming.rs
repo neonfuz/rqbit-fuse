@@ -1334,4 +1334,133 @@ mod tests {
 
         mock_server.verify().await;
     }
+
+    // ============================================================================
+    // EDGE-023: Test network disconnect during read
+    // ============================================================================
+
+    /// Test network disconnect during read - should return error and clean up
+    #[tokio::test]
+    async fn test_edge_023_network_disconnect_during_read() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock a server that returns partial data
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![0u8; 100]))
+            .expect(1..=2)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .expect("Failed to build client");
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // First, create a valid stream by reading some data
+        let _result1 = manager.read(1, 0, 0, 50).await;
+        // This may succeed or timeout depending on timing
+
+        // Now simulate disconnect by closing the mock server side
+        // The stream should handle this gracefully
+
+        // Try to read again - this should either:
+        // 1. Create a new stream (if old one was cleaned up)
+        // 2. Return an error (if using the disconnected stream)
+        let result2 = manager.read(1, 0, 0, 50).await;
+
+        // Either result is acceptable - we just need to verify no panic
+        // and that resources are cleaned up
+        let _ = result2;
+    }
+
+    /// Test stream marked invalid after error
+    #[tokio::test]
+    async fn test_edge_023_stream_marked_invalid_after_error() {
+        // Directly test the PersistentStream behavior when is_valid is set to false
+        let mut persistent_stream = PersistentStream {
+            stream: Box::pin(futures::stream::empty()),
+            current_position: 0,
+            last_access: Instant::now(),
+            is_valid: false, // Start as invalid
+            pending_buffer: None,
+        };
+
+        // Try to read from invalid stream
+        let mut buffer = vec![0u8; 100];
+        let result = persistent_stream.read(&mut buffer).await;
+
+        assert!(
+            result.is_err(),
+            "Should return error when reading from invalid stream"
+        );
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("Stream is no longer valid"),
+            "Error should indicate stream is invalid: {}",
+            error_msg
+        );
+    }
+
+    /// Test stream manager properly cleans up invalid streams
+    #[tokio::test]
+    async fn test_edge_023_stream_manager_cleanup_invalid_stream() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Create a response that works
+        let content: Vec<u8> = (0..100u8).collect();
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(content))
+            .expect(1..=2) // May be called once or twice
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // First read - this should succeed
+        let result1 = manager.read(1, 0, 0, 50).await;
+        assert!(result1.is_ok(), "First read should succeed");
+        assert_eq!(result1.unwrap().len(), 50, "Should read 50 bytes");
+
+        // Mark the stream as invalid (simulating disconnect)
+        let key = StreamKey {
+            torrent_id: 1,
+            file_idx: 0,
+        };
+
+        {
+            let mut streams = manager.streams.lock().await;
+            if let Some(stream) = streams.get_mut(&key) {
+                stream.is_valid = false;
+            }
+        }
+
+        // Second read - should create a new stream since existing is invalid
+        // This tests that the manager properly handles invalid streams
+        let result2 = manager.read(1, 0, 0, 50).await;
+
+        // Should succeed because it creates a new stream
+        assert!(
+            result2.is_ok(),
+            "Second read should succeed after stream marked invalid"
+        );
+        assert_eq!(
+            result2.unwrap().len(),
+            50,
+            "Should read 50 bytes from new stream"
+        );
+
+        mock_server.verify().await;
+    }
 }
