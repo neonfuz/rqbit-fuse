@@ -151,10 +151,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Verify oldest entry is evicted
   - **Completed**: Verified by existing `test_cache_lru_eviction` test in src/cache.rs
 
-- [ ] **EDGE-018**: Test rapid insert/remove cycles
+- [x] **EDGE-018**: Test rapid insert/remove cycles
   - Insert and remove same key 1000 times rapidly
   - Should maintain consistency
   - No memory leaks
+  - Implemented: `test_cache_rapid_insert_remove_cycles` and `test_cache_rapid_mixed_key_cycles` in src/cache.rs
 
 - [ ] **EDGE-019**: Test concurrent insert of same key
   - 10 threads try to insert same key simultaneously

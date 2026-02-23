@@ -474,6 +474,130 @@ mod tests {
         assert_eq!(cache.get(&"race_key".to_string()).await, None);
     }
 
+    /// Test EDGE-018: Rapid insert/remove cycles
+    /// Verifies that repeatedly inserting and removing the same key maintains
+    /// cache consistency and doesn't cause memory leaks or corruption.
+    #[tokio::test]
+    async fn test_cache_rapid_insert_remove_cycles() {
+        let cache: Cache<String, i32> = Cache::new(100, Duration::from_secs(60));
+        let key = "rapid_cycle_key".to_string();
+        let cycles = 1000;
+
+        // Perform rapid insert/remove cycles on the same key
+        for i in 0..cycles {
+            // Insert value
+            cache.insert(key.clone(), i).await;
+
+            // Verify it exists via get() before removal
+            let retrieved = cache.get(&key).await;
+            assert_eq!(
+                retrieved,
+                Some(i),
+                "Should retrieve value just inserted (cycle {})",
+                i
+            );
+
+            // Remove it
+            let removed = cache.remove(&key).await;
+            assert_eq!(
+                removed,
+                Some(i),
+                "Should return the value just retrieved (cycle {})",
+                i
+            );
+
+            // Verify key is gone
+            assert!(
+                !cache.contains_key(&key).await,
+                "Key should not exist after removal (cycle {})",
+                i
+            );
+        }
+
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Verify cache is empty (or at least doesn't contain our key)
+        assert!(
+            !cache.contains_key(&key).await,
+            "Key should not exist after all cycles"
+        );
+
+        // Verify cache stats are consistent
+        // We had 'cycles' number of get() calls (hits)
+        // Note: contains_key() calls moka directly, so it doesn't count as a miss
+        let stats = cache.stats().await;
+        assert_eq!(
+            stats.hits, cycles as u64,
+            "Should have {} hits from get operations",
+            cycles
+        );
+
+        // Cache should be in a consistent state (no corruption)
+        // Final operation was a remove, so size should be 0 (or small due to timing)
+        assert!(
+            stats.size <= 1,
+            "Cache size should be at most 1 after rapid cycles, got {}",
+            stats.size
+        );
+    }
+
+    /// Test EDGE-018 variant: Alternating insert/remove with different keys
+    /// Verifies cache handles mixed key operations correctly during rapid cycles.
+    #[tokio::test]
+    async fn test_cache_rapid_mixed_key_cycles() {
+        let cache: Cache<String, i32> = Cache::new(100, Duration::from_secs(60));
+        let num_keys = 10;
+        let cycles_per_key = 100;
+
+        // Perform rapid cycles across multiple keys
+        for cycle in 0..cycles_per_key {
+            for key_id in 0..num_keys {
+                let key = format!("key_{}", key_id);
+                let value = cycle * num_keys + key_id;
+
+                // Insert
+                cache.insert(key.clone(), value as i32).await;
+
+                // Verify immediately via get()
+                let retrieved = cache.get(&key).await;
+                assert_eq!(
+                    retrieved,
+                    Some(value as i32),
+                    "Should retrieve value for key {} in cycle {}",
+                    key_id,
+                    cycle
+                );
+
+                // Remove
+                cache.remove(&key).await;
+            }
+        }
+
+        // Allow async operations to complete
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // All keys should be removed
+        for key_id in 0..num_keys {
+            let key = format!("key_{}", key_id);
+            assert!(
+                !cache.contains_key(&key).await,
+                "Key {} should be removed",
+                key_id
+            );
+        }
+
+        // Cache should be in consistent state
+        let stats = cache.stats().await;
+        // Each cycle per key: get (hit) = 1 hit per key per cycle
+        let expected_hits = num_keys * cycles_per_key;
+        assert_eq!(
+            stats.hits, expected_hits as u64,
+            "Expected {} hits, got {}",
+            expected_hits, stats.hits
+        );
+    }
+
     /// Performance benchmark for concurrent cache reads with statistics collection.
     /// This test verifies that atomic counters provide good performance under
     /// high concurrency.

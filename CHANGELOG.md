@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-018: Test rapid insert/remove cycles in cache
+  - Added `test_cache_rapid_insert_remove_cycles` to verify 1000 rapid insert/remove cycles on same key
+  - Added `test_cache_rapid_mixed_key_cycles` to verify rapid cycles across multiple keys
+  - Both tests verify cache consistency and no corruption under rapid operations
+  - Location: `src/cache.rs`
+
 - EDGE-016: Test cache entry expiration during access
   - Added `test_cache_entry_expiration_during_access` to verify cache returns None for expired entries
   - Added `test_cache_expiration_race_condition` to test concurrent access during expiration
