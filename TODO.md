@@ -136,11 +136,17 @@ Reduce configuration complexity and validation overhead.
   - Keep only: `read_timeout`, `max_concurrent_reads`, `readahead_size`
   - **Completed**: See CHANGELOG.md SIMPLIFY-020
   
-- [ ] **Task 2.2.4**: Remove MonitoringConfig
+- [x] **Task 2.2.4**: Remove MonitoringConfig
   - Remove entire `MonitoringConfig` struct
   - Remove `status_poll_interval` field
   - Remove `stalled_timeout` field
   - Remove related env var parsing
+  - **Completed**: Removed `MonitoringConfig` struct and all related code from `src/config/mod.rs`
+  - **Completed**: Removed `monitoring` field from `Config` struct
+  - **Completed**: Removed `impl Default for MonitoringConfig`
+  - **Completed**: Removed environment variable parsing for `TORRENT_FUSE_STATUS_POLL_INTERVAL` and `TORRENT_FUSE_STALLED_TIMEOUT`
+  - **Completed**: Updated all documentation and examples to remove monitoring section
+  - **Completed**: All 346 tests passing with zero clippy warnings
   
 - [ ] **Task 2.2.5**: Remove LoggingConfig options
   - Remove `log_fuse_operations` - always log at debug level

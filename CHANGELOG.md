@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-021: Remove MonitoringConfig (Task 2.2.4)
+  - Removed entire `MonitoringConfig` struct from `src/config/mod.rs`
+  - Removed 2 fields: `status_poll_interval` and `stalled_timeout`
+  - Removed `monitoring` field from main `Config` struct
+  - Removed `impl Default for MonitoringConfig`
+  - Removed environment variable parsing for:
+    - `TORRENT_FUSE_STATUS_POLL_INTERVAL`
+    - `TORRENT_FUSE_STALLED_TIMEOUT`
+  - Updated all documentation and examples in `src/config/mod.rs` to remove monitoring section
+  - Removed monitoring section from TOML configuration example
+  - Removed monitoring section from JSON configuration example
+  - Removed monitoring from environment variable documentation
+  - Updated main Config struct documentation to remove monitoring from field list
+  - Reduced Config from 7 sections to 6 sections
+  - Configuration fields reduced from 27 to 25 (7% reduction in this step)
+  - Environment variables reduced from 20+ to 18 (10% reduction in this step)
+  - All 346 tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`
+
 - SIMPLIFY-020: Remove PerformanceConfig Options (Task 2.2.3)
   - Removed 2 fields from `PerformanceConfig` struct in `src/config/mod.rs`:
     - `prefetch_enabled` - feature removed entirely (was disabled by default, didn't work well)

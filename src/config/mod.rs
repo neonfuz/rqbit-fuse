@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// Main configuration container for rqbit-fuse.
 ///
-/// Combines all configuration sections (API, cache, mount, performance, monitoring, logging)
+/// Combines all configuration sections (API, cache, mount, performance, logging)
 /// into a single struct that can be loaded from files, environment variables, or CLI arguments.
 ///
 /// # Loading Configuration
@@ -21,7 +21,6 @@ use std::path::PathBuf;
 /// * `cache` - Cache TTL and capacity settings
 /// * `mount` - FUSE mount point and options
 /// * `performance` - Read timeouts and concurrency limits
-/// * `monitoring` - Status polling and stall detection
 /// * `logging` - Log verbosity and metrics settings
 ///
 /// # Example
@@ -67,12 +66,6 @@ use std::path::PathBuf;
 /// # Read-ahead buffer size (bytes)
 /// readahead_size = 33554432
 ///
-/// [monitoring]
-/// # Interval between status polls (seconds)
-/// status_poll_interval = 5
-/// # Timeout before marking torrent as stalled (seconds)
-/// stalled_timeout = 300
-///
 /// [logging]
 /// # Log level: error, warn, info, debug, trace
 /// level = "info"
@@ -108,10 +101,6 @@ use std::path::PathBuf;
 ///     "read_timeout": 30,
 ///     "max_concurrent_reads": 10,
 ///     "readahead_size": 33554432
-///   },
-///   "monitoring": {
-///     "status_poll_interval": 5,
-///     "stalled_timeout": 300
 ///   },
 ///   "logging": {
 ///     "level": "info",
@@ -170,9 +159,6 @@ pub struct Config {
     /// Read timeouts and concurrency limits.
     #[serde(default)]
     pub performance: PerformanceConfig,
-    /// Status polling and stall detection settings.
-    #[serde(default)]
-    pub monitoring: MonitoringConfig,
     /// Log verbosity and metrics settings.
     #[serde(default)]
     pub logging: LoggingConfig,
@@ -269,26 +255,6 @@ pub struct PerformanceConfig {
     pub readahead_size: u64,
 }
 
-/// Configuration for monitoring and status polling.
-///
-/// Controls how often the filesystem polls for torrent status updates.
-///
-/// # Fields
-///
-/// * `status_poll_interval` - Interval between status polls in seconds (default: 5)
-/// * `stalled_timeout` - Timeout in seconds before marking a torrent as stalled (default: 300)
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_STATUS_POLL_INTERVAL` - Status poll interval in seconds
-/// - `TORRENT_FUSE_STALLED_TIMEOUT` - Stall timeout in seconds
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MonitoringConfig {
-    pub status_poll_interval: u64,
-    pub stalled_timeout: u64,
-}
-
 /// Configuration for logging and metrics output.
 ///
 /// Controls log verbosity, operation logging, and metrics collection.
@@ -376,15 +342,6 @@ impl Default for PerformanceConfig {
             read_timeout: 30,
             max_concurrent_reads: 10,
             readahead_size: 33554432,
-        }
-    }
-}
-
-impl Default for MonitoringConfig {
-    fn default() -> Self {
-        Self {
-            status_poll_interval: 5,
-            stalled_timeout: 300,
         }
     }
 }
@@ -493,20 +450,6 @@ impl Config {
             self.performance.readahead_size = val.parse().map_err(|_| {
                 RqbitFuseError::InvalidValue(
                     "TORRENT_FUSE_READAHEAD_SIZE has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_STATUS_POLL_INTERVAL") {
-            self.monitoring.status_poll_interval = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_STATUS_POLL_INTERVAL has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_STALLED_TIMEOUT") {
-            self.monitoring.stalled_timeout = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_STALLED_TIMEOUT has invalid format".into(),
                 )
             })?;
         }
