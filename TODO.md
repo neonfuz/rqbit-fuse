@@ -163,7 +163,7 @@ Each item is designed to be completed independently. These are edge case tests t
   - Cache should have exactly one entry
   - **Implemented**: `test_concurrent_insert_same_key` in `src/cache.rs`
 
-- [ ] **EDGE-020**: Test cache statistics edge cases
+- [x] **EDGE-020**: Test cache statistics edge cases
   - Hit rate with 0 total requests
   - Hit rate with 0 hits, many misses
   - Hit rate with 0 misses, many hits

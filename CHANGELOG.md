@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-020: Test cache statistics edge cases
+  - Added `test_cache_stats_edge_cases` to verify hit rate calculations handle edge cases
+  - Tests 0 total requests (fresh cache) - verifies no division by zero
+  - Tests 0 hits with many misses - verifies 0.0 hit rate and 100.0 miss rate
+  - Tests 0 misses with many hits - verifies 100.0 hit rate and 0.0 miss rate
+  - Tests mixed hit/miss ratio (75% hits) - verifies accurate percentage calculations
+  - Tests very large numbers (u64::MAX) - verifies no overflow
+  - Location: `src/cache.rs`
+
 - EDGE-019: Test concurrent insert of same key
   - Added `test_concurrent_insert_same_key` to verify 10 threads inserting same key simultaneously
   - Verifies cache handles concurrent inserts gracefully with exactly one entry

@@ -736,4 +736,148 @@ mod tests {
             stats.hits, total_hits
         );
     }
+
+    /// Test EDGE-020: Cache statistics edge cases
+    /// Verifies that hit rate calculations handle edge cases without panicking
+    /// or dividing by zero.
+    #[tokio::test]
+    async fn test_cache_stats_edge_cases() {
+        // Test 1: Hit rate with 0 total requests (fresh cache)
+        let cache: Cache<String, i32> = Cache::new(10, Duration::from_secs(60));
+        let stats = cache.stats().await;
+
+        assert_eq!(stats.hits, 0, "Fresh cache should have 0 hits");
+        assert_eq!(stats.misses, 0, "Fresh cache should have 0 misses");
+        assert_eq!(
+            stats.total_requests(),
+            0,
+            "Fresh cache should have 0 total requests"
+        );
+        assert_eq!(
+            stats.hit_rate(),
+            0.0,
+            "Hit rate with 0 requests should be 0.0"
+        );
+        assert_eq!(
+            stats.miss_rate(),
+            0.0,
+            "Miss rate with 0 requests should be 0.0"
+        );
+
+        // Test 2: Hit rate with 0 hits, many misses
+        // Perform gets on non-existent keys to generate misses
+        for i in 0..100 {
+            let _ = cache.get(&format!("nonexistent_key_{}", i)).await;
+        }
+
+        let stats = cache.stats().await;
+        assert_eq!(stats.hits, 0, "Should have 0 hits after only misses");
+        assert_eq!(stats.misses, 100, "Should have 100 misses");
+        assert_eq!(
+            stats.total_requests(),
+            100,
+            "Should have 100 total requests"
+        );
+        assert_eq!(stats.hit_rate(), 0.0, "Hit rate with 0 hits should be 0.0");
+        assert_eq!(
+            stats.miss_rate(),
+            100.0,
+            "Miss rate with all misses should be 100.0"
+        );
+
+        // Test 3: Hit rate with 0 misses, many hits
+        let cache2: Cache<String, i32> = Cache::new(10, Duration::from_secs(60));
+
+        // Insert a key
+        cache2.insert("test_key".to_string(), 42).await;
+
+        // Wait for insert to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Perform gets on existing key to generate hits
+        for _ in 0..100 {
+            let _ = cache2.get(&"test_key".to_string()).await;
+        }
+
+        let stats = cache2.stats().await;
+        assert_eq!(stats.hits, 100, "Should have 100 hits");
+        assert_eq!(stats.misses, 0, "Should have 0 misses");
+        assert_eq!(
+            stats.total_requests(),
+            100,
+            "Should have 100 total requests"
+        );
+        assert_eq!(
+            stats.hit_rate(),
+            100.0,
+            "Hit rate with all hits should be 100.0"
+        );
+        assert_eq!(
+            stats.miss_rate(),
+            0.0,
+            "Miss rate with 0 misses should be 0.0"
+        );
+
+        // Test 4: Mixed hit/miss ratio
+        let cache3: Cache<String, i32> = Cache::new(10, Duration::from_secs(60));
+
+        // Insert one key
+        cache3.insert("existing".to_string(), 1).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // 75 hits and 25 misses (75% hit rate)
+        for i in 0..75 {
+            let _ = cache3.get(&"existing".to_string()).await;
+            if i < 25 {
+                let _ = cache3.get(&format!("missing{}", i)).await;
+            }
+        }
+
+        let stats = cache3.stats().await;
+        assert_eq!(stats.hits, 75, "Should have 75 hits");
+        assert_eq!(stats.misses, 25, "Should have 25 misses");
+        assert_eq!(
+            stats.total_requests(),
+            100,
+            "Should have 100 total requests"
+        );
+        assert!(
+            (stats.hit_rate() - 75.0).abs() < 0.001,
+            "Hit rate should be 75.0, got {}",
+            stats.hit_rate()
+        );
+        assert!(
+            (stats.miss_rate() - 25.0).abs() < 0.001,
+            "Miss rate should be 25.0, got {}",
+            stats.miss_rate()
+        );
+
+        // Test 5: Very large numbers (no overflow)
+        let mut stats = CacheStats::default();
+        stats.hits = u64::MAX;
+        stats.misses = 0;
+
+        // Should not panic or overflow
+        let hit_rate = stats.hit_rate();
+        assert_eq!(
+            hit_rate, 100.0,
+            "Hit rate with max u64 hits should be 100.0"
+        );
+
+        stats.hits = 0;
+        stats.misses = u64::MAX;
+        let miss_rate = stats.miss_rate();
+        assert_eq!(
+            miss_rate, 100.0,
+            "Miss rate with max u64 misses should be 100.0"
+        );
+
+        // Test 6: Verify no division by zero in edge cases
+        stats.hits = 0;
+        stats.misses = 0;
+        // This should not panic
+        let _ = stats.hit_rate();
+        let _ = stats.miss_rate();
+        let _ = stats.total_requests();
+    }
 }
