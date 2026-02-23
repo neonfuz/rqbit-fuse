@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Simplified
+
+- SIMPLIFY-2-005: Simplify metrics system in `src/metrics.rs`
+  - Removed custom `LatencyMetrics` trait (28 lines)
+  - Removed `record_op!` macro and replaced with explicit methods (35 lines)
+  - Removed atomic snapshot loops from `FuseMetrics::log_summary()` and `ApiMetrics::log_summary()`
+  - Implemented `avg_latency_ms()` directly on `FuseMetrics` and `ApiMetrics`
+  - Simplified tests: removed complex concurrent tests, kept core functionality tests
+  - Reduced file from 657 to 512 lines (144 lines removed, ~22% reduction)
+  - All method signatures remain compatible - no changes needed in call sites
+  - Location: `src/metrics.rs`
+
 ### Added
 
 - IDEA2-006 to IDEA2-007: Handle open file handles during torrent removal and add integration test
