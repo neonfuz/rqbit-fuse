@@ -25,11 +25,11 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - [x] Commit the cleanup
 
 ### 4. Reduce Test Coverage in inode.rs
-- [ ] Analyze `src/fs/inode.rs` test coverage (currently ~150% lines ratio)
-- [ ] Identify redundant tests (e.g., multiple tests for same functionality)
-- [ ] Remove duplicate test cases while maintaining core coverage
-- [ ] Target: Reduce from 720 test lines to ~360 lines (50% ratio)
-- [ ] Run `cargo test` to ensure all tests still pass
+- [x] Analyze `src/fs/inode.rs` test coverage (currently ~150% lines ratio)
+- [x] Identify redundant tests (e.g., multiple tests for same functionality)
+- [x] Remove duplicate test cases while maintaining core coverage
+- [x] Target: Reduce from 720 test lines to ~360 lines (50% ratio) - Achieved: 314 lines removed, file now 765 lines total
+- [x] Run `cargo test` to ensure all tests still pass
 
 ## Medium Priority
 

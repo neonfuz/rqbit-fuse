@@ -179,6 +179,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Reduced test coverage in `src/fs/inode.rs` from 720 lines to ~290 lines (50% ratio)
+  - Removed 4 redundant concurrent test variations, keeping `test_concurrent_allocation_consistency`
+  - Removed property-based tests (proptest) that duplicated unit test coverage
+  - Removed unused `proptest` import from test module
+  - Maintained all core functionality coverage: allocation, lookup, removal, children, symlinks
+  - File reduced from 1079 lines to 765 lines (-314 lines, -29%)
+  - Location: `src/fs/inode.rs`
+
 ### Fixed
 
 ### Security
