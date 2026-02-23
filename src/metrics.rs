@@ -464,7 +464,13 @@ mod tests {
 
         assert_eq!(metrics.hits.load(Ordering::Relaxed), 2);
         assert_eq!(metrics.misses.load(Ordering::Relaxed), 1);
-        assert_eq!(metrics.hit_rate(), 66.66666666666667);
+        // Use approximate comparison for floating point
+        let hit_rate = metrics.hit_rate();
+        assert!(
+            (hit_rate - 66.66666666666667).abs() < 0.0001,
+            "Hit rate should be approximately 66.67%, got {}",
+            hit_rate
+        );
     }
 
     #[test]

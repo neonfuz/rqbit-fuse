@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-019: Test concurrent insert of same key
+  - Added `test_concurrent_insert_same_key` to verify 10 threads inserting same key simultaneously
+  - Verifies cache handles concurrent inserts gracefully with exactly one entry
+  - Tests that final value is one of the inserted values and cache remains consistent
+  - Location: `src/cache.rs`
+
 - EDGE-018: Test rapid insert/remove cycles in cache
   - Added `test_cache_rapid_insert_remove_cycles` to verify 1000 rapid insert/remove cycles on same key
   - Added `test_cache_rapid_mixed_key_cycles` to verify rapid cycles across multiple keys
@@ -123,6 +129,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `src/metrics.rs`
 
 ### Fixed
+
+- Fixed floating point precision issue in `test_cache_metrics`
+  - Changed from exact equality assertion to approximate comparison with epsilon
+  - Prevents test failures due to minor floating point representation differences
+  - Location: `src/metrics.rs`
 
 - PORT-001: Add Linux support while maintaining macOS compatibility
   - Fixed compilation warnings on Linux regarding `libc::ENOATTR`

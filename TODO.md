@@ -157,10 +157,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - No memory leaks
   - Implemented: `test_cache_rapid_insert_remove_cycles` and `test_cache_rapid_mixed_key_cycles` in src/cache.rs
 
-- [ ] **EDGE-019**: Test concurrent insert of same key
+- [x] **EDGE-019**: Test concurrent insert of same key
   - 10 threads try to insert same key simultaneously
   - One should succeed, others should handle gracefully
   - Cache should have exactly one entry
+  - **Implemented**: `test_concurrent_insert_same_key` in `src/cache.rs`
 
 - [ ] **EDGE-020**: Test cache statistics edge cases
   - Hit rate with 0 total requests

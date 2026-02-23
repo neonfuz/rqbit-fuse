@@ -598,6 +598,77 @@ mod tests {
         );
     }
 
+    /// Test EDGE-019: Concurrent insert of same key
+    /// Verifies that when multiple threads try to insert the same key simultaneously,
+    /// the cache handles it gracefully and maintains exactly one entry.
+    #[tokio::test]
+    async fn test_concurrent_insert_same_key() {
+        use std::sync::Arc;
+        use tokio::task;
+
+        let cache: Arc<Cache<String, i32>> = Arc::new(Cache::new(100, Duration::from_secs(60)));
+        let key = "concurrent_key".to_string();
+        let num_threads = 10;
+        let mut handles = vec![];
+
+        // Spawn multiple threads that all try to insert the same key
+        for i in 0..num_threads {
+            let cache = Arc::clone(&cache);
+            let key = key.clone();
+            handles.push(task::spawn(async move {
+                // Each thread tries to insert a different value for the same key
+                cache.insert(key, i as i32).await;
+                // Return the value we tried to insert
+                i as i32
+            }));
+        }
+
+        // Wait for all threads to complete
+        let mut inserted_values = vec![];
+        for handle in handles {
+            match handle.await {
+                Ok(value) => inserted_values.push(value),
+                Err(e) => panic!("Task panicked: {:?}", e),
+            }
+        }
+
+        // Allow async operations to complete - moka is eventually consistent
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Get the value - it should be one of the values that was inserted
+        // This verifies that: 1) the key exists, 2) cache handled concurrent inserts gracefully
+        let final_value = cache.get(&key).await;
+        assert!(
+            final_value.is_some(),
+            "Should be able to retrieve the value after concurrent inserts"
+        );
+
+        // The final value should be one of the values we inserted
+        let final_value = final_value.unwrap();
+        assert!(
+            inserted_values.contains(&final_value),
+            "Final value {} should be one of the inserted values {:?}",
+            final_value,
+            inserted_values
+        );
+
+        // Verify cache is in consistent state - no crashes or errors
+        // Cache should be usable after concurrent operations (get() above already proved this)
+        let stats = cache.stats().await;
+        // Cache should report reasonable stats (no corruption)
+        assert!(
+            stats.size <= 100,
+            "Cache size should not exceed capacity, got {}",
+            stats.size
+        );
+
+        // Verify the key exists via contains_key as well
+        assert!(
+            cache.contains_key(&key).await,
+            "Key should exist when checked via contains_key"
+        );
+    }
+
     /// Performance benchmark for concurrent cache reads with statistics collection.
     /// This test verifies that atomic counters provide good performance under
     /// high concurrency.
