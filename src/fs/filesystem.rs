@@ -69,8 +69,6 @@ pub struct TorrentFS {
     torrent_statuses: Arc<DashMap<u64, TorrentStatus>>,
     /// Set of known torrent IDs for detecting removals
     known_torrents: Arc<DashSet<u64>>,
-    /// Handle to the status monitoring task
-    monitor_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Handle to the torrent discovery task
     discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Handle to the file handle cleanup task
@@ -132,7 +130,6 @@ impl TorrentFS {
             file_handles: Arc::new(FileHandleManager::new()),
             torrent_statuses: Arc::new(DashMap::new()),
             known_torrents: Arc::new(DashSet::new()),
-            monitor_handle: Arc::new(Mutex::new(None)),
             discovery_handle: Arc::new(Mutex::new(None)),
             cleanup_handle: Arc::new(Mutex::new(None)),
             metrics,
@@ -171,76 +168,6 @@ impl TorrentFS {
     #[doc(hidden)]
     pub async fn __test_clear_list_torrents_cache(&self) {
         self.api_client.__test_clear_cache().await;
-    }
-
-    /// Start the background status monitoring task
-    fn start_status_monitoring(&self) {
-        let api_client = Arc::clone(&self.api_client);
-        let statuses = Arc::clone(&self.torrent_statuses);
-        let poll_interval = self.config.monitoring.status_poll_interval;
-        let stalled_timeout = Duration::from_secs(self.config.monitoring.stalled_timeout);
-
-        let handle = tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_secs(poll_interval));
-
-            loop {
-                ticker.tick().await;
-
-                // Get list of torrents to monitor
-                let torrent_ids: Vec<u64> = statuses.iter().map(|e| *e.key()).collect();
-
-                for torrent_id in torrent_ids {
-                    match api_client.get_torrent_stats(torrent_id).await {
-                        Ok(stats) => {
-                            // Try to get piece bitfield
-                            let bitfield_result =
-                                api_client.get_piece_bitfield(torrent_id).await.ok();
-
-                            let mut new_status =
-                                TorrentStatus::new(torrent_id, &stats, bitfield_result.as_ref());
-
-                            // Check if torrent appears stalled
-                            if let Some(existing) = statuses.get(&torrent_id) {
-                                let time_since_update = existing.last_updated.elapsed();
-                                if time_since_update > stalled_timeout && !new_status.is_complete()
-                                {
-                                    new_status.state = TorrentState::Stalled;
-                                }
-                            }
-
-                            statuses.insert(torrent_id, new_status);
-                            trace!("Updated status for torrent {}", torrent_id);
-                        }
-                        Err(e) => {
-                            warn!("Failed to get stats for torrent {}: {}", torrent_id, e);
-                            // Mark as error if we can't get stats
-                            if let Some(mut status) = statuses.get_mut(&torrent_id) {
-                                status.state = TorrentState::Error;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        if let Ok(mut h) = self.monitor_handle.try_lock() {
-            *h = Some(handle);
-        }
-
-        info!(
-            "Started status monitoring with {} second poll interval",
-            poll_interval
-        );
-    }
-
-    /// Stop the status monitoring task
-    fn stop_status_monitoring(&self) {
-        if let Ok(handle) = self.monitor_handle.try_lock() {
-            if let Some(h) = handle.as_ref() {
-                h.abort();
-                info!("Stopped status monitoring");
-            }
-        }
     }
 
     /// Start the background torrent discovery task
@@ -559,7 +486,6 @@ impl TorrentFS {
     pub fn shutdown(&self) {
         info!("Initiating graceful shutdown...");
 
-        self.stop_status_monitoring();
         self.stop_torrent_discovery();
         self.stop_handle_cleanup();
 
@@ -2098,9 +2024,6 @@ impl Filesystem for TorrentFS {
             }
         }
 
-        // Start the background status monitoring task
-        self.start_status_monitoring();
-
         // Start the background torrent discovery task
         self.start_torrent_discovery();
 
@@ -2118,8 +2041,6 @@ impl Filesystem for TorrentFS {
     fn destroy(&mut self) {
         info!("Shutting down rqbit-fuse filesystem");
         self.initialized = false;
-        // Stop the status monitoring task
-        self.stop_status_monitoring();
         // Stop the torrent discovery task
         self.stop_torrent_discovery();
         // Stop the file handle cleanup task

@@ -13,7 +13,7 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
   - See research/status-monitoring-analysis.md
   - **Key Finding**: Status monitoring provides NO critical functionality. All piece availability checking uses API client's separate cache. Safe to remove.
   
-- [ ] **Task 1.1.2**: Remove `start_status_monitoring()` method
+- [x] **Task 1.1.2**: Remove `start_status_monitoring()` method
   - Delete method from `src/fs/filesystem.rs`
   - Remove call to this method in filesystem initialization
   - Remove `monitor_handle` field from TorrentFS struct

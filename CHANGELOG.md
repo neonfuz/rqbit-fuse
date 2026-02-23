@@ -1027,3 +1027,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive metrics collection
 - Error handling and logging infrastructure
 - Unit and integration test suites
+
+## 2026-02-23 - Phase 1.1.2: Remove Status Monitoring Background Task
+
+### Removed
+- Removed `start_status_monitoring()` method from `src/fs/filesystem.rs`
+- Removed `stop_status_monitoring()` method from `src/fs/filesystem.rs`
+- Removed `monitor_handle` field from TorrentFS struct
+- Removed initialization of `monitor_handle` field
+- Removed calls to status monitoring from `init()`, `destroy()`, and `shutdown()` methods
+
+### Impact
+- Reduced codebase by ~70 lines
+- Removed unnecessary background task that was polling torrent status
+- Status monitoring provided no critical functionality (piece availability checking uses API client's separate cache)
+- One less background task running (reduced from 3 to 2 tasks)
