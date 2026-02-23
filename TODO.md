@@ -608,14 +608,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - [x] Add inline documentation explaining the async/sync bridge pattern
   - [x] Document why two different channel types are used
 
-- [ ] **SIMPLIFY-008**: Consolidate Type Definitions
-  - Merge duplicate torrent representations:
-    - `types/torrent.rs::Torrent`
-    - `api/types.rs::TorrentInfo`
-    - `api/types.rs::TorrentDetails`
-  - Choose canonical representation for each entity
-  - Use `From`/`Into` traits for conversions
-  - Remove redundant fields
+- [x] **SIMPLIFY-008**: Consolidate Type Definitions
+  - ✅ **COMPLETED**: Type consolidation already done
+  - `types/torrent.rs::Torrent` was dead code - already removed
+  - `api/types.rs::TorrentDetails` never existed (no implementation found)
+  - `api/types.rs::TorrentInfo` is the canonical representation
+  - Remaining types serve different purposes (summary vs details vs stats) and are not duplicates
 
 ### Documentation Simplifications
 

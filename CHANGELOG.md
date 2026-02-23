@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-008: Consolidate Type Definitions
+  - ✅ **COMPLETED**: Type consolidation already done - no code changes required
+  - `types/torrent.rs::Torrent` was dead code - already removed in prior cleanup
+  - `api/types.rs::TorrentDetails` never existed (no implementation found in codebase)
+  - `api/types.rs::TorrentInfo` is the canonical torrent representation used throughout
+  - Verified remaining types serve different purposes and are not duplicates:
+    - `TorrentSummary`: Lightweight representation for list endpoints
+    - `TorrentInfo`: Detailed representation with file information
+    - `TorrentStats`: API response structure for statistics
+    - `TorrentStatus`: Internal monitoring representation
+  - All types have distinct use cases at different architectural layers
+  - No redundant fields or duplicate representations found
+  - All tests passing with zero clippy warnings
+
+### Changed
+
 - SIMPLIFY-007: Simplify AsyncFuseWorker
   - Removed redundant `new_for_test` method (~30 lines) - tests now use `new()` with explicit capacity
   - Added comprehensive documentation explaining the async/sync bridge pattern
