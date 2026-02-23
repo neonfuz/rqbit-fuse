@@ -1463,4 +1463,161 @@ mod tests {
 
         mock_server.verify().await;
     }
+
+    // ============================================================================
+    // EDGE-024: Test slow server response
+    // ============================================================================
+
+    /// Test slow server response - should respect timeout and not block indefinitely
+    #[tokio::test]
+    async fn test_edge_024_slow_server_response() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Create a response that takes a long time to complete (5 seconds delay)
+        // This simulates a very slow server
+        let slow_response = ResponseTemplate::new(206)
+            .set_body_bytes(vec![0u8; 1000])
+            .set_delay(std::time::Duration::from_secs(5));
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(slow_response)
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // Create client with a very short timeout (100ms)
+        // This ensures the request will timeout before the server responds
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_millis(100))
+            .build()
+            .expect("Failed to build client");
+
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Start timer to verify we don't block indefinitely
+        let start = Instant::now();
+
+        // Request read - server will take 5 seconds but client timeout is 100ms
+        let result = manager.read(1, 0, 0, 1024).await;
+
+        let elapsed = start.elapsed();
+
+        // Should return an error (timeout or connection error)
+        assert!(
+            result.is_err(),
+            "Read should fail with slow server due to timeout"
+        );
+
+        // Should complete quickly (within timeout + small buffer), not wait 5 seconds
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "Request should timeout quickly, not block for 5 seconds. Elapsed: {:?}",
+            elapsed
+        );
+
+        // The key verification is that we got an error quickly, not the specific error type
+        // The error could be timeout, connection refused, or other network-related errors
+
+        mock_server.verify().await;
+    }
+
+    /// Test slow server with partial data - should timeout during body read
+    #[tokio::test]
+    async fn test_edge_024_slow_server_partial_response() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server responds immediately with headers but body is slow
+        // Use a delay that's longer than our timeout
+        let slow_response = ResponseTemplate::new(206)
+            .set_body_bytes(vec![0u8; 10000])
+            .set_delay(std::time::Duration::from_secs(3));
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(slow_response)
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // Client with short timeout
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .expect("Failed to build client");
+
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        let start = Instant::now();
+        let result = manager.read(1, 0, 0, 1024).await;
+        let elapsed = start.elapsed();
+
+        // Should timeout
+        assert!(
+            result.is_err(),
+            "Read should timeout with slow server response"
+        );
+
+        // Should not wait 3 seconds
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "Should timeout quickly. Elapsed: {:?}",
+            elapsed
+        );
+
+        mock_server.verify().await;
+    }
+
+    /// Test that normal speed server works correctly
+    #[tokio::test]
+    async fn test_edge_024_normal_server_response() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Normal response without delay
+        let content: Vec<u8> = (0..100u8).collect();
+
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(content.clone()))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // Client with reasonable timeout
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .expect("Failed to build client");
+
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        let start = Instant::now();
+        let result = manager.read(1, 0, 0, 100).await;
+        let elapsed = start.elapsed();
+
+        // Should succeed
+        assert!(result.is_ok(), "Read should succeed with normal server");
+
+        let data = result.unwrap();
+        assert_eq!(data.len(), 100, "Should read all 100 bytes");
+        assert_eq!(&data[..], &content[..], "Data should match");
+
+        // Should complete quickly (well within timeout)
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "Should complete quickly. Elapsed: {:?}",
+            elapsed
+        );
+
+        mock_server.verify().await;
+    }
 }

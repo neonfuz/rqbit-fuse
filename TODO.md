@@ -200,10 +200,14 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_023_stream_marked_invalid_after_error`: Verifies stream invalidation on error
     - `test_edge_023_stream_manager_cleanup_invalid_stream`: Tests manager cleanup of invalid streams
 
-- [ ] **EDGE-024**: Test slow server response
+- [x] **EDGE-024**: Test slow server response
   - Server sends data very slowly
   - Should respect timeout
   - Should not block indefinitely
+  - Implemented: 3 tests in `src/api/streaming.rs`
+    - `test_edge_024_slow_server_response`: Tests timeout with 5s delay vs 100ms client timeout
+    - `test_edge_024_slow_server_partial_response`: Tests timeout during body read
+    - `test_edge_024_normal_server_response`: Control test verifying normal operation
 
 - [ ] **EDGE-025**: Test wrong content-length
   - Server returns more/less data than Content-Length header

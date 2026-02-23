@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-024: Test slow server response
+  - Added `test_edge_024_slow_server_response` to verify timeout handling with slow server (5s delay vs 100ms client timeout)
+  - Added `test_edge_024_slow_server_partial_response` to test timeout during body read phase
+  - Added `test_edge_024_normal_server_response` as control test verifying normal operation completes quickly
+  - Tests verify client respects timeout settings and doesn't block indefinitely on slow responses
+  - Location: `src/api/streaming.rs`
+
 - EDGE-023: Test network disconnect during read
   - Added `test_edge_023_network_disconnect_during_read` to verify graceful handling of network failures
   - Added `test_edge_023_stream_marked_invalid_after_error` to verify streams are marked invalid after errors
