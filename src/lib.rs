@@ -79,7 +79,7 @@
 //!
 //! This crate uses [`anyhow`] for error handling, allowing flexible error propagation
 //! throughout the application. FUSE-specific errors are mapped to appropriate error
-//! codes in the [`fs::error`] module.
+//! codes in the [`RqbitFuseError`] type.
 //!
 //! ## Blocking Behavior
 //!

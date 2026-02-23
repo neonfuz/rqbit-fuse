@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-001E: Remove old error types and clean up exports
+  - Deleted `src/fs/error.rs` - removed duplicate ToFuseError trait implementation
+  - Removed `pub mod error;` from `src/fs/mod.rs` - error module no longer needed
+  - Updated documentation in `src/lib.rs` - changed reference from `fs::error` module to `RqbitFuseError` type
+  - ToFuseError trait now exclusively provided by `src/error.rs` (single source of truth)
+  - All imports updated to use `crate::error::ToFuseError` instead of `crate::fs::error::ToFuseError`
+  - No breaking changes - all functionality preserved through unified error type
+  - All 114+ tests passing with zero clippy warnings
+  - Net reduction: 32 lines removed
+  - Location: src/fs/error.rs (deleted), src/fs/mod.rs, src/lib.rs
+
 - SIMPLIFY-001D: Migrate config/ module from ConfigError to RqbitFuseError
   - Migrated `src/config/mod.rs` to use unified RqbitFuseError type
   - Removed `ConfigError` enum (4 variants: ReadError, ParseError, InvalidValue, ValidationError)

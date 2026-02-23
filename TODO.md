@@ -475,7 +475,7 @@ Each item is designed to be completed independently. These are edge case tests t
     - [x] **SIMPLIFY-001B**: Migrate api/ module from ApiError to RqbitFuseError
     - [x] **SIMPLIFY-001C**: Migrate fs/ module from FuseError to RqbitFuseError
     - [x] **SIMPLIFY-001D**: Migrate config/ module from ConfigError to RqbitFuseError
-    - [ ] **SIMPLIFY-001E**: Remove old error types and clean up exports
+    - [x] **SIMPLIFY-001E**: Remove old error types and clean up exports
 
 - [x] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
   - Split `src/fs/inode.rs` (1,051 lines) into smaller modules:
