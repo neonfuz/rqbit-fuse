@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SIMPLIFY-012: Remove JSON Output Format from Status Command (Task 1.2.2)
+  - Removed `OutputFormat` enum (Text/Json variants) from `src/main.rs`
+  - Removed `--format` CLI argument from Status subcommand
+  - Removed JSON serialization structs: `StatusOutput`, `ConfigOutput`
+  - Simplified `run_status()` function to output text format only
+  - Status command now only shows "MOUNTED" / "NOT MOUNTED" status
+  - Reduced code complexity by removing conditional format handling
+  - All tests passing with zero clippy warnings
+  - Location: `src/main.rs`
+
 ### Research
 
 - Task 1.1.1: Status Monitoring Analysis

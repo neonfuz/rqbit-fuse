@@ -40,10 +40,15 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
   - **Completed**: Updated run_status() text output to remove filesystem/size/used/available fields
   - **Completed**: Updated run_status() JSON output to remove MountInfoOutput struct and mount_info field
   
-- [ ] **Task 1.2.2**: Update Status command to remove mount info
+- [x] **Task 1.2.2**: Update Status command to remove mount info
   - Modify `run_status()` in `src/main.rs` to remove mount info display
   - Remove filesystem, size, used, available fields from text output
   - Keep only "MOUNTED" / "NOT MOUNTED" status
+  - **Completed**: Removed `OutputFormat` enum (Text/Json) from `src/main.rs`
+  - **Completed**: Removed `--format` CLI argument from Status subcommand
+  - **Completed**: Removed JSON serialization structs (`StatusOutput`, `ConfigOutput`)
+  - **Completed**: Simplified `run_status()` to only output text format
+  - **Completed**: Status command now only shows "MOUNTED" / "NOT MOUNTED"
 
 ### 1.3 Remove JSON Status Output
 - [ ] **Task 1.3.1**: Remove JSON output format from Status command

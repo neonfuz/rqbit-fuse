@@ -74,18 +74,7 @@ enum Commands {
         /// Path to config file
         #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
-
-        /// Output format
-        #[arg(short, long, value_enum, default_value = "text")]
-        format: OutputFormat,
     },
-}
-
-#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
-enum OutputFormat {
-    #[default]
-    Text,
-    Json,
 }
 
 #[tokio::main]
@@ -121,7 +110,7 @@ async fn main() -> Result<()> {
             config,
             force,
         } => run_umount(mount_point, config, force).await,
-        Commands::Status { config, format } => run_status(config, format).await,
+        Commands::Status { config } => run_status(config).await,
     }
 }
 
@@ -209,58 +198,31 @@ async fn run_umount(
     Ok(())
 }
 
-async fn run_status(config_file: Option<PathBuf>, format: OutputFormat) -> Result<()> {
+async fn run_status(config_file: Option<PathBuf>) -> Result<()> {
     let config = load_config(config_file.clone(), None, None, None, None)?;
 
     let mount_point = &config.mount.mount_point;
     let is_mounted = is_mount_point(mount_point).unwrap_or(false);
 
-    match format {
-        OutputFormat::Text => {
-            println!("rqbit-fuse Status");
-            println!("===================");
-            println!();
-            println!("Configuration:");
-            println!(
-                "  Config file:    {}",
-                config_file
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "(default)".to_string())
-            );
-            println!("  API URL:        {}", config.api.url);
-            println!("  Mount point:    {}", mount_point.display());
-            println!();
-            println!("Mount Status:");
-            if is_mounted {
-                println!("  Status:         MOUNTED");
-            } else {
-                println!("  Status:         NOT MOUNTED");
-            }
-        }
-        OutputFormat::Json => {
-            #[derive(serde::Serialize)]
-            struct StatusOutput {
-                mounted: bool,
-                config: ConfigOutput,
-            }
-
-            #[derive(serde::Serialize)]
-            struct ConfigOutput {
-                api_url: String,
-                mount_point: String,
-            }
-
-            let output = StatusOutput {
-                mounted: is_mounted,
-                config: ConfigOutput {
-                    api_url: config.api.url.clone(),
-                    mount_point: mount_point.display().to_string(),
-                },
-            };
-
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        }
+    println!("rqbit-fuse Status");
+    println!("===================");
+    println!();
+    println!("Configuration:");
+    println!(
+        "  Config file:    {}",
+        config_file
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "(default)".to_string())
+    );
+    println!("  API URL:        {}", config.api.url);
+    println!("  Mount point:    {}", mount_point.display());
+    println!();
+    println!("Mount Status:");
+    if is_mounted {
+        println!("  Status:         MOUNTED");
+    } else {
+        println!("  Status:         NOT MOUNTED");
     }
 
     Ok(())
