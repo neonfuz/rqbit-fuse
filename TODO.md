@@ -566,7 +566,7 @@ Each item is designed to be completed independently. These are edge case tests t
   - **See:** [research/file-splitting-strategy.md](research/file-splitting-strategy.md) for detailed plan
   - **Note:** filesystem.rs split deferred - requires careful coordination with SIMPLIFY-001 (Consolidate Error Types)
 
-- [ ] **SIMPLIFY-003**: Simplify Configuration System **[LOW PRIORITY]**
+- [x] **SIMPLIFY-003**: Simplify Configuration System **[LOW PRIORITY]**
   - ~~Remove JSON config file support~~ - Keep both, works seamlessly
   - Remove niche options:
     - `piece_check_enabled` (always check pieces)

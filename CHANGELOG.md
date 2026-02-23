@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-003: Simplify Configuration System
+  - Removed `piece_check_enabled` field from `PerformanceConfig` (now always enabled)
+  - Removed `return_eagain_for_unavailable` field from `PerformanceConfig` (now always uses consistent EAGAIN behavior)
+  - Removed associated environment variables: `TORRENT_FUSE_PIECE_CHECK_ENABLED` and `TORRENT_FUSE_RETURN_EAGAIN`
+  - Updated `src/fs/filesystem.rs` to always check piece availability (removed conditional)
+  - Updated `src/fs/filesystem.rs` to always return EAGAIN for unavailable torrent data
+  - Simplified codebase by removing two niche configuration options
+  - All 361 tests passing with zero clippy warnings
+
 - SIMPLIFY-006: Consolidate Test Helpers
   - Created `tests/common/test_helpers.rs` with consolidated test infrastructure
   - Removed ~110 lines of duplicated code across test files

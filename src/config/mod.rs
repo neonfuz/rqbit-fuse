@@ -74,10 +74,6 @@ use std::path::PathBuf;
 /// max_concurrent_reads = 10
 /// # Read-ahead buffer size (bytes)
 /// readahead_size = 33554432
-/// # Enable piece verification checksums
-/// piece_check_enabled = true
-/// # Return EAGAIN when data is unavailable
-/// return_eagain_for_unavailable = false
 /// # Check piece availability before reading from paused torrents
 /// check_pieces_before_read = true
 ///
@@ -126,8 +122,6 @@ use std::path::PathBuf;
 ///     "read_timeout": 30,
 ///     "max_concurrent_reads": 10,
 ///     "readahead_size": 33554432,
-///     "piece_check_enabled": true,
-///     "return_eagain_for_unavailable": false,
 ///     "check_pieces_before_read": true
 ///   },
 ///   "monitoring": {
@@ -286,8 +280,6 @@ pub struct MountConfig {
 /// * `read_timeout` - Timeout for read operations in seconds (default: 30)
 /// * `max_concurrent_reads` - Maximum concurrent read operations (default: 10)
 /// * `readahead_size` - Size of read-ahead buffer in bytes (default: 32 MiB)
-/// * `piece_check_enabled` - Enable piece verification checksums (default: true)
-/// * `return_eagain_for_unavailable` - Return EAGAIN when data is unavailable (default: false)
 /// * `prefetch_enabled` - Enable prefetching (default: false)
 /// * `check_pieces_before_read` - Check piece availability before reading from paused torrents (default: true)
 ///
@@ -296,8 +288,6 @@ pub struct MountConfig {
 /// - `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds
 /// - `TORRENT_FUSE_MAX_CONCURRENT_READS` - Maximum concurrent reads
 /// - `TORRENT_FUSE_READAHEAD_SIZE` - Read-ahead buffer size in bytes
-/// - `TORRENT_FUSE_PIECE_CHECK_ENABLED` - Enable piece verification
-/// - `TORRENT_FUSE_RETURN_EAGAIN` - Return EAGAIN for unavailable data
 /// - `TORRENT_FUSE_PREFETCH_ENABLED` - Enable prefetching
 /// - `TORRENT_FUSE_CHECK_PIECES_BEFORE_READ` - Check piece availability before read
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -306,8 +296,7 @@ pub struct PerformanceConfig {
     pub read_timeout: u64,
     pub max_concurrent_reads: usize,
     pub readahead_size: u64,
-    pub piece_check_enabled: bool,
-    pub return_eagain_for_unavailable: bool,
+
     pub prefetch_enabled: bool,
     pub check_pieces_before_read: bool,
 }
@@ -423,8 +412,7 @@ impl Default for PerformanceConfig {
             read_timeout: 30,
             max_concurrent_reads: 10,
             readahead_size: 33554432,
-            piece_check_enabled: true,
-            return_eagain_for_unavailable: false,
+
             prefetch_enabled: false,
             check_pieces_before_read: true,
         }
@@ -571,18 +559,7 @@ impl Config {
                 )
             })?;
         }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_PIECE_CHECK_ENABLED") {
-            self.performance.piece_check_enabled = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_PIECE_CHECK_ENABLED has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_RETURN_EAGAIN") {
-            self.performance.return_eagain_for_unavailable = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_RETURN_EAGAIN has invalid format".into())
-            })?;
-        }
+
         if let Ok(val) = std::env::var("TORRENT_FUSE_PREFETCH_ENABLED") {
             self.performance.prefetch_enabled = val.parse().map_err(|_| {
                 RqbitFuseError::InvalidValue(

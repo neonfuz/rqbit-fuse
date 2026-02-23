@@ -885,11 +885,6 @@ impl TorrentFS {
         size: u64,
         piece_length: u64,
     ) -> bool {
-        // If piece checking is disabled, assume all pieces are available
-        if !self.config.performance.piece_check_enabled {
-            return true;
-        }
-
         // Get the status to check piece availability
         if let Some(status) = self.torrent_statuses.get(&torrent_id) {
             // If torrent is complete, all pieces are available
@@ -1205,22 +1200,19 @@ impl Filesystem for TorrentFS {
         );
 
         // Check if we should return EAGAIN for unavailable pieces
-        if self.config.performance.return_eagain_for_unavailable {
-            if let Some(status) = self.torrent_statuses.get(&torrent_id) {
-                // If torrent hasn't started (0 progress) or is in error state, return EAGAIN
-                if status.progress_bytes == 0
-                    || status.state == crate::api::types::TorrentState::Error
-                {
-                    fuse_error!(self, "read", "EAGAIN", reason = "torrent_not_ready");
-                    reply.error(libc::EAGAIN);
-                    return;
-                }
-            } else {
-                // No status available, torrent not monitored yet
-                fuse_error!(self, "read", "EAGAIN", reason = "torrent_not_monitored");
+        if let Some(status) = self.torrent_statuses.get(&torrent_id) {
+            // If torrent hasn't started (0 progress) or is in error state, return EAGAIN
+            if status.progress_bytes == 0 || status.state == crate::api::types::TorrentState::Error
+            {
+                fuse_error!(self, "read", "EAGAIN", reason = "torrent_not_ready");
                 reply.error(libc::EAGAIN);
                 return;
             }
+        } else {
+            // No status available, torrent not monitored yet
+            fuse_error!(self, "read", "EAGAIN", reason = "torrent_not_monitored");
+            reply.error(libc::EAGAIN);
+            return;
         }
 
         // Check piece availability for paused torrents
