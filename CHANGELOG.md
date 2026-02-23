@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SIMPLIFY-001A: Create unified RqbitFuseError enum in src/error.rs
+  - Consolidated three separate error types into single unified enum:
+    - FuseError from src/fs/error.rs (12 variants)
+    - ApiError from src/api/types.rs (18 variants)
+    - ConfigError from src/config/mod.rs (4 variants)
+  - Organized errors into logical categories: Not Found, Permission/Auth, Timeout, I/O, Network/API, Validation, Resource, State, Directory, Filesystem, Data
+  - Implemented `thiserror::Error` derive macro for consistent error formatting
+  - Implemented `to_errno()` method for FUSE error code mapping (eliminates duplicate mappings)
+  - Implemented `is_transient()` for retryable error detection
+  - Implemented `is_server_unavailable()` for server health checking
+  - Added `From` implementations for std::io::Error, reqwest::Error, serde_json::Error, toml::de::Error
+  - Preserved `ToFuseError` trait for anyhow::Error backward compatibility
+  - Added comprehensive unit tests (11 test functions covering all error variants)
+  - Exported new module in src/lib.rs
+  - Location: src/error.rs (473 lines)
+
 ### Changed
 
 - SIMPLIFY-002: Split Large Files - Inode module refactoring
