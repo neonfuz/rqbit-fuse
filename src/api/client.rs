@@ -1004,6 +1004,13 @@ impl RqbitClient {
 
         Err(ApiError::ServerDisconnected.into())
     }
+
+    /// Clear the list_torrents cache (for integration tests).
+    #[doc(hidden)]
+    pub async fn __test_clear_cache(&self) {
+        let mut cache = self.list_torrents_cache.write().await;
+        *cache = None;
+    }
 }
 
 /// Helper function to create an RqbitClient with optional authentication

@@ -147,6 +147,24 @@ impl TorrentFS {
         }
     }
 
+    /// Get access to the known_torrents set (for testing).
+    #[cfg(test)]
+    pub fn known_torrents(&self) -> &Arc<DashSet<u64>> {
+        &self.known_torrents
+    }
+
+    /// Get access to the known_torrents set (for integration tests).
+    #[doc(hidden)]
+    pub fn __test_known_torrents(&self) -> &Arc<DashSet<u64>> {
+        &self.known_torrents
+    }
+
+    /// Clear the list_torrents cache (for integration tests).
+    #[doc(hidden)]
+    pub async fn __test_clear_list_torrents_cache(&self) {
+        self.api_client.__test_clear_cache().await;
+    }
+
     /// Start the background status monitoring task
     fn start_status_monitoring(&self) {
         let api_client = Arc::clone(&self.api_client);
@@ -248,8 +266,10 @@ impl TorrentFS {
                         }
 
                         // Detect and remove torrents that were deleted from rqbit
-                        let current: std::collections::HashSet<u64> = result.current_torrent_ids.iter().copied().collect();
-                        let known: std::collections::HashSet<u64> = known_torrents.iter().map(|e| *e).collect();
+                        let current: std::collections::HashSet<u64> =
+                            result.current_torrent_ids.iter().copied().collect();
+                        let known: std::collections::HashSet<u64> =
+                            known_torrents.iter().map(|e| *e).collect();
                         let removed: Vec<u64> = known.difference(&current).copied().collect();
 
                         for torrent_id in removed {
@@ -260,12 +280,18 @@ impl TorrentFS {
                                 // Close all file handles for this torrent
                                 let removed_handles = file_handles.remove_by_torrent(torrent_id);
                                 if removed_handles > 0 {
-                                    debug!("Closed {} file handles for torrent {}", removed_handles, torrent_id);
+                                    debug!(
+                                        "Closed {} file handles for torrent {}",
+                                        removed_handles, torrent_id
+                                    );
                                 }
 
                                 // Remove the inode tree for this torrent
                                 if !inode_manager.remove_inode(inode) {
-                                    warn!("Failed to remove inode {} for torrent {}", inode, torrent_id);
+                                    warn!(
+                                        "Failed to remove inode {} for torrent {}",
+                                        inode, torrent_id
+                                    );
                                 }
 
                                 // Remove from torrent statuses
@@ -277,9 +303,15 @@ impl TorrentFS {
                                 // Record metric
                                 metrics.fuse.record_torrent_removed();
 
-                                info!("Successfully removed torrent {} from filesystem", torrent_id);
+                                info!(
+                                    "Successfully removed torrent {} from filesystem",
+                                    torrent_id
+                                );
                             } else {
-                                warn!("Torrent {} not found in filesystem, skipping removal", torrent_id);
+                                warn!(
+                                    "Torrent {} not found in filesystem, skipping removal",
+                                    torrent_id
+                                );
                                 known_torrents.remove(&torrent_id);
                             }
                         }
@@ -1656,8 +1688,10 @@ impl Filesystem for TorrentFS {
                             }
 
                             // Detect and remove torrents that were deleted from rqbit
-                            let current: std::collections::HashSet<u64> = result.current_torrent_ids.iter().copied().collect();
-                            let known: std::collections::HashSet<u64> = known_torrents.iter().map(|e| *e).collect();
+                            let current: std::collections::HashSet<u64> =
+                                result.current_torrent_ids.iter().copied().collect();
+                            let known: std::collections::HashSet<u64> =
+                                known_torrents.iter().map(|e| *e).collect();
                             let removed: Vec<u64> = known.difference(&current).copied().collect();
 
                             for torrent_id in removed {
@@ -1666,14 +1700,21 @@ impl Filesystem for TorrentFS {
                                 // Get the torrent's root inode
                                 if let Some(inode) = inode_manager.lookup_torrent(torrent_id) {
                                     // Close all file handles for this torrent
-                                    let removed_handles = file_handles.remove_by_torrent(torrent_id);
+                                    let removed_handles =
+                                        file_handles.remove_by_torrent(torrent_id);
                                     if removed_handles > 0 {
-                                        debug!("Closed {} file handles for torrent {}", removed_handles, torrent_id);
+                                        debug!(
+                                            "Closed {} file handles for torrent {}",
+                                            removed_handles, torrent_id
+                                        );
                                     }
 
                                     // Remove the inode tree for this torrent
                                     if !inode_manager.remove_inode(inode) {
-                                        warn!("Failed to remove inode {} for torrent {}", inode, torrent_id);
+                                        warn!(
+                                            "Failed to remove inode {} for torrent {}",
+                                            inode, torrent_id
+                                        );
                                     }
 
                                     // Remove from torrent statuses
@@ -1685,9 +1726,15 @@ impl Filesystem for TorrentFS {
                                     // Record metric
                                     metrics.fuse.record_torrent_removed();
 
-                                    info!("Successfully removed torrent {} from filesystem", torrent_id);
+                                    info!(
+                                        "Successfully removed torrent {} from filesystem",
+                                        torrent_id
+                                    );
                                 } else {
-                                    warn!("Torrent {} not found in filesystem, skipping removal", torrent_id);
+                                    warn!(
+                                        "Torrent {} not found in filesystem, skipping removal",
+                                        torrent_id
+                                    );
                                     known_torrents.remove(&torrent_id);
                                 }
                             }

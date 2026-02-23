@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- IDEA2-006 to IDEA2-007: Handle open file handles during torrent removal and add integration test
+  - Verified file handles are properly removed when torrents are deleted from rqbit
+  - `read()` returns EBADF for invalid file handles after torrent removal
+  - `release()` handles already-removed handles gracefully
+  - Added integration test `test_torrent_removal_from_rqbit` in `tests/integration_tests.rs`
+  - Test verifies torrent is removed from filesystem after discovery detects deletion
+  - Test confirms removed torrent is no longer visible in directory listings
+  - Added `__test_known_torrents()` and `__test_clear_list_torrents_cache()` test helpers
+  - Location: `src/fs/filesystem.rs`, `src/api/client.rs`, `tests/integration_tests.rs`
+  - All tests pass: `cargo test` ✅
+
 - IDEA2-001 to IDEA2-005: Implement torrent removal detection from rqbit
   - Modified `discover_torrents()` to return `DiscoveryResult` with current torrent IDs
   - Populated `known_torrents: DashSet<u64>` during discovery to track known torrents

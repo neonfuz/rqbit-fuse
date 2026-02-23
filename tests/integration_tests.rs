@@ -752,6 +752,91 @@ async fn test_nested_directory_path_resolution() {
         .is_some());
 }
 
+/// Test that torrents are automatically removed from FUSE when deleted from rqbit
+/// Verifies IDEA2-007: Basic torrent removal functionality
+#[tokio::test]
+async fn test_torrent_removal_from_rqbit() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
+
+    // Create torrent info for mock responses
+    let torrent_info = TorrentInfo {
+        id: 20,
+        info_hash: "removal_test".to_string(),
+        name: "Removal Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 100,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 200,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(262144),
+    };
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics.clone());
+
+    // Manually create torrent structure (simulating discovery)
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    // Also need to populate known_torrents for removal detection to work
+    fs.__test_known_torrents().insert(20);
+
+    let inode_manager = fs.inode_manager();
+
+    // Verify torrent exists initially
+    let torrent_inode = inode_manager.lookup_torrent(20);
+    assert!(torrent_inode.is_some(), "Torrent should exist initially");
+
+    // Verify files are visible
+    let torrent_children = inode_manager.get_children(torrent_inode.unwrap());
+    assert_eq!(torrent_children.len(), 2, "Should have 2 entries");
+
+    // Mock empty torrent list (simulating torrent removal from rqbit)
+    Mock::given(method("GET"))
+        .and(path("/torrents"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "torrents": []
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Clear the API cache so the new mock is used
+    fs.__test_clear_list_torrents_cache().await;
+
+    // Trigger torrent discovery (with force to bypass cooldown)
+    let refreshed = fs.refresh_torrents(true).await;
+    assert!(refreshed, "Torrent refresh should have been performed");
+
+    // Verify torrent is removed from filesystem
+    let torrent_inode_after = inode_manager.lookup_torrent(20);
+    assert!(
+        torrent_inode_after.is_none(),
+        "Torrent should be removed from filesystem after deletion from rqbit"
+    );
+
+    // Verify torrent's paths return ENOENT (no longer in directory listing)
+    let root_children = inode_manager.get_children(1);
+    let torrent_still_visible = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == "Removal Test Torrent");
+    assert!(
+        !torrent_still_visible,
+        "Removed torrent should not be visible in root directory"
+    );
+}
+
 // Debug test to see actual structure
 #[tokio::test]
 async fn debug_nested_structure() {

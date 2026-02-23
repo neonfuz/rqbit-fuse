@@ -209,11 +209,12 @@ When a torrent is removed from rqbit:
   - Update `known_torrents` with current list
   - Location: `src/fs/filesystem.rs:discover_torrents()`
 
-- [ ] **IDEA2-006**: Handle open file handles during removal
+- [x] **IDEA2-006**: Handle open file handles during removal
   - Close all file handles associated with removed torrent
   - Return EBADF for subsequent operations on those handles
   - Add check in read/release operations for removed torrents
   - Location: `src/fs/filesystem.rs` and `src/types/handle.rs`
+  - Implemented: `remove_torrent_from_fs()` calls `file_handles.remove_by_torrent()`, `read()` returns EBADF for invalid handles, `release()` handles gracefully
 
 #### Phase 3: Testing and Edge Cases
 
@@ -223,13 +224,14 @@ When a torrent is removed from rqbit:
 
 **Tasks:**
 
-- [ ] **IDEA2-007**: Write test for basic torrent removal
+- [x] **IDEA2-007**: Write test for basic torrent removal
   - Mount filesystem with one torrent
   - Verify torrent is visible
   - Simulate torrent removal from rqbit (mock server)
   - Trigger discovery
   - Verify torrent is no longer visible in directory listing
   - Location: `tests/integration_tests.rs`
+  - Implemented: Added `test_torrent_removal_from_rqbit` test that verifies automatic removal
 
 - [ ] **IDEA2-008**: Write test for removal with open files
   - Open file from torrent
