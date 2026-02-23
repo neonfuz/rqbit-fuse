@@ -214,6 +214,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- SIMPLIFY-2-006: Remove circuit breaker implementation
+  - Deleted `src/api/circuit_breaker.rs` (85 lines)
+  - Removed circuit breaker from `src/api/mod.rs` exports
+  - Removed `with_circuit_breaker()` constructor and `circuit_state()` method from `RqbitClient`
+  - Simplified `execute_with_retry()` to remove circuit breaker checks and recording
+  - Simplified `health_check()` to remove circuit breaker state tracking
+  - Removed circuit breaker unit tests
+  - Total: 185 lines removed (85 from circuit_breaker.rs + ~100 from client.rs integration)
+  - Rationale: Circuit breaker is over-engineered for localhost API (127.0.0.1:3030)
+  - Existing retry logic (3 retries with exponential backoff) provides adequate resilience
+  - Circuit breakers are designed for distributed systems, not local services
+  - See analysis: `research/circuit_breaker_analysis_decision.md`
+  - Location: `src/api/circuit_breaker.rs` (deleted), `src/api/client.rs`, `src/api/mod.rs`
+
 - Reduced test coverage in `src/fs/inode.rs` from 720 lines to ~290 lines (50% ratio)
   - Removed 4 redundant concurrent test variations, keeping `test_concurrent_allocation_consistency`
   - Removed property-based tests (proptest) that duplicated unit test coverage

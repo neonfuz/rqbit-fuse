@@ -1,4 +1,3 @@
-use crate::api::circuit_breaker::{CircuitBreaker, CircuitState};
 use crate::api::streaming::PersistentStreamManager;
 use crate::api::types::*;
 use crate::metrics::ApiMetrics;
@@ -29,8 +28,6 @@ pub struct RqbitClient {
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
-    /// Circuit breaker for resilience
-    circuit_breaker: CircuitBreaker,
     /// Metrics collection
     metrics: Arc<ApiMetrics>,
     /// Persistent stream manager for efficient sequential reads
@@ -98,7 +95,6 @@ impl RqbitClient {
             base_url,
             max_retries,
             retry_delay,
-            circuit_breaker: CircuitBreaker::new(5, Duration::from_secs(30)),
             metrics,
             stream_manager,
             auth_credentials,
@@ -107,53 +103,6 @@ impl RqbitClient {
             status_bitfield_cache: Arc::new(RwLock::new(HashMap::new())),
             status_bitfield_cache_ttl: Duration::from_secs(5),
         })
-    }
-
-    /// Create a new RqbitClient with custom retry and circuit breaker configuration
-    pub fn with_circuit_breaker(
-        base_url: String,
-        max_retries: u32,
-        retry_delay: Duration,
-        failure_threshold: u32,
-        circuit_timeout: Duration,
-        auth_credentials: Option<(String, String)>,
-        metrics: Arc<ApiMetrics>,
-    ) -> Result<Self> {
-        // Validate URL at construction time (fail fast on invalid URL)
-        let _ = reqwest::Url::parse(&base_url)
-            .map_err(|e| ApiError::ClientInitializationError(format!("Invalid URL: {}", e)))?;
-
-        let client = Client::builder()
-            .timeout(Duration::from_secs(60))
-            .pool_max_idle_per_host(10)
-            .build()
-            .map_err(|e| ApiError::ClientInitializationError(e.to_string()))?;
-
-        let stream_manager = PersistentStreamManager::new(
-            client.clone(),
-            base_url.clone(),
-            auth_credentials.clone(),
-        );
-
-        Ok(Self {
-            client,
-            base_url,
-            max_retries,
-            retry_delay,
-            circuit_breaker: CircuitBreaker::new(failure_threshold, circuit_timeout),
-            metrics,
-            stream_manager,
-            auth_credentials,
-            list_torrents_cache: Arc::new(RwLock::new(None)),
-            list_torrents_cache_ttl: Duration::from_secs(30),
-            status_bitfield_cache: Arc::new(RwLock::new(HashMap::new())),
-            status_bitfield_cache_ttl: Duration::from_secs(5),
-        })
-    }
-
-    /// Get the current circuit breaker state
-    pub async fn circuit_state(&self) -> CircuitState {
-        self.circuit_breaker.state().await
     }
 
     /// Create Authorization header for HTTP Basic Auth
@@ -175,7 +124,7 @@ impl RqbitClient {
         }
     }
 
-    /// Helper method to execute a request with retry logic and circuit breaker
+    /// Helper method to execute a request with retry logic
     async fn execute_with_retry<F, Fut>(
         &self,
         endpoint: &str,
@@ -187,13 +136,6 @@ impl RqbitClient {
     {
         let start_time = Instant::now();
         self.metrics.record_request(endpoint);
-
-        // Check circuit breaker first
-        if !self.circuit_breaker.can_execute().await {
-            self.metrics
-                .record_failure(endpoint, "circuit_breaker_open");
-            return Err(ApiError::CircuitBreakerOpen.into());
-        }
 
         let mut last_error = None;
         let mut final_result = None;
@@ -242,24 +184,19 @@ impl RqbitClient {
             }
         }
 
-        // Record result in circuit breaker and metrics
+        // Record result in metrics
         match final_result {
             Some(Ok(response)) => {
-                self.circuit_breaker.record_success().await;
                 self.metrics.record_success(endpoint, start_time.elapsed());
                 Ok(response)
             }
             Some(Err(api_error)) => {
-                if api_error.is_transient() {
-                    self.circuit_breaker.record_failure().await;
-                }
                 self.metrics
                     .record_failure(endpoint, &api_error.to_string());
                 Err(api_error.into())
             }
             None => {
                 // All retries exhausted with transient errors
-                self.circuit_breaker.record_failure().await;
                 let error = last_error.unwrap_or(ApiError::RetryLimitExceeded);
                 self.metrics.record_failure(endpoint, &error.to_string());
                 Err(error.into())
@@ -955,19 +892,14 @@ impl RqbitClient {
         match health_client.get(&url).send().await {
             Ok(response) => {
                 if response.status().is_success() {
-                    self.circuit_breaker.record_success().await;
                     Ok(true)
                 } else {
                     warn!("Health check returned status: {}", response.status());
-                    self.circuit_breaker.record_failure().await;
                     Ok(false)
                 }
             }
             Err(e) => {
                 let api_error: ApiError = e.into();
-                if api_error.is_transient() {
-                    self.circuit_breaker.record_failure().await;
-                }
                 warn!("Health check failed: {}", api_error);
                 Ok(false)
             }
@@ -1155,34 +1087,6 @@ mod tests {
             message: "not found".to_string()
         }
         .is_transient());
-    }
-
-    #[tokio::test]
-    async fn test_circuit_breaker() {
-        let cb = CircuitBreaker::new(3, Duration::from_millis(100));
-
-        // Initially closed
-        assert!(cb.can_execute().await);
-        assert_eq!(cb.state().await, CircuitState::Closed);
-
-        // Record failures
-        cb.record_failure().await;
-        cb.record_failure().await;
-        assert!(cb.can_execute().await); // Still closed
-
-        cb.record_failure().await; // Third failure opens circuit
-        assert!(!cb.can_execute().await); // Circuit is open
-        assert_eq!(cb.state().await, CircuitState::Open);
-
-        // Wait for timeout
-        sleep(Duration::from_millis(150)).await;
-        assert!(cb.can_execute().await); // Now half-open
-        assert_eq!(cb.state().await, CircuitState::HalfOpen);
-
-        // Record success closes circuit
-        cb.record_success().await;
-        assert!(cb.can_execute().await);
-        assert_eq!(cb.state().await, CircuitState::Closed);
     }
 
     // =========================================================================
