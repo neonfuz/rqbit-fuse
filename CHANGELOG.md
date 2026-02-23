@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Research
 
+- SIMPLIFY-2-009: Verify proptest dev dependency usage
+  - Analyzed proptest usage across the codebase
+  - Found declaration in `Cargo.toml:37` but no actual usage
+  - Only reference was a misleading comment in `src/fs/inode.rs:695`
+  - No `use proptest`, `proptest!`, or property-based tests found
+  - **Conclusion**: proptest is an unused dev dependency
+  - Recommendation: REMOVE the dependency - it was never implemented
+  - Created research document: `research/proptest_usage_verification.md`
+  - Location: `Cargo.toml`, `src/fs/inode.rs`
+
+- SIMPLIFY-2-009: Verify base64 dependency usage
+  - Analyzed base64 usage across the codebase
+  - Found active usage in `src/api/client.rs:112` for HTTP Basic Auth header encoding
+  - Found active usage in `src/api/streaming.rs:341` for streaming client authentication
+  - Verified no other uses of base64 exist in the codebase
+  - **Conclusion**: base64 is legitimately required for HTTP Basic Auth functionality
+  - Recommendation: KEEP the dependency - it is properly used
+  - Created research document: `research/base64_usage_verification.md`
+  - Location: `src/api/client.rs`, `src/api/streaming.rs`
+
 - SIMPLIFY-2-007: Review file handle state tracking in `src/types/handle.rs`
   - Analyzed `FileHandleState` struct and its 5 fields (last_offset, last_size, sequential_count, last_access, is_prefetching)
   - Reviewed sequential read detection logic and prefetching trigger mechanism
@@ -235,6 +255,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 ### Removed
+
+- SIMPLIFY-2-009: Remove unused `proptest` dev dependency
+  - Removed `proptest = "1.4"` from `[dev-dependencies]` in `Cargo.toml`
+  - Removed misleading "// Property-based tests using proptest" comment from `src/fs/inode.rs`
+  - No actual proptest tests existed - only a comment suggesting future use
+  - Total: 1 dev dependency removed, 1 comment removed
+  - Rationale: Dependency was declared but never implemented or used
+  - Benefits: Faster dev builds, cleaner dependency tree, reduced maintenance
+  - See analysis: `research/proptest_usage_verification.md`
+  - Location: `Cargo.toml`, `src/fs/inode.rs`
 
 - SIMPLIFY-2-009: Remove unused `strum` dependency
   - Removed `strum = { version = "0.25", features = ["derive"] }` from `Cargo.toml`

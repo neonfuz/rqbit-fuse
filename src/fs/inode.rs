@@ -692,7 +692,6 @@ mod tests {
         assert_eq!(children.len(), 2);
     }
 
-    // Property-based tests using proptest
     #[test]
     fn test_concurrent_allocation_consistency() {
         use std::sync::Arc;
