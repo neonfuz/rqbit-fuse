@@ -34,6 +34,7 @@ tempfile = "3.9"
 wiremock = "0.6"
 criterion = { version = "0.5", features = ["async_tokio"] }
 futures = "0.3"
+unicode-normalization = "0.1"
 
 [[bench]]
 name = "performance"

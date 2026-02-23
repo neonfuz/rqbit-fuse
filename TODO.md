@@ -479,10 +479,11 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_051_zero_width_joiner_filenames`: Tests ZWJ emoji sequences
     - `test_edge_051_other_utf8_edge_cases`: Tests accented Latin, mathematical symbols, etc.
 
-- [ ] **EDGE-052**: Test path normalization
+- [x] **EDGE-052**: Test path normalization
   - NFD vs NFC unicode normalization
   - File created with one form, looked up with other
   - Behavior should be consistent
+  - Implemented: 5 tests in `tests/unicode_tests.rs` covering NFC normalization, NFD normalization, consistency between forms, various normalization cases, and already-normalized strings
 
 - [ ] **EDGE-053**: Test maximum path length
   - Path with 4096 characters

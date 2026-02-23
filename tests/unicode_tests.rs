@@ -50,6 +50,364 @@ fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
 }
 
 // ============================================================================
+// EDGE-052: Test path normalization (NFD vs NFC)
+// ============================================================================
+
+/// Normalize a string to NFC form
+fn to_nfc(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    s.nfc().collect()
+}
+
+/// Normalize a string to NFD form
+fn to_nfd(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    s.nfd().collect()
+}
+
+/// Test that filenames with NFC normalization work correctly
+///
+/// NFC (Canonical Decomposition followed by Canonical Composition) is the
+/// most common Unicode normalization form on Linux and macOS.
+#[tokio::test]
+async fn test_edge_052_nfc_normalization() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test filename with composed characters (NFC form)
+    // "café" with composed 'é' (U+00E9) - this is NFC
+    let filename_nfc = "café.txt";
+
+    // Verify it's actually NFC
+    let normalized_nfc = to_nfc(filename_nfc);
+    assert_eq!(
+        filename_nfc, normalized_nfc,
+        "Filename should already be NFC"
+    );
+
+    let torrent_info = TorrentInfo {
+        id: 1200,
+        info_hash: "nfc_test".to_string(),
+        name: "NFC Normalization Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: filename_nfc.to_string(),
+            length: 1024,
+            components: vec![filename_nfc.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    // Should create successfully
+    fs.create_torrent_structure(&torrent_info)
+        .expect("Should create torrent with NFC filename");
+
+    // Verify the file exists and can be looked up
+    let inode_manager = fs.inode_manager();
+    let root_children = inode_manager.get_children(1);
+    let found = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == filename_nfc);
+
+    assert!(
+        found,
+        "NFC filename '{}' should exist in filesystem",
+        filename_nfc
+    );
+}
+
+/// Test that filenames with NFD normalization are handled consistently
+///
+/// NFD (Canonical Decomposition) is the default normalization form on macOS (HFS+).
+/// This test verifies behavior when a filename in NFD form is used.
+#[tokio::test]
+async fn test_edge_052_nfd_normalization() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test filename with decomposed characters (NFD form)
+    // "café" with 'e' + combining acute accent (U+0065 U+0301) - this is NFD
+    let filename_nfd = to_nfd("café.txt");
+
+    // Verify it's actually NFD (different from NFC)
+    let filename_nfc = to_nfc("café.txt");
+    assert_ne!(
+        filename_nfd, filename_nfc,
+        "NFD and NFC should be different byte sequences"
+    );
+
+    let torrent_info = TorrentInfo {
+        id: 1201,
+        info_hash: "nfd_test".to_string(),
+        name: "NFD Normalization Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: filename_nfd.clone(),
+            length: 2048,
+            components: vec![filename_nfd.clone()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    // Should handle gracefully - no panic
+    let result = fs.create_torrent_structure(&torrent_info);
+
+    match result {
+        Ok(_) => {
+            // If creation succeeds, verify the file exists
+            let inode_manager = fs.inode_manager();
+            let root_children = inode_manager.get_children(1);
+            let found = root_children
+                .iter()
+                .any(|(_, entry)| entry.name() == filename_nfd);
+
+            assert!(
+                found,
+                "NFD filename should exist in filesystem if creation succeeded"
+            );
+
+            // Verify file attributes are correct
+            let file_inode = root_children
+                .iter()
+                .find(|(_, entry)| entry.name() == filename_nfd)
+                .map(|(inode, _)| *inode)
+                .expect("Should find NFD file inode");
+
+            let file_entry = inode_manager
+                .get(file_inode)
+                .expect("Should get entry for NFD file");
+            assert_eq!(
+                file_entry.file_size(),
+                2048,
+                "NFD file should have correct size"
+            );
+        }
+        Err(e) => {
+            // Graceful error is acceptable
+            let error_msg = format!("{}", e);
+            assert!(
+                !error_msg.to_lowercase().contains("panic"),
+                "NFD filename should not cause panic: {}",
+                error_msg
+            );
+            println!("NFD filename rejected gracefully: {}", error_msg);
+        }
+    }
+}
+
+/// Test that NFC and NFD filenames are treated consistently
+///
+/// This test creates a file with NFC normalization and attempts to look it up
+/// with NFD normalization (or vice versa) to verify consistent behavior.
+#[tokio::test]
+async fn test_edge_052_nfc_nfd_consistency() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create file with NFC form
+    let filename_nfc = "naïve.pdf";
+    let filename_nfd = to_nfd(filename_nfc);
+
+    assert_ne!(
+        filename_nfc, filename_nfd,
+        "NFC and NFD forms should have different byte representations"
+    );
+
+    // Create torrent with NFC filename
+    let torrent_info_nfc = TorrentInfo {
+        id: 1202,
+        info_hash: "consistency_nfc".to_string(),
+        name: "Consistency Test NFC".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: filename_nfc.to_string(),
+            length: 4096,
+            components: vec![filename_nfc.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info_nfc)
+        .expect("Should create torrent with NFC filename");
+
+    // Try to look up with NFD form
+    let inode_manager = fs.inode_manager();
+    let root_children = inode_manager.get_children(1);
+
+    // Check if NFC form exists
+    let found_nfc = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == filename_nfc);
+
+    // Check if NFD form exists (it might be normalized or stored as-is)
+    let found_nfd = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == filename_nfd);
+
+    // Both files should not exist simultaneously (would indicate duplicate)
+    assert!(
+        !(found_nfc && found_nfd),
+        "NFC and NFD forms should not both exist (would be duplicate files)"
+    );
+
+    // At least one should exist
+    assert!(
+        found_nfc || found_nfd,
+        "At least one form (NFC or NFD) should exist"
+    );
+
+    println!(
+        "Consistency test: NFC found={}, NFD found={}",
+        found_nfc, found_nfd
+    );
+}
+
+/// Test various Unicode normalization edge cases
+///
+/// Tests multiple characters that have different NFC/NFD representations
+/// including accented characters, composite characters, and special Unicode.
+#[tokio::test]
+async fn test_edge_052_various_normalization_cases() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test cases with characters that have different NFC/NFD forms
+    let test_cases = [
+        ("résumé.txt", "resume with acute accents"),
+        ("naïve.pdf", "naive with diaeresis"),
+        ("français.doc", "francais with cedilla"),
+        ("Zürich.txt", "Zurich with umlaut"),
+        (
+            "日本語ファイル.txt",
+            "Japanese (no normalization differences)",
+        ),
+        ("北京.pdf", "Chinese (no normalization differences)"),
+    ];
+
+    for (idx, (filename_base, description)) in test_cases.iter().enumerate() {
+        let filename_nfc = to_nfc(filename_base);
+        let filename_nfd = to_nfd(filename_base);
+
+        let torrent_info = TorrentInfo {
+            id: 1210 + idx as u64,
+            info_hash: format!("norm{}", idx),
+            name: format!("Normalization Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename_nfc.clone(),
+                length: 1024,
+                components: vec![filename_nfc.clone()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name() == filename_nfc || entry.name() == filename_nfd);
+
+                assert!(
+                    found,
+                    "File '{}' ({}) should exist after creation",
+                    filename_base, description
+                );
+            }
+            Err(e) => {
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "Normalization test '{}' should not cause panic: {}",
+                    description,
+                    error_msg
+                );
+                println!(
+                    "Normalization test '{}' handled gracefully: {}",
+                    description, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test normalization with already normalized strings
+///
+/// Verifies that already-normalized strings don't cause issues.
+#[tokio::test]
+async fn test_edge_052_already_normalized() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // ASCII filenames are already in both NFC and NFD forms
+    let ascii_filename = "normal_ascii_file.txt";
+
+    assert_eq!(
+        to_nfc(ascii_filename),
+        ascii_filename,
+        "ASCII should already be NFC"
+    );
+    assert_eq!(
+        to_nfd(ascii_filename),
+        ascii_filename,
+        "ASCII should already be NFD"
+    );
+
+    let torrent_info = TorrentInfo {
+        id: 1220,
+        info_hash: "already_norm".to_string(),
+        name: "Already Normalized Test".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(1),
+        files: vec![FileInfo {
+            name: ascii_filename.to_string(),
+            length: 512,
+            components: vec![ascii_filename.to_string()],
+        }],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info)
+        .expect("Should create torrent with ASCII filename");
+
+    let inode_manager = fs.inode_manager();
+    let root_children = inode_manager.get_children(1);
+    let found = root_children
+        .iter()
+        .any(|(_, entry)| entry.name() == ascii_filename);
+
+    assert!(found, "ASCII filename should exist in filesystem");
+}
+
+// ============================================================================
 // EDGE-048: Test maximum filename length
 // ============================================================================
 

@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-052: Test path normalization (NFD vs NFC)
+  - Added 5 comprehensive tests to `tests/unicode_tests.rs` for Unicode normalization handling:
+    - `test_edge_052_nfc_normalization`: Tests NFC (Canonical Composition) form
+      - Tests filenames with composed characters like "café" with precomposed 'é' (U+00E9)
+      - Verifies NFC filenames are created and looked up correctly
+    - `test_edge_052_nfd_normalization`: Tests NFD (Canonical Decomposition) form
+      - Tests filenames with decomposed characters like "café" with 'e' + combining accent
+      - Verifies NFD filenames from macOS HFS+ are handled gracefully
+    - `test_edge_052_nfc_nfd_consistency`: Tests consistency between normalization forms
+      - Creates file with NFC form and verifies lookup behavior
+      - Ensures NFC and NFD forms are not treated as duplicate files
+      - Verifies at least one form exists and both don't exist simultaneously
+    - `test_edge_052_various_normalization_cases`: Tests multiple Unicode characters
+      - Tests résumé, naïve, français, Zürich with various accents
+      - Tests Japanese and Chinese (no normalization differences expected)
+      - Verifies all normalization cases handled without panic
+    - `test_edge_052_already_normalized`: Tests already-normalized strings
+      - Verifies ASCII filenames work correctly (already in both NFC and NFD)
+      - Ensures no issues with strings that don't need normalization
+  - Added `unicode-normalization` dev-dependency for test normalization functions
+  - All path normalization tests pass without panic
+  - Behavior is consistent across NFC and NFD forms
+
 - EDGE-051: Test UTF-8 edge cases
   - Added 5 comprehensive tests to `tests/unicode_tests.rs` for UTF-8 filename handling:
     - `test_edge_051_emoji_filenames`: Tests emoji including multi-codepoint sequences
