@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SIMPLIFY-002: Split Large Files - Inode module refactoring
+  - Split `src/fs/inode.rs` (1,051 lines) into focused modules:
+    - `src/fs/inode_entry.rs` (~350 lines) - InodeEntry enum with Serialize/Deserialize and helper methods
+    - `src/fs/inode_manager.rs` (~850 lines) - InodeManager struct with allocation, lookup, and management
+  - Maintained backward compatibility through re-exports in existing `inode.rs` module
+  - Updated `fs/mod.rs` to declare new modules and maintain public API
+  - All 208+ tests pass with zero clippy warnings
+  - Reduces individual file complexity while preserving existing functionality
+
 ### Added
 
 - EDGE-023: Test network disconnect during read

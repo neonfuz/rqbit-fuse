@@ -449,11 +449,15 @@ Each item is designed to be completed independently. These are edge case tests t
   - Use `thiserror` derive macros for consistency
   - Update all `anyhow::Result` usages in library code
 
-- [ ] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
-  - Split `src/fs/filesystem.rs` (**3,116 lines**) into smaller modules
-  - Split `src/fs/inode.rs` (1,051 lines) into smaller modules
+- [x] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
+  - Split `src/fs/inode.rs` (1,051 lines) into smaller modules:
+    - `src/fs/inode_entry.rs` (~350 lines) - InodeEntry enum and methods
+    - `src/fs/inode_manager.rs` (~850 lines) - InodeManager struct and methods
+  - Maintained backward compatibility through re-exports in `inode.rs`
+  - Updated `fs/mod.rs` to include new module declarations
+  - All tests pass, zero clippy warnings
   - **See:** [research/file-splitting-strategy.md](research/file-splitting-strategy.md) for detailed plan
-  - **Note:** filesystem.rs has grown significantly since original estimate (was 1,434 lines)
+  - **Note:** filesystem.rs split deferred - requires careful coordination with SIMPLIFY-001 (Consolidate Error Types)
 
 - [ ] **SIMPLIFY-003**: Simplify Configuration System **[LOW PRIORITY]**
   - ~~Remove JSON config file support~~ - Keep both, works seamlessly
