@@ -1231,4 +1231,228 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_edge_045_inode_limit_exhaustion_with_torrents() {
+        // EDGE-045: Test inode limit exhaustion
+        // Set max_inodes = 100
+        // Create 101 torrents
+        // 101st should fail gracefully
+        // No memory corruption
+
+        let manager = InodeManager::with_max_inodes(100);
+
+        // Verify initial state (root inode already exists)
+        assert_eq!(manager.len(), 1, "Only root inode should exist initially");
+        assert_eq!(manager.max_inodes(), 100);
+        assert!(
+            manager.can_allocate(),
+            "Should be able to allocate initially"
+        );
+
+        // Create 99 torrents (root + 99 = 100 total, reaching the limit)
+        let mut allocated_torrents = Vec::new();
+        for i in 0..99 {
+            let torrent_id = i as u64 + 1;
+            let name = format!("torrent_{}", i);
+            let inode = manager.allocate_torrent_directory(torrent_id, name, 1);
+
+            assert_ne!(
+                inode, 0,
+                "Torrent {} (inode allocation {}) should succeed",
+                torrent_id, i
+            );
+            assert!(
+                manager.contains(inode),
+                "Allocated torrent inode {} should exist",
+                inode
+            );
+            assert_eq!(
+                manager.lookup_torrent(torrent_id),
+                Some(inode),
+                "Torrent {} should be lookupable by ID",
+                torrent_id
+            );
+
+            allocated_torrents.push((torrent_id, inode));
+        }
+
+        // Should now have exactly 100 entries (root + 99 torrents)
+        assert_eq!(
+            manager.len(),
+            100,
+            "Should have exactly 100 entries (root + 99 torrents)"
+        );
+        assert_eq!(manager.inode_count(), 99, "Should have 99 non-root inodes");
+        assert!(
+            !manager.can_allocate(),
+            "Should not be able to allocate at limit"
+        );
+
+        // 100th torrent allocation should fail and return 0
+        let failed_torrent_id = 100u64;
+        let failed_inode = manager.allocate_torrent_directory(
+            failed_torrent_id,
+            "overflow_torrent".to_string(),
+            1,
+        );
+        assert_eq!(
+            failed_inode, 0,
+            "100th torrent allocation should fail and return 0 (limit reached)"
+        );
+
+        // Verify the failed torrent is not registered
+        assert!(
+            manager.lookup_torrent(failed_torrent_id).is_none(),
+            "Failed torrent should not be registered"
+        );
+
+        // Verify state hasn't changed
+        assert_eq!(
+            manager.len(),
+            100,
+            "Should still have exactly 100 entries after failed allocation"
+        );
+        assert_eq!(
+            manager.inode_count(),
+            99,
+            "Should still have 99 non-root inodes"
+        );
+
+        // Try multiple more allocations to ensure consistent failure
+        for i in 100..110 {
+            let torrent_id = i as u64 + 1;
+            let inode =
+                manager.allocate_torrent_directory(torrent_id, format!("extra_torrent_{}", i), 1);
+            assert_eq!(inode, 0, "Allocation {} past limit should fail", i - 99);
+        }
+
+        // Verify still at limit
+        assert_eq!(
+            manager.len(),
+            100,
+            "Should still have exactly 100 entries after multiple failed allocations"
+        );
+
+        // Verify all originally allocated torrents still exist and are intact
+        for (torrent_id, inode) in &allocated_torrents {
+            assert!(
+                manager.contains(*inode),
+                "Torrent {} (inode {}) should still exist",
+                torrent_id,
+                inode
+            );
+            let entry = manager.get(*inode).expect("Should retrieve torrent");
+            assert!(
+                entry.is_directory(),
+                "Torrent {} should be a directory",
+                torrent_id
+            );
+            assert_eq!(
+                manager.lookup_torrent(*torrent_id),
+                Some(*inode),
+                "Torrent {} lookup should still work",
+                torrent_id
+            );
+        }
+
+        // Test that mixed entry types also fail at limit
+        // Try to allocate a file (should fail)
+        let failed_file = manager.allocate_file("test.txt".to_string(), 1, 1, 0, 100);
+        assert_eq!(failed_file, 0, "File allocation at limit should fail");
+
+        // Try to allocate a symlink (should fail)
+        let failed_symlink = manager.allocate_symlink("link".to_string(), 1, "/target".to_string());
+        assert_eq!(failed_symlink, 0, "Symlink allocation at limit should fail");
+
+        // Verify still at limit after mixed type attempts
+        assert_eq!(
+            manager.len(),
+            100,
+            "Should still have exactly 100 entries after mixed allocation attempts"
+        );
+
+        // Test that removing a torrent allows new allocation
+        let (first_torrent_id, first_inode) = allocated_torrents[0];
+        assert!(
+            manager.remove_inode(first_inode),
+            "Should be able to remove first torrent"
+        );
+
+        // Now should be able to allocate one more
+        assert!(
+            manager.can_allocate(),
+            "Should be able to allocate after removal"
+        );
+        assert_eq!(manager.len(), 99, "Should have 99 entries after removal");
+
+        // Allocate a new torrent
+        let new_torrent_id = 200u64;
+        let new_inode = manager.allocate_torrent_directory(
+            new_torrent_id,
+            "replacement_torrent".to_string(),
+            1,
+        );
+        assert_ne!(
+            new_inode, 0,
+            "Should be able to allocate after freeing space"
+        );
+        assert!(
+            manager.contains(new_inode),
+            "New torrent inode should exist"
+        );
+        assert_eq!(
+            manager.lookup_torrent(new_torrent_id),
+            Some(new_inode),
+            "New torrent should be lookupable"
+        );
+
+        // Back at limit
+        assert_eq!(manager.len(), 100, "Should be back at 100 entries");
+        assert!(
+            !manager.can_allocate(),
+            "Should not be able to allocate at limit again"
+        );
+
+        // Verify old torrent mapping is gone
+        assert!(
+            manager.lookup_torrent(first_torrent_id).is_none(),
+            "Removed torrent mapping should be gone"
+        );
+        assert!(
+            !manager.contains(first_inode),
+            "Removed torrent inode should not exist"
+        );
+
+        // Test edge case: max_inodes = 1 (only root allowed)
+        let manager_single = InodeManager::with_max_inodes(1);
+        assert_eq!(manager_single.len(), 1, "Should only have root");
+        assert!(
+            !manager_single.can_allocate(),
+            "Should not be able to allocate with max_inodes=1"
+        );
+
+        let single_test = manager_single.allocate_torrent_directory(1, "test".to_string(), 1);
+        assert_eq!(
+            single_test, 0,
+            "Any allocation with max_inodes=1 should fail"
+        );
+
+        // Test edge case: max_inodes = 2 (root + 1 entry)
+        let manager_two = InodeManager::with_max_inodes(2);
+        assert!(
+            manager_two.can_allocate(),
+            "Should be able to allocate one entry"
+        );
+
+        let one_entry = manager_two.allocate_torrent_directory(1, "first".to_string(), 1);
+        assert_ne!(one_entry, 0, "First allocation should succeed");
+
+        assert!(
+            !manager_two.can_allocate(),
+            "Should not be able to allocate second entry"
+        );
+        let two_entry = manager_two.allocate_torrent_directory(2, "second".to_string(), 1);
+        assert_eq!(two_entry, 0, "Second allocation should fail");
+    }
 }

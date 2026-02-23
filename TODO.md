@@ -413,11 +413,12 @@ Each item is designed to be completed independently. These are edge case tests t
   - Tests handle exhaustion with max_handles=5 (configurable)
   - See `test_handle_exhaustion` in src/types/handle.rs
 
-- [ ] **EDGE-045**: Test inode limit exhaustion
+- [x] **EDGE-045**: Test inode limit exhaustion
   - Set max_inodes = 100
   - Create 101 torrents
   - 101st should fail gracefully
   - No memory corruption
+  - Implemented: `test_edge_045_inode_limit_exhaustion_with_torrents` in `src/fs/inode_manager.rs`
 
 - [ ] **EDGE-046**: Test cache memory limit
   - Set max_cache_bytes = 1MB

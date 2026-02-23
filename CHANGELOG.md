@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-045: Test inode limit exhaustion
+  - Implemented `test_edge_045_inode_limit_exhaustion_with_torrents` in `src/fs/inode_manager.rs`
+  - Tests max_inodes = 100 limit by creating 99 torrents (root + 99 = 100 total)
+  - Verifies 100th torrent allocation fails gracefully with return value 0
+  - Tests multiple failed allocations beyond limit ensure consistent behavior
+  - Verifies all originally allocated torrents remain intact after failures
+  - Tests mixed entry types (files, symlinks) also fail at limit
+  - Verifies removing a torrent allows new allocation
+  - Tests edge cases: max_inodes = 1 (only root) and max_inodes = 2 (root + 1 entry)
+  - All 188+ tests passing with zero clippy warnings
+
 - EDGE-043: Test cache eviction during get
   - Implemented 2 tests in `src/cache.rs`:
     - `test_cache_eviction_during_get`: Tests concurrent get operations during cache evictions
