@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-037: Test malformed JSON response
+  - Implemented 5 comprehensive tests in `src/api/client.rs` for handling invalid JSON
+  - Tests verify graceful error handling without panic for:
+    - Incomplete JSON structures (missing closing braces/brackets)
+    - Invalid escape sequences in JSON strings
+    - Type mismatches (e.g., string instead of number for id field)
+    - Empty response bodies
+    - Null values for required struct fields
+  - All tests verify proper error propagation with descriptive messages
+  - All 172+ tests passing with zero clippy warnings
+
 - EDGE-036: Test HTTP 429 Too Many Requests
   - Implemented rate limit handling in `src/api/client.rs`
   - Modified `execute_with_retry` to respect `Retry-After` header on 429 responses

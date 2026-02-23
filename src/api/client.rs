@@ -1960,4 +1960,131 @@ mod tests {
         let result = client.list_torrents().await.unwrap();
         assert!(result.is_empty());
     }
+
+    // =========================================================================
+    // EDGE-037: Malformed JSON Response Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_edge_037_malformed_json_list_torrents() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
+
+        // Return invalid JSON - missing closing brace
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{\"torrents\": ["))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.list_torrents().await;
+        assert!(result.is_err(), "Should return error for malformed JSON");
+
+        // Verify the error is a JSON parse error
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("EOF") || err_str.contains("parse") || err_str.contains("JSON"),
+            "Error should indicate JSON parsing issue: {}",
+            err_str
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edge_037_malformed_json_get_torrent() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
+
+        // Return invalid JSON - invalid escape sequence
+        Mock::given(method("GET"))
+            .and(path("/torrents/1"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string("{\"id\": 1, \"name\": \"test\\x"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let result = client.get_torrent(1).await;
+        assert!(result.is_err(), "Should return error for malformed JSON");
+
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("escape") || err_str.contains("parse") || err_str.contains("JSON"),
+            "Error should indicate JSON parsing issue: {}",
+            err_str
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edge_037_invalid_json_type() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
+
+        // Return JSON with wrong type - string instead of number for id
+        Mock::given(method("GET"))
+            .and(path("/torrents/1"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("{\"id\": \"not_a_number\", \"name\": \"test\"}"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let result = client.get_torrent(1).await;
+        assert!(
+            result.is_err(),
+            "Should return error for JSON type mismatch"
+        );
+
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("type") || err_str.contains("invalid") || err_str.contains("expected"),
+            "Error should indicate type mismatch: {}",
+            err_str
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edge_037_empty_json_response() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
+
+        // Return empty string
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.list_torrents().await;
+        assert!(result.is_err(), "Should return error for empty response");
+    }
+
+    #[tokio::test]
+    async fn test_edge_037_json_with_null_required_fields() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::new(mock_server.uri(), metrics).unwrap();
+
+        // Return JSON with null where a struct is expected
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stats/v1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                "{\"state\": null, \"progress_bytes\": null, \"total_bytes\": 100}",
+            ))
+            .mount(&mock_server)
+            .await;
+
+        let result = client.get_torrent_stats(1).await;
+        assert!(
+            result.is_err(),
+            "Should return error for null required fields"
+        );
+    }
 }

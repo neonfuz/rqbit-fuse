@@ -326,10 +326,16 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_036_rate_limit_exhausts_retries`: Tests error when retries exhausted
     - `test_edge_036_multiple_rate_limits_eventually_succeed`: Tests multiple 429s before success
 
-- [ ] **EDGE-037**: Test malformed JSON response
+- [x] **EDGE-037**: Test malformed JSON response
   - Server returns invalid JSON
   - Should return parse error
   - Should not panic
+  - **Completed**: 5 comprehensive tests in `src/api/client.rs`:
+    - `test_edge_037_malformed_json_list_torrents`: Tests incomplete JSON structure
+    - `test_edge_037_malformed_json_get_torrent`: Tests invalid escape sequences
+    - `test_edge_037_invalid_json_type`: Tests type mismatches (string instead of number)
+    - `test_edge_037_empty_json_response`: Tests empty response body
+    - `test_edge_037_json_with_null_required_fields`: Tests null values for required fields
 
 - [ ] **EDGE-038**: Test timeout at different stages
   - DNS resolution timeout
