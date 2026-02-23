@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-029: Test allocation after clear_torrents
+  - Added `test_allocation_after_clear_torrents` to verify inode reuse after clear_torrents()
+  - Tests 7 comprehensive phases:
+    1. Initial allocation of torrents, files, and symlinks
+    2. Clear torrents and verify old inodes removed
+    3. New allocations reuse inode numbers correctly
+    4. Verify no duplicates exist after reuse
+    5. Lookup operations work for new inodes
+    6. Path lookups resolve correctly
+    7. Multiple clear cycles maintain consistency
+  - Verifies clear_torrents() properly resets next_inode counter to 2
+  - Ensures no inode number duplicates after multiple clear/allocation cycles
+  - Location: `src/fs/inode_manager.rs`
+
 - EDGE-028: Test max_inodes limit
   - Added `test_max_inodes_limit` to verify inode limit enforcement
   - Tests that 11th allocation fails with return value 0 when max_inodes=10

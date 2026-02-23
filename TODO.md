@@ -249,12 +249,15 @@ Each item is designed to be completed independently. These are edge case tests t
   - Verify no panic
   - Implemented: `test_max_inodes_limit` in `src/fs/inode_manager.rs`
 
-- [ ] **EDGE-029**: Test allocation after clear_torrents
+- [x] **EDGE-029**: Test allocation after clear_torrents
   - Allocate some inodes
   - Call clear_torrents()
   - Allocate more inodes
   - Should reuse inode numbers correctly
   - No duplicates
+  - **Completed**: Added `test_allocation_after_clear_torrents` in `src/fs/inode_manager.rs`
+  - Tests 7 phases: initial allocation, clear verification, new allocation, duplicate check, lookup verification, path lookup, multiple clear cycles
+  - Verifies inodes are properly reused and no duplicates exist after multiple clear cycles
 
 - [ ] **EDGE-030**: Test concurrent allocation stress
   - 100 threads allocating simultaneously
