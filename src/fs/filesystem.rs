@@ -37,16 +37,6 @@ pub struct ConcurrencyStats {
     pub available_permits: usize,
 }
 
-/// Result of torrent discovery operation
-#[derive(Debug)]
-#[allow(dead_code)]
-struct DiscoveryResult {
-    /// Number of new torrents discovered
-    new_count: u64,
-    /// List of all current torrent IDs from rqbit
-    current_torrent_ids: Vec<u64>,
-}
-
 /// The main FUSE filesystem implementation for rqbit-fuse.
 /// Implements the fuser::Filesystem trait to provide a FUSE interface
 /// over the rqbit HTTP API.
@@ -183,7 +173,7 @@ impl TorrentFS {
                 ticker.tick().await;
 
                 match Self::discover_torrents(&api_client, &inode_manager).await {
-                    Ok(result) => {
+                    Ok(current_torrent_ids) => {
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -191,13 +181,13 @@ impl TorrentFS {
                         last_discovery.store(now_ms, Ordering::SeqCst);
 
                         // Update known_torrents with current torrent IDs
-                        for torrent_id in &result.current_torrent_ids {
+                        for torrent_id in &current_torrent_ids {
                             known_torrents.insert(*torrent_id);
                         }
 
                         // Detect and remove torrents that were deleted from rqbit
                         let current: std::collections::HashSet<u64> =
-                            result.current_torrent_ids.iter().copied().collect();
+                            current_torrent_ids.iter().copied().collect();
                         let known: std::collections::HashSet<u64> =
                             known_torrents.iter().map(|e| *e).collect();
                         let removed: Vec<u64> = known.difference(&current).copied().collect();
@@ -279,11 +269,11 @@ impl TorrentFS {
     /// * `inode_manager` - Reference to the inode manager for structure creation
     ///
     /// # Returns
-    /// * `Result<DiscoveryResult, anyhow::Error>` - Discovery results, or error
+    /// * `Result<Vec<u64>, anyhow::Error>` - List of current torrent IDs, or error
     async fn discover_torrents(
         api_client: &Arc<RqbitClient>,
         inode_manager: &Arc<InodeManager>,
-    ) -> Result<DiscoveryResult> {
+    ) -> Result<Vec<u64>> {
         let result = api_client.list_torrents().await?;
 
         // Log any partial failures
@@ -301,8 +291,6 @@ impl TorrentFS {
         // Collect all current torrent IDs
         let current_torrent_ids: Vec<u64> = result.torrents.iter().map(|t| t.id).collect();
 
-        let mut new_count: u64 = 0;
-
         for torrent_info in result.torrents {
             // Check if we already have this torrent
             if inode_manager.lookup_torrent(torrent_info.id).is_none() {
@@ -314,7 +302,6 @@ impl TorrentFS {
                         torrent_info.id, e
                     );
                 } else {
-                    new_count += 1;
                     info!(
                         "Discovered new torrent {}: {}",
                         torrent_info.id, torrent_info.name
@@ -323,16 +310,7 @@ impl TorrentFS {
             }
         }
 
-        if new_count > 0 {
-            info!("Discovered {} new torrent(s)", new_count);
-        } else {
-            trace!("No new torrents found");
-        }
-
-        Ok(DiscoveryResult {
-            new_count,
-            current_torrent_ids,
-        })
+        Ok(current_torrent_ids)
     }
 
     /// Detect torrents that have been removed from rqbit.
@@ -512,7 +490,7 @@ impl TorrentFS {
 
         // Perform discovery
         match Self::discover_torrents(&self.api_client, &self.inode_manager).await {
-            Ok(result) => {
+            Ok(current_torrent_ids) => {
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -520,12 +498,12 @@ impl TorrentFS {
                 self.last_discovery.store(now_ms, Ordering::SeqCst);
 
                 // Update known_torrents with current torrent IDs
-                for torrent_id in &result.current_torrent_ids {
+                for torrent_id in &current_torrent_ids {
                     self.known_torrents.insert(*torrent_id);
                 }
 
                 // Detect and remove torrents that were deleted from rqbit
-                let removed = self.detect_removed_torrents(&result.current_torrent_ids);
+                let removed = self.detect_removed_torrents(&current_torrent_ids);
                 for torrent_id in removed {
                     self.remove_torrent_from_fs(torrent_id).await;
                 }
@@ -1466,17 +1444,17 @@ impl Filesystem for TorrentFS {
 
                 if should_run {
                     match Self::discover_torrents(&api_client, &inode_manager).await {
-                        Ok(result) => {
+                        Ok(current_torrent_ids) => {
                             last_discovery.store(now_ms, Ordering::SeqCst);
 
                             // Update known_torrents with current torrent IDs
-                            for torrent_id in &result.current_torrent_ids {
+                            for torrent_id in &current_torrent_ids {
                                 known_torrents.insert(*torrent_id);
                             }
 
                             // Detect and remove torrents that were deleted from rqbit
                             let current: std::collections::HashSet<u64> =
-                                result.current_torrent_ids.iter().copied().collect();
+                                current_torrent_ids.iter().copied().collect();
                             let known: std::collections::HashSet<u64> =
                                 known_torrents.iter().map(|e| *e).collect();
                             let removed: Vec<u64> = known.difference(&current).copied().collect();

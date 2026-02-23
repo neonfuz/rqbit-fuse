@@ -63,11 +63,11 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
   - `run_status()` has no format parameter
 
 ### 1.4 Remove DiscoveryResult Struct
-- [ ] **Task 1.4.1**: Replace DiscoveryResult with Vec<u64>
-  - Change `discover_torrents()` return type from `Result<DiscoveryResult>` to `Result<Vec<u64>>`
-  - Update all call sites to handle Vec<u64> instead of DiscoveryResult
-  - Remove `DiscoveryResult` struct definition
-  - Remove `#[allow(dead_code)]` attribute
+- [x] **Task 1.4.1**: Replace DiscoveryResult with Vec<u64>
+  - Changed `discover_torrents()` return type from `Result<DiscoveryResult>` to `Result<Vec<u64>>`
+  - Updated all call sites to handle Vec<u64> directly
+  - Removed `DiscoveryResult` struct definition and `#[allow(dead_code)]` attribute
+  - Removed unused `new_count` variable and related logging
 
 ---
 

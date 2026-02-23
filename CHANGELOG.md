@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-014: Remove DiscoveryResult Struct (Task 1.4.1)
+  - Changed `discover_torrents()` return type from `Result<DiscoveryResult>` to `Result<Vec<u64>>`
+  - Updated all 3 call sites to handle `Vec<u64>` directly instead of `DiscoveryResult`
+  - Removed `DiscoveryResult` struct definition with fields `new_count` and `current_torrent_ids`
+  - Removed `#[allow(dead_code)]` attribute from the removed struct
+  - Removed unused `new_count` variable and related logging (`"Discovered {} new torrent(s)"`)
+  - Simplified code by removing unnecessary struct wrapper when only `current_torrent_ids` was being used
+  - All tests passing with zero clippy warnings
+  - Reduced code by ~20 lines in `src/fs/filesystem.rs`
+
 - SIMPLIFY-013: Remove JSON Status Output (Task 1.3.1, 1.3.2)
   - Verified JSON output format already removed as part of Task 1.2.2
   - `OutputFormat` enum (Text/Json variants) confirmed removed from `src/main.rs`
