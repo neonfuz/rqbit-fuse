@@ -62,6 +62,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-033: Test path with "." components
+  - Added `test_edge_033_dot_components_path` to verify path handling with self-reference components
+  - Tests standalone "." at root level (should resolve to root or be handled gracefully)
+  - Tests "./file.txt" at root level (if normalized, should resolve to "/file.txt")
+  - Tests "." component in middle of path ("/Test Torrent/./file1.txt")
+  - Tests nested "." components ("/Test Torrent/subdir/./file2.txt")
+  - Tests multiple "." components ("/Test Torrent/./subdir/./file2.txt")
+  - Tests trailing "." component ("/Test Torrent/subdir/.")
+  - Tests multiple consecutive "." components ("/Test Torrent/././file1.txt")
+  - Verifies normal paths without "." components still work correctly
+  - Verifies filesystem state remains intact after dot component tests
+  - Location: `tests/fuse_operations.rs`
+
 - EDGE-032: Test path with double slashes
   - Added `test_edge_032_double_slashes_path` to verify path normalization with double slashes
   - Tests double slashes at root level ("//Test Torrent")

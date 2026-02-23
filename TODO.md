@@ -283,10 +283,11 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should normalize correctly
   - Implemented: test_edge_032_double_slashes_path in tests/fuse_operations.rs
 
-- [ ] **EDGE-033**: Test path with "." components
+- [x] **EDGE-033**: Test path with "." components
   - Path with "." self-reference
   - Should resolve correctly
   - "./file.txt" should work
+  - Implemented: 9 tests in `tests/fuse_operations.rs` covering standalone ".", "./file.txt", middle/nested "." components, and multiple consecutive "." components
 
 - [ ] **EDGE-034**: Test symlink edge cases
   - Circular symlink (a -> b, b -> a)

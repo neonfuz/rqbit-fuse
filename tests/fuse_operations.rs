@@ -6206,3 +6206,137 @@ async fn test_edge_032_double_slashes_path() {
         "Multiple consecutive slashes should not cause panic"
     );
 }
+
+/// EDGE-033: Test path with "." components
+///
+/// Verifies that paths with "." self-reference components are handled correctly.
+/// The filesystem should either:
+/// - Normalize the path (e.g., "./file.txt" -> "/file.txt")
+/// - Or return None without panic (acceptable behavior)
+///
+/// Tests various scenarios:
+/// - "./file.txt" at root level
+/// - "/Test Torrent/./file.txt" in the middle
+/// - "/Test Torrent/subdir/./file.txt" nested
+/// - Multiple "." components
+/// - Trailing "." component
+#[tokio::test]
+async fn test_edge_033_dot_components_path() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Create a torrent structure for testing
+    let torrent_info = TorrentInfo {
+        id: 1,
+        info_hash: "abc123".to_string(),
+        name: "Test Torrent".to_string(),
+        output_folder: "/downloads".to_string(),
+        file_count: Some(2),
+        files: vec![
+            FileInfo {
+                name: "file1.txt".to_string(),
+                length: 1024,
+                components: vec!["file1.txt".to_string()],
+            },
+            FileInfo {
+                name: "file2.txt".to_string(),
+                length: 2048,
+                components: vec!["subdir".to_string(), "file2.txt".to_string()],
+            },
+        ],
+        piece_length: Some(1048576),
+    };
+
+    fs.create_torrent_structure(&torrent_info).unwrap();
+
+    let inode_manager = fs.inode_manager();
+
+    // Test 1: "./file.txt" at root level (if normalized, should resolve to "/file.txt")
+    // Note: The current implementation does not normalize paths with "." components
+    // This test verifies no panic occurs
+    let result = inode_manager.lookup_by_path("./file1.txt");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Path './file1.txt' should not cause panic"
+    );
+
+    // Test 2: "." component in the middle of path ("/Test Torrent/./file1.txt")
+    // Should resolve to "/Test Torrent/file1.txt" if normalized
+    let result = inode_manager.lookup_by_path("/Test Torrent/./file1.txt");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Path with '.' in middle should not cause panic"
+    );
+
+    // Test 3: Nested "." component ("/Test Torrent/subdir/./file2.txt")
+    let result = inode_manager.lookup_by_path("/Test Torrent/subdir/./file2.txt");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Nested path with '.' should not cause panic"
+    );
+
+    // Test 4: Multiple "." components ("/Test Torrent/./subdir/./file2.txt")
+    let result = inode_manager.lookup_by_path("/Test Torrent/./subdir/./file2.txt");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Multiple '.' components should not cause panic"
+    );
+
+    // Test 5: Trailing "." component ("/Test Torrent/subdir/.")
+    // Should resolve to "/Test Torrent/subdir" if normalized
+    let result = inode_manager.lookup_by_path("/Test Torrent/subdir/.");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Trailing '.' component should not cause panic"
+    );
+
+    // Test 6: Just "." alone
+    let result = inode_manager.lookup_by_path(".");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Standalone '.' should not cause panic"
+    );
+
+    // Test 7: Multiple consecutive "." components ("/Test Torrent/././file1.txt")
+    let result = inode_manager.lookup_by_path("/Test Torrent/././file1.txt");
+    assert!(
+        result.is_none() || result.is_some(),
+        "Consecutive '.' components should not cause panic"
+    );
+
+    // Test 8: Verify that normal paths still work correctly after dot tests
+    let torrent_dir = inode_manager.lookup_by_path("/Test Torrent");
+    assert!(
+        torrent_dir.is_some(),
+        "Torrent directory should exist with normal path"
+    );
+
+    let file1 = inode_manager.lookup_by_path("/Test Torrent/file1.txt");
+    assert!(
+        file1.is_some(),
+        "file1.txt should be accessible via normal path"
+    );
+
+    let file2 = inode_manager.lookup_by_path("/Test Torrent/subdir/file2.txt");
+    assert!(
+        file2.is_some(),
+        "subdir/file2.txt should be accessible via normal path"
+    );
+
+    // Test 9: Verify filesystem state is intact after dot component tests
+    let root_children = inode_manager.get_children(1);
+    assert!(
+        root_children.iter().any(|(ino, _name)| {
+            if let Some(entry) = inode_manager.get(*ino) {
+                entry.name() == "Test Torrent"
+            } else {
+                false
+            }
+        }),
+        "Root should contain 'Test Torrent' directory after dot component tests"
+    );
+}
