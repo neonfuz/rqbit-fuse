@@ -51,15 +51,16 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
   - **Completed**: Status command now only shows "MOUNTED" / "NOT MOUNTED"
 
 ### 1.3 Remove JSON Status Output
-- [ ] **Task 1.3.1**: Remove JSON output format from Status command
-  - Delete `OutputFormat` enum from `src/main.rs`
-  - Remove `--format` CLI argument from Status subcommand
-  - Delete JSON serialization structs (`StatusOutput`, `ConfigOutput`, `MountInfoOutput`)
-  - Keep only text format output
+- [x] **Task 1.3.1**: Remove JSON output format from Status command
+  - **Completed**: JSON output format already removed as part of Task 1.2.2
+  - `OutputFormat` enum removed from `src/main.rs`
+  - `--format` CLI argument removed from Status subcommand
+  - JSON serialization structs (`StatusOutput`, `ConfigOutput`, `MountInfoOutput`) removed
+  - Only text format output remains
   
-- [ ] **Task 1.3.2**: Update CLI to remove format option
-  - Remove format parameter from `Commands::Status` variant
-  - Update `run_status()` signature to remove format parameter
+- [x] **Task 1.3.2**: Update CLI to remove format option
+  - **Completed**: No format parameter exists in `Commands::Status` variant
+  - `run_status()` has no format parameter
 
 ### 1.4 Remove DiscoveryResult Struct
 - [ ] **Task 1.4.1**: Replace DiscoveryResult with Vec<u64>

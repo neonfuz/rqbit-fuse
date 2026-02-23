@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-013: Remove JSON Status Output (Task 1.3.1, 1.3.2)
+  - Verified JSON output format already removed as part of Task 1.2.2
+  - `OutputFormat` enum (Text/Json variants) confirmed removed from `src/main.rs`
+  - `--format` CLI argument confirmed removed from Status subcommand
+  - JSON serialization structs (`StatusOutput`, `ConfigOutput`, `MountInfoOutput`) confirmed removed
+  - `Commands::Status` variant has no format parameter
+  - `run_status()` function has no format parameter, outputs text only
+  - Status command confirmed to show only "MOUNTED" / "NOT MOUNTED" status
+  - All tests passing with zero clippy warnings
+  - No code changes required - task was already completed in prior work
+  - Location: `src/main.rs`, `TODO.md`
+
 - SIMPLIFY-012: Remove JSON Output Format from Status Command (Task 1.2.2)
   - Removed `OutputFormat` enum (Text/Json variants) from `src/main.rs`
   - Removed `--format` CLI argument from Status subcommand
