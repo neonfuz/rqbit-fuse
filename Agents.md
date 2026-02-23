@@ -88,17 +88,16 @@ The reference directory contains **external documentation** that should **NOT be
 
 ### Using Nix
 
+Default to using shell.nix with nix-shell. If that is not available fall back to "Without Nix" section.
+
 This project uses Nix for dependency management. To build:
 
 ```bash
-# Enter the nix shell
-nix-shell
-
 # Build the project
-cargo build
+nix-shell --run 'cargo build'
 
 # Build with release optimizations
-cargo build --release
+nix-shell --run 'cargo build --release'
 ```
 
 ### Without Nix
