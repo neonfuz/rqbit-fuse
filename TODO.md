@@ -76,12 +76,12 @@ These changes have the highest impact with lowest risk. Remove unused/abandoned 
 Reduce configuration complexity and validation overhead.
 
 ### 2.1 Simplify Configuration Validation
-- [ ] **Task 2.1.1**: Research - Document validation rules to keep
-  - List all 50+ validation rules in `src/config/mod.rs` lines 708-983
-  - Write analysis to `research/config-validation-analysis.md`
-  - Identify which are essential (non-empty URL, positive numbers)
-  - Identify which are arbitrary (TTL < 86400, max_entries < 1M)
-  - Reference: "See research/config-validation-analysis.md"
+- [x] **Task 2.1.1**: Research - Document validation rules to keep
+  - **Completed**: Analyzed 33 validation rules across 7 methods
+  - **Key Finding**: 19 rules are essential, 14 rules are arbitrary upper bounds
+  - **See**: `research/config-validation-analysis.md` for complete analysis
+  - **Essential rules**: Non-empty URL, parseability, positive numbers, absolute paths, valid log levels
+  - **Arbitrary rules**: All upper bounds (TTL < 86400, max_entries < 1M, etc.)
   
 - [ ] **Task 2.1.2**: Remove arbitrary upper bound validations
   - Remove max TTL checks (86400 limit)

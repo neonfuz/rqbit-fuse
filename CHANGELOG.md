@@ -43,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Research
 
+- Task 2.1.1: Configuration Validation Analysis
+  - Created `research/config-validation-analysis.md` documenting all 33 validation rules
+  - Analyzed 7 validation methods across `src/config/mod.rs` lines 708-983
+  - **Key Findings**:
+    - 19 rules are ESSENTIAL (non-empty URLs, positive numbers, absolute paths, valid log levels)
+    - 14 rules are ARBITRARY (upper bounds like TTL < 86400, max_entries < 1M)
+    - Upper bounds can be safely removed without impacting correctness
+  - **Impact**: Will reduce from 33 rules to ~19 rules after removing upper bounds
+  - **Next Steps**: Proceed with Task 2.1.2 to remove arbitrary upper bound validations
+  - Location: `research/config-validation-analysis.md`, `TODO.md`
+
 - Task 1.1.1: Status Monitoring Analysis
   - Created `research/status-monitoring-analysis.md` documenting the background status monitoring task
   - Analyzed usage of `torrent_statuses` cache across the codebase
