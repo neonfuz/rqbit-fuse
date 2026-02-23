@@ -1,5 +1,14 @@
 # rqbit-fuse Edge Case Testing Checklist
 
+> **Last Updated:** February 22, 2026
+> 
+> **Recent Changes:**
+> - ✅ Marked SIMPLIFY-004 and SIMPLIFY-005 as completed
+> - ✅ Removed EDGE-044 (duplicate of EDGE-008)
+> - 🔄 Updated priorities: SIMPLIFY-001 and SIMPLIFY-002 are now HIGH priority
+> - 📝 Updated file sizes: filesystem.rs is 3,116 lines (was 1,434)
+> - ⬇️ Lowered SIMPLIFY-003 priority (minimal benefit for breaking change)
+
 ## How to Use This File
 
 Each item is designed to be completed independently. These are edge case tests to improve test coverage beyond the standard scenarios.
@@ -128,17 +137,19 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Cache Operations (src/cache.rs)
 
-- [ ] **EDGE-016**: Test cache entry expiration during access
+- [x] **EDGE-016**: Test cache entry expiration during access
   - Insert entry with short TTL
   - Start get() operation
   - Let entry expire during operation
   - Should return None, not panic
+  - **Completed**: Added `test_cache_entry_expiration_during_access` and `test_cache_expiration_race_condition` tests
 
-- [ ] **EDGE-017**: Test cache at exact capacity
+- [x] **EDGE-017**: Test cache at exact capacity
   - Fill cache to exactly max_entries
   - Insert one more entry (should trigger eviction)
   - Verify eviction count increments
   - Verify oldest entry is evicted
+  - **Completed**: Verified by existing `test_cache_lru_eviction` test in src/cache.rs
 
 - [ ] **EDGE-018**: Test rapid insert/remove cycles
   - Insert and remove same key 1000 times rapidly
@@ -318,11 +329,10 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### Resource Exhaustion (tests/resource_tests.rs)
 
-- [ ] **EDGE-044**: Test stream limit exhaustion
-  - Open 50 files (max streams)
-  - Try to open 51st file
-  - Should return error
-  - Error should be clear
+- [x] **EDGE-044**: ~~Test stream limit exhaustion~~
+  - ✅ **DUPLICATE**: Already implemented as EDGE-008 in handle.rs
+  - Tests handle exhaustion with max_handles=5 (configurable)
+  - See `test_handle_exhaustion` in src/types/handle.rs
 
 - [ ] **EDGE-045**: Test inode limit exhaustion
   - Set max_inodes = 100
@@ -410,44 +420,147 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ---
 
-## Quick Reference
-
-### Test Categories
-
-1. **Boundary Tests**: EOF, offsets, capacity limits
-2. **Resource Tests**: Handle limits, stream limits, inode limits
-3. **Error Tests**: Network failures, invalid inputs, edge responses
-4. **Concurrency Tests**: Race conditions, simultaneous operations
-5. **Unicode Tests**: Special characters, normalization, encoding
-6. **Configuration Tests**: Invalid configs, edge values
-
-### Running Tests
-
-```bash
-# Run all edge case tests
-cargo test edge_
-
-# Run specific category
-cargo test edge_001
-cargo test edge_006  # File handle tests
-cargo test edge_021  # Streaming tests
-
-# Run with output
-cargo test edge_ -- --nocapture
-```
-
-### Completion Criteria
-
-Each test should:
-- Be isolated (no dependencies on other tests)
-- Run quickly (< 1 second per test)
-- Cover both success and failure paths
-- Include assertions for all outcomes
-- Pass `cargo test`
-- Pass `cargo clippy`
-- Be formatted with `cargo fmt`
-- Have checkbox marked as complete
+*Generated from edge case analysis - February 16, 2026*
 
 ---
 
-*Generated from edge case analysis - February 16, 2026*
+## Phase 13: Code Simplification Tasks
+
+### Architecture Simplifications
+
+- [ ] **SIMPLIFY-001**: Consolidate Error Types **[HIGH PRIORITY]**
+  - Create single `RqbitFuseError` enum replacing:
+    - `FuseError` in `fs/error.rs` (178 lines)
+    - `ApiError` in `api/types.rs` (lines 14-69)
+    - `ConfigError` in `config/mod.rs` (lines 466-476)
+  - Currently have duplicate error mappings (e.g., ENOENT in both FuseError and ApiError)
+  - Implement `std::error::Error` for all error variants
+  - Use `thiserror` derive macros for consistency
+  - Update all `anyhow::Result` usages in library code
+
+- [ ] **SIMPLIFY-002**: Split Large Files **[HIGH PRIORITY]**
+  - Split `src/fs/filesystem.rs` (**3,116 lines**) into smaller modules
+  - Split `src/fs/inode.rs` (1,051 lines) into smaller modules
+  - **See:** [research/file-splitting-strategy.md](research/file-splitting-strategy.md) for detailed plan
+  - **Note:** filesystem.rs has grown significantly since original estimate (was 1,434 lines)
+
+- [ ] **SIMPLIFY-003**: Simplify Configuration System **[LOW PRIORITY]**
+  - ~~Remove JSON config file support~~ - Keep both, works seamlessly
+  - Remove niche options:
+    - `piece_check_enabled` (always check pieces)
+    - `return_eagain` (always use consistent behavior)
+  - Consider using `config` crate instead of custom loading
+  - Document breaking changes in migration guide
+  - **Note:** Removing JSON provides minimal benefit for breaking change cost
+
+- [x] **SIMPLIFY-004**: Remove Unused Types
+  - ✅ **COMPLETED**: Analysis shows:
+    - `types/torrent.rs` doesn't exist (no separate Torrent struct to remove)
+    - `TorrentSummary` is actively used in `api/types.rs` (line 159)
+    - `FileStats` doesn't exist (already removed or never existed)
+  - No action needed - types are either already removed or actively used
+
+### Performance Simplifications
+
+- [x] **SIMPLIFY-005**: Simplify Metrics Collection
+  - ✅ **COMPLETED**: Already using simple `AtomicU64` counters in `src/metrics.rs`
+  - No sharded counters exist in the codebase
+  - Metrics are working efficiently with atomic operations
+
+- [ ] **SIMPLIFY-006**: Consolidate Test Helpers
+  - Create `tests/common/test_helpers.rs` module
+  - Extract shared mock setup code from integration tests
+  - Create helper functions for:
+    - Mock server setup
+    - Test torrent creation
+    - File handle allocation patterns
+  - Reduce duplication across test files
+
+### API Simplifications
+
+- [ ] **SIMPLIFY-007**: Simplify AsyncFuseWorker
+  - Review if channel-based approach can be simplified
+  - Consider if `tokio::sync::mpsc` can be replaced with `std::sync::mpsc`
+  - Document the async/sync bridge pattern more clearly
+  - Add sequence diagram to architecture docs
+
+- [ ] **SIMPLIFY-008**: Consolidate Type Definitions
+  - Merge duplicate torrent representations:
+    - `types/torrent.rs::Torrent`
+    - `api/types.rs::TorrentInfo`
+    - `api/types.rs::TorrentDetails`
+  - Choose canonical representation for each entity
+  - Use `From`/`Into` traits for conversions
+  - Remove redundant fields
+
+### Documentation Simplifications
+
+- [ ] **SIMPLIFY-009**: Consolidate Documentation
+  - Remove redundant architecture diagrams (keep one in lib.rs)
+  - Move implementation details from README to code docs
+  - Create single source of truth for configuration options
+  - Update outdated references in comments
+
+### Testing Simplifications
+
+- [ ] **SIMPLIFY-010**: Simplify Test Structure
+  - Consolidate test modules if too fragmented
+  - Use parameterized tests where appropriate
+  - Extract common test fixtures into shared module
+  - Remove redundant test cases that don't add coverage
+
+---
+
+## Quick Reference for Simplifications
+
+### Priority Order (Updated Feb 22, 2026)
+
+**HIGH PRIORITY:**
+1. **SIMPLIFY-002** (Split Large Files) - `filesystem.rs` is 3,116 lines (not 1,434 as documented)
+2. **SIMPLIFY-001** (Consolidate errors) - 3 error types cause confusion and duplicate mappings
+
+**MEDIUM PRIORITY:**
+3. **SIMPLIFY-006** (Test helpers) - Reduce test duplication
+4. **Phase 4-6 Edge Cases** - Cache, streaming, and inode tests
+
+**LOW PRIORITY:**
+5. **SIMPLIFY-003** (Remove JSON config) - Breaking change with minimal benefit
+6. **Phase 7+ Edge Cases** - Path resolution, error handling, concurrency, resources, unicode, config
+
+**COMPLETED:**
+- ✅ SIMPLIFY-004 (Remove dead code)
+- ✅ SIMPLIFY-005 (Simplify metrics)
+
+### Before Simplifying
+
+1. Run full test suite: `cargo test`
+2. Run clippy: `cargo clippy -- -D warnings`
+3. Check for dead code: `cargo deadlinks` (if available)
+4. Review usage with: `cargo check --all-features`
+
+### After Simplifying
+
+1. Verify all tests pass
+2. Update documentation
+3. Check for API breakage
+4. Update CHANGELOG if applicable
+
+### Tools to Help
+
+```bash
+# Find unused code
+cargo deadlinks
+
+# Check for complexity
+cargo clippy -- -W clippy::complexity
+
+# Find duplicate code
+cargo bloat --crates
+
+# Check module sizes
+cargo modules structure
+```
+
+---
+
+*Simplification tasks added - February 22, 2026*

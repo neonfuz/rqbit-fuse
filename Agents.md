@@ -113,6 +113,44 @@ Then run:
 cargo build
 ```
 
+## Testing Guidelines
+
+### Test Categories
+
+1. **Boundary Tests**: EOF, offsets, capacity limits
+2. **Resource Tests**: Handle limits, stream limits, inode limits
+3. **Error Tests**: Network failures, invalid inputs, edge responses
+4. **Concurrency Tests**: Race conditions, simultaneous operations
+5. **Unicode Tests**: Special characters, normalization, encoding
+6. **Configuration Tests**: Invalid configs, edge values
+
+### Running Tests
+
+```bash
+# Run all edge case tests
+cargo test edge_
+
+# Run specific category
+cargo test edge_001
+cargo test edge_006  # File handle tests
+cargo test edge_021  # Streaming tests
+
+# Run with output
+cargo test edge_ -- --nocapture
+```
+
+### Completion Criteria
+
+Each test should:
+- Be isolated (no dependencies on other tests)
+- Run quickly (< 1 second per test)
+- Cover both success and failure paths
+- Include assertions for all outcomes
+- Pass `cargo test`
+- Pass `cargo clippy`
+- Be formatted with `cargo fmt`
+- Have checkbox marked as complete
+
 ## Important Notes
 
 - Treat `src/lib/` as shared utilities

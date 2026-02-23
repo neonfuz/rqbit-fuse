@@ -1157,7 +1157,7 @@ impl Filesystem for TorrentFS {
         // Get the file entry
         let (torrent_id, file_index, file_size) = match self.inode_manager.get(ino) {
             Some(entry) => match entry {
-                crate::types::inode::InodeEntry::File {
+                crate::types::InodeEntry::File {
                     torrent_id,
                     file_index,
                     size,
@@ -1632,7 +1632,7 @@ impl Filesystem for TorrentFS {
 
         match self.inode_manager.get(ino) {
             Some(entry) => {
-                if let crate::types::inode::InodeEntry::Symlink { target, .. } = entry {
+                if let crate::types::InodeEntry::Symlink { target, .. } = entry {
                     reply.data(target.as_bytes());
                     debug!("readlink: resolved symlink to {}", target);
                 } else {

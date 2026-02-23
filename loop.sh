@@ -10,6 +10,7 @@ do
   echo @LOOP.md "@${todo_list}" | \
     opencode run --attach http://localhost:4096 | \
       tee -a .logs/$(date +%s).log
+  git push
 done
 
 rm .done

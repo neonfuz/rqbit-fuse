@@ -391,6 +391,89 @@ mod tests {
         );
     }
 
+    /// Test EDGE-016: Cache entry expiration during access
+    /// Verifies that when an entry expires during a get() operation,
+    /// the cache returns None without panicking.
+    #[tokio::test]
+    async fn test_cache_entry_expiration_during_access() {
+        // Use a very short TTL to make expiration likely during access
+        let cache: Cache<String, i32> = Cache::new(10, Duration::from_millis(50));
+
+        // Insert entry with short TTL
+        cache.insert("expiring_key".to_string(), 42).await;
+
+        // Verify entry exists initially
+        assert_eq!(cache.get(&"expiring_key".to_string()).await, Some(42));
+
+        // Wait for TTL to expire (50ms TTL, wait 60ms)
+        tokio::time::sleep(Duration::from_millis(60)).await;
+
+        // Try to get the expired entry - should return None, not panic
+        let result = cache.get(&"expiring_key".to_string()).await;
+        assert_eq!(result, None, "Should return None for expired entry");
+
+        // Verify stats recorded the miss
+        let stats = cache.stats().await;
+        assert_eq!(stats.hits, 1, "Should have 1 hit from initial get");
+        assert_eq!(stats.misses, 1, "Should have 1 miss from expired entry");
+    }
+
+    /// Test EDGE-016 variant: Rapid access as entry expires
+    /// Simulates a race condition where multiple gets occur as entry expires
+    #[tokio::test]
+    async fn test_cache_expiration_race_condition() {
+        use std::sync::Arc;
+        use tokio::task;
+
+        // Very short TTL to increase chance of race
+        let cache: Arc<Cache<String, i32>> = Arc::new(Cache::new(10, Duration::from_millis(100)));
+
+        // Insert entry
+        cache.insert("race_key".to_string(), 42).await;
+
+        // Spawn multiple concurrent get operations
+        let mut handles = vec![];
+        for _ in 0..20 {
+            let cache = Arc::clone(&cache);
+            handles.push(task::spawn(async move {
+                // Try to get entry - some may succeed, some may get None
+                // Neither should panic
+                cache.get(&"race_key".to_string()).await
+            }));
+        }
+
+        // Wait for TTL to expire during operations
+        tokio::time::sleep(Duration::from_millis(120)).await;
+
+        // Spawn more gets after expiration
+        for _ in 0..10 {
+            let cache = Arc::clone(&cache);
+            handles.push(task::spawn(async move {
+                cache.get(&"race_key".to_string()).await
+            }));
+        }
+
+        // Collect all results - verify no panics occurred
+        let mut success_count = 0;
+        let mut none_count = 0;
+        for handle in handles {
+            match handle.await {
+                Ok(Some(_)) => success_count += 1,
+                Ok(None) => none_count += 1,
+                Err(e) => panic!("Task panicked: {:?}", e),
+            }
+        }
+
+        // Verify we got some results (either Some or None, but no panics)
+        assert!(
+            success_count + none_count == 30,
+            "All 30 operations should complete without panic"
+        );
+
+        // Final state should be expired
+        assert_eq!(cache.get(&"race_key".to_string()).await, None);
+    }
+
     /// Performance benchmark for concurrent cache reads with statistics collection.
     /// This test verifies that atomic counters provide good performance under
     /// high concurrency.

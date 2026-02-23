@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use thiserror::Error;
 
 /// Reason why data is unavailable
@@ -8,6 +9,15 @@ pub enum DataUnavailableReason {
     Paused,
     /// Requested pieces haven't been downloaded yet
     NotDownloaded,
+}
+
+impl fmt::Display for DataUnavailableReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DataUnavailableReason::Paused => write!(f, "torrent is paused"),
+            DataUnavailableReason::NotDownloaded => write!(f, "pieces not downloaded"),
+        }
+    }
 }
 
 /// Errors that can occur when interacting with the rqbit API

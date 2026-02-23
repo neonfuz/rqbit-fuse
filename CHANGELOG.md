@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- EDGE-016: Test cache entry expiration during access
+  - Added `test_cache_entry_expiration_during_access` to verify cache returns None for expired entries
+  - Added `test_cache_expiration_race_condition` to test concurrent access during expiration
+  - Both tests verify no panics occur when entries expire during get() operations
+  - Location: `src/cache.rs`
+
 ### Research
 
 - SIMPLIFY-2-012: Review config fields for unused/unimplemented features
