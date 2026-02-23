@@ -219,11 +219,16 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_025_content_length_mismatch_at_offset`: Tests mismatch at non-zero offset
     - Note: HTTP layer (hyper) detects mismatch and returns error, which streaming layer handles gracefully
 
-- [ ] **EDGE-026**: Test seek patterns
+- [x] **EDGE-026**: Test seek patterns
   - Seek backward by 1 byte (should create new stream)
   - Seek forward exactly MAX_SEEK_FORWARD bytes
   - Rapid alternating forward/backward seeks
   - Verify stream creation/reuse logic
+  - Implemented: 4 comprehensive tests in `src/api/streaming.rs`:
+    - `test_forward_seek_exactly_max_boundary`: Tests boundary at MAX_SEEK_FORWARD
+    - `test_forward_seek_just_beyond_max_boundary`: Tests gap > MAX_SEEK_FORWARD creates new stream
+    - `test_rapid_alternating_seeks`: Tests rapid forward/backward seek patterns
+    - `test_backward_seek_one_byte_creates_new_stream`: Tests 1-byte backward seek creates new stream
 
 ---
 

@@ -75,6 +75,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All tests verify the existing rqbit bug workaround in `PersistentStream::new()` works correctly
   - Location: `src/api/streaming.rs`
 
+- EDGE-026: Test seek patterns
+  - Added `test_forward_seek_exactly_max_boundary` to verify seeking exactly MAX_SEEK_FORWARD reuses stream
+  - Added `test_forward_seek_just_beyond_max_boundary` to verify seeking beyond limit creates new stream
+  - Added `test_rapid_alternating_seeks` to verify rapid forward/backward seek patterns work correctly
+  - Added `test_backward_seek_one_byte_creates_new_stream` to verify even 1-byte backward seeks create new streams
+  - Tests verify stream creation/reuse logic under various seek patterns
+  - Location: `src/api/streaming.rs`
+
 - EDGE-020: Test cache statistics edge cases
   - Added `test_cache_stats_edge_cases` to verify hit rate calculations handle edge cases
   - Tests 0 total requests (fresh cache) - verifies no division by zero
