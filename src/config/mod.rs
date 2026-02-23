@@ -1,6 +1,6 @@
+use crate::error::{RqbitFuseError, ValidationIssue};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use thiserror::Error;
 
 /// Main configuration container for rqbit-fuse.
 ///
@@ -462,55 +462,27 @@ impl Default for ResourceLimitsConfig {
     }
 }
 
-/// Errors that can occur during configuration loading or validation.
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("Failed to read config file: {0}")]
-    ReadError(#[from] std::io::Error),
-    #[error("Failed to parse config file: {0}")]
-    ParseError(String),
-    #[error("Invalid config value: {0}")]
-    InvalidValue(String),
-    #[error("Validation error: {}", .0.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("; "))]
-    ValidationError(Vec<ValidationIssue>),
-}
-
-/// Represents a single validation error in the configuration.
-///
-/// Contains the field name that failed validation and a description of the issue.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ValidationIssue {
-    pub field: String,
-    pub message: String,
-}
-
-impl std::fmt::Display for ValidationIssue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.field, self.message)
-    }
-}
-
 impl Config {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn from_file(path: &PathBuf) -> Result<Self, ConfigError> {
-        let content = std::fs::read_to_string(path)?;
+    pub fn from_file(path: &PathBuf) -> Result<Self, RqbitFuseError> {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| RqbitFuseError::ReadError(e.to_string()))?;
 
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_lowercase());
         match ext.as_deref() {
-            Some("json") => {
-                serde_json::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string()))
-            }
-            _ => toml::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string())),
+            Some("json") => serde_json::from_str(&content)
+                .map_err(|e| RqbitFuseError::ParseError(e.to_string())),
+            _ => toml::from_str(&content).map_err(|e| RqbitFuseError::ParseError(e.to_string())),
         }
     }
 
-    pub fn from_default_locations() -> Result<Self, ConfigError> {
+    pub fn from_default_locations() -> Result<Self, RqbitFuseError> {
         let config_dirs = [
             dirs::config_dir().map(|d| d.join("rqbit-fuse/config.toml")),
             Some(PathBuf::from("/etc/rqbit-fuse/config.toml")),
@@ -527,7 +499,7 @@ impl Config {
         Ok(Self::default())
     }
 
-    pub fn merge_from_env(mut self) -> Result<Self, ConfigError> {
+    pub fn merge_from_env(mut self) -> Result<Self, RqbitFuseError> {
         if let Ok(val) = std::env::var("TORRENT_FUSE_API_URL") {
             self.api.url = val;
         }
@@ -536,83 +508,91 @@ impl Config {
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_METADATA_TTL") {
             self.cache.metadata_ttl = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_METADATA_TTL has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_METADATA_TTL has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_TORRENT_LIST_TTL") {
             self.cache.torrent_list_ttl = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_TORRENT_LIST_TTL has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_TORRENT_LIST_TTL has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_PIECE_TTL") {
             self.cache.piece_ttl = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_PIECE_TTL has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_PIECE_TTL has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_ENTRIES") {
             self.cache.max_entries = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_MAX_ENTRIES has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_MAX_ENTRIES has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
             self.performance.read_timeout = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_READ_TIMEOUT has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_READ_TIMEOUT has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_CONCURRENT_READS") {
             self.performance.max_concurrent_reads = val.parse().map_err(|_| {
-                ConfigError::InvalidValue(
+                RqbitFuseError::InvalidValue(
                     "TORRENT_FUSE_MAX_CONCURRENT_READS has invalid format".into(),
                 )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_READAHEAD_SIZE") {
             self.performance.readahead_size = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_READAHEAD_SIZE has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_READAHEAD_SIZE has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_ALLOW_OTHER") {
             self.mount.allow_other = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_ALLOW_OTHER has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_ALLOW_OTHER has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_AUTO_UNMOUNT") {
             self.mount.auto_unmount = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_AUTO_UNMOUNT has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_AUTO_UNMOUNT has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_STATUS_POLL_INTERVAL") {
             self.monitoring.status_poll_interval = val.parse().map_err(|_| {
-                ConfigError::InvalidValue(
+                RqbitFuseError::InvalidValue(
                     "TORRENT_FUSE_STATUS_POLL_INTERVAL has invalid format".into(),
                 )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_STALLED_TIMEOUT") {
             self.monitoring.stalled_timeout = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_STALLED_TIMEOUT has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_STALLED_TIMEOUT has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_PIECE_CHECK_ENABLED") {
             self.performance.piece_check_enabled = val.parse().map_err(|_| {
-                ConfigError::InvalidValue(
+                RqbitFuseError::InvalidValue(
                     "TORRENT_FUSE_PIECE_CHECK_ENABLED has invalid format".into(),
                 )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_RETURN_EAGAIN") {
             self.performance.return_eagain_for_unavailable = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_RETURN_EAGAIN has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_RETURN_EAGAIN has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_PREFETCH_ENABLED") {
             self.performance.prefetch_enabled = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_PREFETCH_ENABLED has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_PREFETCH_ENABLED has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_CHECK_PIECES_BEFORE_READ") {
             self.performance.check_pieces_before_read = val.parse().map_err(|_| {
-                ConfigError::InvalidValue(
+                RqbitFuseError::InvalidValue(
                     "TORRENT_FUSE_CHECK_PIECES_BEFORE_READ has invalid format".into(),
                 )
             })?;
@@ -622,39 +602,47 @@ impl Config {
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_FUSE_OPS") {
             self.logging.log_fuse_operations = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_LOG_FUSE_OPS has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_LOG_FUSE_OPS has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_API_CALLS") {
             self.logging.log_api_calls = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_LOG_API_CALLS has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_LOG_API_CALLS has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_METRICS_ENABLED") {
             self.logging.metrics_enabled = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_METRICS_ENABLED has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_METRICS_ENABLED has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_METRICS_INTERVAL") {
             self.logging.metrics_interval_secs = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_METRICS_INTERVAL has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_METRICS_INTERVAL has invalid format".into(),
+                )
             })?;
         }
 
         // Resource limits
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_CACHE_BYTES") {
             self.resources.max_cache_bytes = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_MAX_CACHE_BYTES has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_MAX_CACHE_BYTES has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_OPEN_STREAMS") {
             self.resources.max_open_streams = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_MAX_OPEN_STREAMS has invalid format".into())
+                RqbitFuseError::InvalidValue(
+                    "TORRENT_FUSE_MAX_OPEN_STREAMS has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_INODES") {
             self.resources.max_inodes = val.parse().map_err(|_| {
-                ConfigError::InvalidValue("TORRENT_FUSE_MAX_INODES has invalid format".into())
+                RqbitFuseError::InvalidValue("TORRENT_FUSE_MAX_INODES has invalid format".into())
             })?;
         }
 
@@ -698,17 +686,17 @@ impl Config {
         self
     }
 
-    pub fn load() -> Result<Self, ConfigError> {
+    pub fn load() -> Result<Self, RqbitFuseError> {
         Self::from_default_locations()?.merge_from_env()
     }
 
-    pub fn load_with_cli(cli: &CliArgs) -> Result<Self, ConfigError> {
+    pub fn load_with_cli(cli: &CliArgs) -> Result<Self, RqbitFuseError> {
         Ok(Self::from_default_locations()?
             .merge_from_env()?
             .merge_from_cli(cli))
     }
 
-    pub fn validate(&self) -> Result<(), ConfigError> {
+    pub fn validate(&self) -> Result<(), RqbitFuseError> {
         let mut issues = Vec::new();
 
         if let Err(e) = self.validate_api_config() {
@@ -736,7 +724,7 @@ impl Config {
         if issues.is_empty() {
             Ok(())
         } else {
-            Err(ConfigError::ValidationError(issues))
+            Err(RqbitFuseError::ValidationError(issues))
         }
     }
 
@@ -1205,7 +1193,7 @@ url = "http://localhost:8083"
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::ValidationError(_)));
+        assert!(matches!(err, RqbitFuseError::ValidationError(_)));
     }
 
     #[test]
@@ -1215,7 +1203,7 @@ url = "http://localhost:8083"
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::ValidationError(_)));
+        assert!(matches!(err, RqbitFuseError::ValidationError(_)));
     }
 
     #[test]

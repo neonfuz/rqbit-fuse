@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-001D: Migrate config/ module from ConfigError to RqbitFuseError
+  - Migrated `src/config/mod.rs` to use unified RqbitFuseError type
+  - Removed `ConfigError` enum (4 variants: ReadError, ParseError, InvalidValue, ValidationError)
+  - Removed duplicate `ValidationIssue` struct (now imported from `crate::error`)
+  - Updated all function signatures returning `ConfigError` to return `RqbitFuseError`:
+    - `from_file()`, `from_default_locations()`, `merge_from_env()`
+    - `load()`, `load_with_cli()`, `validate()`
+  - Replaced all `ConfigError::` constructors with `RqbitFuseError::` equivalents
+  - Updated all 22 config tests to use `RqbitFuseError` variants
+  - Removed `thiserror` import from config module (no longer needed)
+  - All tests passing with zero clippy warnings
+  - Net reduction: ~20 lines removed
+
 - SIMPLIFY-001C: Migrate fs/ module from FuseError to RqbitFuseError
   - Migrated `src/fs/async_bridge.rs` to use RqbitFuseError and RqbitFuseResult
   - Replaced FuseError::TimedOut with RqbitFuseError::TimedOut
