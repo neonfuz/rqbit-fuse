@@ -152,6 +152,7 @@ Each test should:
 
 ## Important Notes
 
+- Create temporary files in `.tmp/` directory (not `/tmp`)
 - Treat `src/lib/` as shared utilities
 - The project uses Rust with async (tokio), FUSE (fuser), HTTP (reqwest)
 - FUSE operations require careful error mapping (ENOENT, EACCES, EIO, etc.)
