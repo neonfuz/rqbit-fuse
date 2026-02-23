@@ -427,10 +427,15 @@ Each item is designed to be completed independently. These are edge case tests t
   - Should not crash
   - **Implemented**: Added `Cache::with_memory_limit()` constructor and comprehensive test in `src/cache.rs`
 
-- [ ] **EDGE-047**: Test semaphore exhaustion
+- [x] **EDGE-047**: Test semaphore exhaustion
   - Trigger max_concurrent_reads simultaneously
   - 11th read should wait or fail
   - Should not deadlock
+  - **Completed**: Created `tests/resource_tests.rs` with 4 comprehensive tests:
+    - `test_edge_047_semaphore_exhaustion`: Tests basic semaphore exhaustion with max_concurrent_reads=10
+    - `test_edge_047b_semaphore_multiple_waiters`: Verifies FIFO ordering of waiters
+    - `test_edge_047c_semaphore_permit_release_on_cancel`: Tests permit cleanup on drop
+    - `test_edge_047d_concurrency_stats_accuracy`: Verifies stats accurately reflect available permits
 
 ---
 

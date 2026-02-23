@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-047: Test semaphore exhaustion
+  - Created `tests/resource_tests.rs` with 4 comprehensive tests:
+    - `test_edge_047_semaphore_exhaustion`: Tests basic semaphore exhaustion with max_concurrent_reads=10
+      - Acquires all 10 permits and verifies 11th acquisition waits (not fails)
+      - Tests permit release allows subsequent acquisitions
+    - `test_edge_047b_semaphore_multiple_waiters`: Verifies FIFO ordering of waiters
+      - Spawns 3 tasks waiting for permits while all permits are held
+      - Releases permits one by one and verifies tasks complete in order
+    - `test_edge_047c_semaphore_permit_release_on_cancel`: Tests permit cleanup on drop
+      - Verifies dropping all held permits immediately makes them available
+      - Tests permits can be reacquired after drop
+    - `test_edge_047d_concurrency_stats_accuracy`: Verifies stats accurately reflect semaphore state
+      - Tests stats show correct max_concurrent_reads and available_permits
+      - Verifies available_permits decreases as permits are acquired
+  - All 193+ tests passing
+
 - EDGE-046: Test cache memory limit
   - Added `Cache::with_memory_limit()` constructor in `src/cache.rs` for byte-based cache limits
   - Implemented `test_cache_memory_limit_eviction` with 3 test scenarios:
