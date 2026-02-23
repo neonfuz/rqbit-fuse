@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-022: Test empty response body handling
+  - Added `test_edge_022_empty_response_body_200` to verify 200 OK with empty body returns empty bytes
+  - Added `test_edge_022_empty_response_body_206` to verify 206 Partial Content with empty body returns empty bytes
+  - Added `test_edge_022_empty_response_at_offset` to verify empty response at non-zero offset doesn't cause infinite loop
+  - All tests verify streaming layer handles empty bodies gracefully without panics or hanging
+  - Location: `src/api/streaming.rs`
+
 - EDGE-021: Test server returning 200 OK instead of 206 Partial Content
   - Added `test_edge_021_server_returns_200_instead_of_206` to verify streaming layer handles 200 OK responses
   - Tests that the streaming layer correctly skips to the requested offset when server returns full file

@@ -1224,4 +1224,114 @@ mod tests {
 
         mock_server.verify().await;
     }
+
+    // ============================================================================
+    // EDGE-022: Test empty response body
+    // ============================================================================
+
+    /// Test server returns 200 OK with empty body - should return empty bytes
+    #[tokio::test]
+    async fn test_edge_022_empty_response_body_200() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server returns 200 OK with empty body
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read - should handle empty body gracefully
+        let result = manager.read(1, 0, 0, 1024).await;
+        assert!(
+            result.is_ok(),
+            "Read should succeed even with empty response body"
+        );
+
+        let data = result.unwrap();
+        assert_eq!(
+            data.len(),
+            0,
+            "Should return empty bytes for empty response"
+        );
+
+        mock_server.verify().await;
+    }
+
+    /// Test server returns 206 Partial Content with empty body - should return empty bytes
+    #[tokio::test]
+    async fn test_edge_022_empty_response_body_206() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server returns 206 Partial Content with empty body
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("Range", "bytes=0-"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read - should handle empty body gracefully
+        let result = manager.read(1, 0, 0, 1024).await;
+        assert!(
+            result.is_ok(),
+            "Read should succeed even with empty 206 response body"
+        );
+
+        let data = result.unwrap();
+        assert_eq!(
+            data.len(),
+            0,
+            "Should return empty bytes for empty 206 response"
+        );
+
+        mock_server.verify().await;
+    }
+
+    /// Test empty response at non-zero offset - should not cause infinite loop
+    #[tokio::test]
+    async fn test_edge_022_empty_response_at_offset() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Server returns 206 with empty body for range request at offset 100
+        Mock::given(method("GET"))
+            .and(path("/torrents/1/stream/0"))
+            .and(header("Range", "bytes=100-"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(vec![]))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+        // Request read at offset 100 - should complete without hanging
+        let result = manager.read(1, 0, 100, 1024).await;
+        assert!(
+            result.is_ok(),
+            "Read at offset should succeed even with empty response"
+        );
+
+        let data = result.unwrap();
+        assert_eq!(data.len(), 0, "Should return empty bytes");
+
+        mock_server.verify().await;
+    }
 }

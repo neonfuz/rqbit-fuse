@@ -181,10 +181,14 @@ Each item is designed to be completed independently. These are edge case tests t
   - Verify data correctness
   - Implemented: 3 tests in `src/api/streaming.rs`
 
-- [ ] **EDGE-022**: Test empty response body
+- [x] **EDGE-022**: Test empty response body
   - Server returns 200/206 with empty body
   - Should handle gracefully, return empty bytes
   - No panic or infinite loop
+  - Implemented: 3 tests in `src/api/streaming.rs`
+    - `test_edge_022_empty_response_body_200`: Tests 200 OK with empty body
+    - `test_edge_022_empty_response_body_206`: Tests 206 Partial Content with empty body
+    - `test_edge_022_empty_response_at_offset`: Tests empty response at non-zero offset
 
 - [ ] **EDGE-023**: Test network disconnect during read
   - Start reading stream
