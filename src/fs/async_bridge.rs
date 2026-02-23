@@ -68,8 +68,46 @@ pub enum FuseResponse {
 
 /// Async worker that handles FUSE requests in an async context.
 /// Provides a bridge between synchronous FUSE callbacks and async I/O operations.
+///
+/// # Async/Sync Bridge Pattern
+///
+/// This struct solves the fundamental problem of calling async code from synchronous
+/// FUSE callbacks. FUSE callbacks run in synchronous threads, but our HTTP operations
+/// are async. Using `block_in_place()` + `block_on()` patterns causes deadlocks.
+///
+/// ## Channel Architecture
+///
+/// ### Request Channel: `tokio::sync::mpsc`
+/// Used to send requests from sync FUSE callbacks to the async worker task.
+/// We use tokio's async channel because:
+/// - The worker task runs in an async context (tokio::spawn)
+/// - Using `std::sync::mpsc` would block the async executor
+/// - The `select!` macro requires async-aware channels
+///
+/// ### Response Channel: `std::sync::mpsc`
+/// Used to send responses from the async worker back to sync FUSE callbacks.
+/// We use std's sync channel because:
+/// - FUSE callbacks run in synchronous threads
+/// - We need `recv_timeout()` for timeout handling
+/// - tokio::sync::mpsc doesn't provide blocking recv with timeout
+///
+/// This hybrid approach is the correct pattern for async/sync bridging.
+///
+/// # Example Flow
+///
+/// 1. FUSE callback (sync) calls `read_file()` on AsyncFuseWorker
+/// 2. AsyncFuseWorker creates a `std::sync::mpsc` response channel
+/// 3. AsyncFuseWorker sends request via `tokio::sync::mpsc` to worker task
+/// 4. Worker task (async) receives request and spawns handling task
+/// 5. Handling task performs async HTTP operations via API client
+/// 6. Handling task sends response back via `std::sync::mpsc` channel
+/// 7. AsyncFuseWorker blocks waiting for response with timeout
+/// 8. FUSE callback receives result and returns to FUSE kernel
 pub struct AsyncFuseWorker {
-    /// Channel sender for submitting requests
+    /// Channel sender for submitting requests (tokio::sync::mpsc)
+    ///
+    /// Uses tokio's async channel because the worker runs in an async context.
+    /// Std::sync::mpsc would block the tokio executor.
     request_tx: mpsc::Sender<FuseRequest>,
     /// Handle to the worker task for cleanup
     #[allow(dead_code)]
@@ -123,35 +161,6 @@ impl AsyncFuseWorker {
             }
 
             info!("AsyncFuseWorker shut down");
-        });
-
-        Self {
-            request_tx,
-            worker_handle: Some(worker_handle),
-            shutdown_tx: Some(shutdown_tx),
-        }
-    }
-
-    /// Create a new async worker for testing purposes.
-    /// This spawns a real worker that processes requests and can interact with mock servers.
-    pub fn new_for_test(api_client: Arc<RqbitClient>, metrics: Arc<Metrics>) -> Self {
-        let (request_tx, mut request_rx) = mpsc::channel::<FuseRequest>(100);
-        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
-
-        let worker_handle = tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    biased;
-                    _ = &mut shutdown_rx => break,
-                    Some(request) = request_rx.recv() => {
-                        let api_client = Arc::clone(&api_client);
-                        let metrics = Arc::clone(&metrics);
-                        tokio::spawn(async move {
-                            Self::handle_request(&api_client, &metrics, request).await;
-                        });
-                    }
-                }
-            }
         });
 
         Self {

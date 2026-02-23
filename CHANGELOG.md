@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-007: Simplify AsyncFuseWorker
+  - Removed redundant `new_for_test` method (~30 lines) - tests now use `new()` with explicit capacity
+  - Added comprehensive documentation explaining the async/sync bridge pattern
+  - Documented why `tokio::sync::mpsc` is used for requests (async worker context)
+  - Documented why `std::sync::mpsc` is used for responses (need `recv_timeout` in sync FUSE callbacks)
+  - Added example flow documentation showing the 8-step request/response process
+  - Updated all callers: `src/fs/filesystem.rs` and `tests/common/fuse_helpers.rs`
+  - All tests passing with zero clippy warnings
+  - Research documented in `research/asyncfuseworker-simplification.md`
+
 - SIMPLIFY-003: Simplify Configuration System
   - Removed `piece_check_enabled` field from `PerformanceConfig` (now always enabled)
   - Removed `return_eagain_for_unavailable` field from `PerformanceConfig` (now always uses consistent EAGAIN behavior)

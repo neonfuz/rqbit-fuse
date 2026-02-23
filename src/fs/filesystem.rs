@@ -2754,7 +2754,7 @@ mod tests {
             create_api_client(&api_config, Arc::clone(&metrics.api))
                 .expect("Failed to create API client"),
         );
-        Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics))
+        Arc::new(AsyncFuseWorker::new(api_client, metrics, 100))
     }
 
     #[tokio::test]

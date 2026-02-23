@@ -602,11 +602,11 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### API Simplifications
 
-- [ ] **SIMPLIFY-007**: Simplify AsyncFuseWorker
-  - Review if channel-based approach can be simplified
-  - Consider if `tokio::sync::mpsc` can be replaced with `std::sync::mpsc`
-  - Document the async/sync bridge pattern more clearly
-  - Add sequence diagram to architecture docs
+- [x] **SIMPLIFY-007**: Simplify AsyncFuseWorker
+  - ~~Consider if `tokio::sync::mpsc` can be replaced with `std::sync::mpsc`~~ - Not viable (see [research/asyncfuseworker-simplification.md](research/asyncfuseworker-simplification.md))
+  - [x] Remove redundant `new_for_test` method
+  - [x] Add inline documentation explaining the async/sync bridge pattern
+  - [x] Document why two different channel types are used
 
 - [ ] **SIMPLIFY-008**: Consolidate Type Definitions
   - Merge duplicate torrent representations:

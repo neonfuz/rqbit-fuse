@@ -136,7 +136,7 @@ pub fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
         rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
             .expect("Failed to create API client"),
     );
-    let async_worker = Arc::new(AsyncFuseWorker::new_for_test(api_client, metrics.clone()));
+    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
     TorrentFS::new(config, metrics, async_worker).unwrap()
 }
 
