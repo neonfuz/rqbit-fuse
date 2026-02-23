@@ -74,14 +74,14 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 ## Lower Priority
 
 ### 9. Review Unused Dependencies
-- [ ] Check `Cargo.toml` for potentially unused dependencies:
+- [x] Check `Cargo.toml` for potentially unused dependencies:
   - [x] `strum` - verify only used for Display derive - REMOVED: Was unused, Display trait never invoked
-  - [x] `base64` - verify only used for HTTP Basic Auth
+  - [x] `base64` - verify only used for HTTP Basic Auth - KEPT: Actively used in api/client.rs and api/streaming.rs for HTTP Basic Auth
   - [x] `proptest` - heavy dev dependency, verify usage - REMOVED: Already removed in commit, never actually used
-- [ ] For each unused dependency:
-  - [ ] Remove from `Cargo.toml`
-  - [ ] Remove related code
-  - [ ] Run `cargo build` to verify
+- [x] For each unused dependency:
+  - [x] Remove from `Cargo.toml` - strum and proptest already removed
+  - [x] Remove related code - No code references found
+  - [x] Verified dependencies removed
 
 ### 10. Merge Duplicate Error Types
 - [ ] Review `src/fs/error.rs` (FuseError) and `src/api/types.rs` (ApiError)

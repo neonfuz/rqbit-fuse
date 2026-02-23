@@ -294,6 +294,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- SIMPLIFY-2-009: Complete unused dependency review
+  - Verified `strum` and `proptest` were already removed from Cargo.toml
+  - Confirmed `base64` is actively used for HTTP Basic Auth in api/client.rs and api/streaming.rs
+  - No unused dependencies remain in the project
+  - Updated SIMPLIFY-2.md checklist to mark item 9 as complete
+  - Location: `Cargo.toml`, `SIMPLIFY-2.md`
+
 - SIMPLIFY-2-009: Remove unused `proptest` dev dependency
   - Removed `proptest = "1.4"` from `[dev-dependencies]` in `Cargo.toml`
   - Removed misleading "// Property-based tests using proptest" comment from `src/fs/inode.rs`
