@@ -66,8 +66,6 @@ use std::path::PathBuf;
 /// max_concurrent_reads = 10
 /// # Read-ahead buffer size (bytes)
 /// readahead_size = 33554432
-/// # Check piece availability before reading from paused torrents
-/// check_pieces_before_read = true
 ///
 /// [monitoring]
 /// # Interval between status polls (seconds)
@@ -109,8 +107,7 @@ use std::path::PathBuf;
 ///   "performance": {
 ///     "read_timeout": 30,
 ///     "max_concurrent_reads": 10,
-///     "readahead_size": 33554432,
-///     "check_pieces_before_read": true
+///     "readahead_size": 33554432
 ///   },
 ///   "monitoring": {
 ///     "status_poll_interval": 5,
@@ -251,32 +248,25 @@ pub struct MountConfig {
 
 /// Configuration for performance-related settings.
 ///
-/// Controls read timeouts, concurrency limits, and prefetching behavior.
+/// Controls read timeouts, concurrency limits, and read-ahead behavior.
 ///
 /// # Fields
 ///
 /// * `read_timeout` - Timeout for read operations in seconds (default: 30)
 /// * `max_concurrent_reads` - Maximum concurrent read operations (default: 10)
 /// * `readahead_size` - Size of read-ahead buffer in bytes (default: 32 MiB)
-/// * `prefetch_enabled` - Enable prefetching (default: false)
-/// * `check_pieces_before_read` - Check piece availability before reading from paused torrents (default: true)
 ///
 /// # Environment Variables
 ///
 /// - `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds
 /// - `TORRENT_FUSE_MAX_CONCURRENT_READS` - Maximum concurrent reads
 /// - `TORRENT_FUSE_READAHEAD_SIZE` - Read-ahead buffer size in bytes
-/// - `TORRENT_FUSE_PREFETCH_ENABLED` - Enable prefetching
-/// - `TORRENT_FUSE_CHECK_PIECES_BEFORE_READ` - Check piece availability before read
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerformanceConfig {
     pub read_timeout: u64,
     pub max_concurrent_reads: usize,
     pub readahead_size: u64,
-
-    pub prefetch_enabled: bool,
-    pub check_pieces_before_read: bool,
 }
 
 /// Configuration for monitoring and status polling.
@@ -386,9 +376,6 @@ impl Default for PerformanceConfig {
             read_timeout: 30,
             max_concurrent_reads: 10,
             readahead_size: 33554432,
-
-            prefetch_enabled: false,
-            check_pieces_before_read: true,
         }
     }
 }
@@ -524,20 +511,6 @@ impl Config {
             })?;
         }
 
-        if let Ok(val) = std::env::var("TORRENT_FUSE_PREFETCH_ENABLED") {
-            self.performance.prefetch_enabled = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_PREFETCH_ENABLED has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_CHECK_PIECES_BEFORE_READ") {
-            self.performance.check_pieces_before_read = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_CHECK_PIECES_BEFORE_READ has invalid format".into(),
-                )
-            })?;
-        }
         if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
             self.logging.level = val;
         }

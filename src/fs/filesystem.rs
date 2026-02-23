@@ -761,93 +761,6 @@ impl TorrentFS {
         false
     }
 
-    /// Track read patterns and trigger prefetch for sequential reads.
-    fn track_and_prefetch(
-        &self,
-        fh: u64,
-        offset: u64,
-        size: u32,
-        file_size: u64,
-        torrent_id: u64,
-        file_index: u64,
-    ) {
-        // Update file handle state and check for sequential reads
-        self.file_handles.update_state(fh, offset, size);
-
-        // Note: Prefetch is intentionally disabled by default.
-        // The PersistentStream in streaming.rs already handles buffering via:
-        // 1. HTTP Keep-Alive connections for persistent streaming
-        // 2. pending_buffer that caches extra data from HTTP chunks
-        //
-        // The previous implementation made separate HTTP requests for prefetch
-        // which was wasteful. To re-enable prefetch, set prefetch_enabled = true
-        // in the configuration and implement proper caching.
-        if self.config.performance.prefetch_enabled {
-            self.do_prefetch(fh, offset, size, file_size, torrent_id, file_index);
-        }
-    }
-
-    /// Internal prefetch implementation (disabled by default)
-    #[allow(dead_code)]
-    fn do_prefetch(
-        &self,
-        fh: u64,
-        offset: u64,
-        size: u32,
-        file_size: u64,
-        torrent_id: u64,
-        file_index: u64,
-    ) {
-        let handle = match self.file_handles.get(fh) {
-            Some(h) => h,
-            None => return, // Handle was removed
-        };
-
-        // Trigger prefetch after 2 consecutive sequential reads and not already prefetching
-        if handle.sequential_count() >= 2 && !handle.is_prefetching() {
-            let next_offset = offset + size as u64;
-
-            // Only prefetch if we're not at EOF
-            if next_offset < file_size {
-                let prefetch_size = std::cmp::min(
-                    self.config.performance.readahead_size,
-                    file_size - next_offset,
-                ) as usize;
-
-                if prefetch_size > 0 {
-                    self.file_handles.set_prefetching(fh, true);
-
-                    let api_client = Arc::clone(&self.api_client);
-                    let file_handles = Arc::clone(&self.file_handles);
-                    let readahead_size = self.config.performance.readahead_size;
-
-                    // Spawn prefetch in background
-                    tokio::spawn(async move {
-                        let prefetch_end =
-                            std::cmp::min(next_offset + readahead_size - 1, file_size - 1);
-
-                        match api_client
-                            .read_file(
-                                torrent_id,
-                                file_index as usize,
-                                Some((next_offset, prefetch_end)),
-                            )
-                            .await
-                        {
-                            Ok(_data) => {
-                                // Could store in cache here
-                            }
-                            Err(_e) => {}
-                        }
-
-                        // Mark prefetch as complete
-                        file_handles.set_prefetching(fh, false);
-                    });
-                }
-            }
-        }
-    }
-
     /// Builds FUSE mount options based on configuration.
     fn build_mount_options(&self) -> Vec<fuser::MountOption> {
         let mut options = vec![
@@ -1087,9 +1000,6 @@ impl Filesystem for TorrentFS {
                     bytes_read = bytes_read,
                     latency_ms = latency.as_millis() as u64
                 );
-
-                // Track read pattern and trigger prefetch if sequential
-                self.track_and_prefetch(fh, offset, size, file_size, torrent_id, file_index);
 
                 // Truncate data to requested size to prevent "Too much data" FUSE panic
                 // The API might return more data than requested (e.g., entire piece)

@@ -130,10 +130,11 @@ Reduce configuration complexity and validation overhead.
   - **Completed**: Updated all test files to remove references to removed fields
   - **Completed**: All 185+ tests passing
   
-- [ ] **Task 2.2.3**: Remove PerformanceConfig options
+- [x] **Task 2.2.3**: Remove PerformanceConfig options
   - Remove `prefetch_enabled` - feature doesn't work well
   - Remove `check_pieces_before_read` - always check
   - Keep only: `read_timeout`, `max_concurrent_reads`, `readahead_size`
+  - **Completed**: See CHANGELOG.md SIMPLIFY-020
   
 - [ ] **Task 2.2.4**: Remove MonitoringConfig
   - Remove entire `MonitoringConfig` struct

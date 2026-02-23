@@ -5573,8 +5573,7 @@ async fn test_read_paused_torrent_missing_pieces() {
 
     let mock_server = MockServer::start().await;
     let temp_dir = TempDir::new().unwrap();
-    let mut config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
-    config.performance.check_pieces_before_read = true;
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     // Mock torrent list endpoint
     Mock::given(method("GET"))
@@ -5738,8 +5737,7 @@ async fn test_read_paused_torrent_all_pieces_available() {
 
     let mock_server = MockServer::start().await;
     let temp_dir = TempDir::new().unwrap();
-    let mut config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
-    config.performance.check_pieces_before_read = true;
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
 
     // Mock torrent info endpoint
     Mock::given(method("GET"))
@@ -5831,43 +5829,6 @@ async fn test_read_paused_torrent_all_pieces_available() {
         result
     );
     assert!(result.unwrap(), "Pieces 1-2 should be available");
-}
-
-/// Test that piece checking is disabled when config option is false
-#[tokio::test]
-async fn test_read_paused_torrent_check_disabled() {
-    let mock_server = MockServer::start().await;
-    let temp_dir = TempDir::new().unwrap();
-    let mut config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
-    config.performance.check_pieces_before_read = false;
-
-    let metrics = Arc::new(Metrics::new());
-    let fs = create_test_fs(config, metrics);
-
-    // Create torrent structure
-    let torrent_info = TorrentInfo {
-        id: 1,
-        info_hash: "disabled".to_string(),
-        name: "Check Disabled Torrent".to_string(),
-        output_folder: "/downloads".to_string(),
-        file_count: Some(1),
-        files: vec![FileInfo {
-            name: "file.txt".to_string(),
-            length: 4096,
-            components: vec!["file.txt".to_string()],
-        }],
-        piece_length: Some(1024),
-    };
-
-    fs.create_torrent_structure(&torrent_info).unwrap();
-
-    // When check_pieces_before_read is false, the check_pieces_available
-    // method should still work but the filesystem won't call it automatically
-    // This test verifies the config is properly respected
-    assert!(
-        !fs.config().performance.check_pieces_before_read,
-        "Piece checking should be disabled in config"
-    );
 }
 
 /// EDGE-031: Test path traversal attempts

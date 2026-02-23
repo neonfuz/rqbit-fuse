@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-020: Remove PerformanceConfig Options (Task 2.2.3)
+  - Removed 2 fields from `PerformanceConfig` struct in `src/config/mod.rs`:
+    - `prefetch_enabled` - feature removed entirely (was disabled by default, didn't work well)
+    - `check_pieces_before_read` - now always checks piece availability
+  - Simplified `PerformanceConfig` to 3 fields: `read_timeout`, `max_concurrent_reads`, `readahead_size`
+  - Removed environment variable parsing for `TORRENT_FUSE_PREFETCH_ENABLED` and `TORRENT_FUSE_CHECK_PIECES_BEFORE_READ`
+  - Updated `src/fs/filesystem.rs`:
+    - Removed `track_and_prefetch()` method
+    - Removed `do_prefetch()` method
+    - Removed call to prefetch tracking in read handler
+  - Updated documentation and examples in `src/config/mod.rs` to reflect simplified config
+  - Updated test files to remove references to removed fields:
+    - `tests/fuse_operations.rs`: Removed test `test_read_paused_torrent_check_disabled`
+    - Removed lines setting `check_pieces_before_read` in tests
+  - Reduced PerformanceConfig from 5 fields to 3 fields (40% reduction)
+  - Removed 90 lines of prefetch-related code from filesystem.rs
+  - All config unit tests passing
+  - Location: `src/config/mod.rs`, `src/fs/filesystem.rs`, `tests/fuse_operations.rs`
+
 - SIMPLIFY-019: Remove MountConfig Options (Task 2.2.2)
   - Removed 4 fields from `MountConfig` struct in `src/config/mod.rs`:
     - `allow_other` - now always false (other users cannot access mount)
