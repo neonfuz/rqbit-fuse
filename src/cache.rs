@@ -880,4 +880,157 @@ mod tests {
         let _ = stats.miss_rate();
         let _ = stats.total_requests();
     }
+
+    /// Test EDGE-043: Cache eviction during get operation
+    /// Verifies that when a cache eviction occurs while a get() operation is in progress,
+    /// the cache handles it gracefully and either returns valid data or None (but never panics).
+    #[tokio::test]
+    async fn test_cache_eviction_during_get() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use tokio::task;
+
+        // Create a cache with very small capacity to make eviction likely
+        let cache: Arc<Cache<String, i32>> = Arc::new(Cache::new(3, Duration::from_secs(60)));
+
+        // Pre-populate the cache to capacity
+        cache.insert("key1".to_string(), 100).await;
+        cache.insert("key2".to_string(), 200).await;
+        cache.insert("key3".to_string(), 300).await;
+
+        // Allow inserts to complete
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Track completed operations
+        let get_count = Arc::new(AtomicUsize::new(0));
+        let insert_count = Arc::new(AtomicUsize::new(0));
+
+        // Spawn multiple concurrent operations:
+        // 1. Continuous get operations on existing keys
+        // 2. Continuous insert operations to trigger evictions
+        let mut handles: Vec<tokio::task::JoinHandle<()>> = vec![];
+
+        // Spawn 5 tasks doing gets
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            let counter = Arc::clone(&get_count);
+            handles.push(task::spawn(async move {
+                for j in 0..20 {
+                    let key = format!("key{}", (i + j) % 3 + 1);
+                    // This get() should handle concurrent eviction gracefully
+                    let _ = cache.get(&key).await;
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }
+            }));
+        }
+
+        // Spawn 5 tasks doing inserts (causing evictions)
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            let counter = Arc::clone(&insert_count);
+            handles.push(task::spawn(async move {
+                for j in 0..10 {
+                    let key = format!("new_key_{}_{}", i, j);
+                    cache.insert(key, (i * 100 + j) as i32).await;
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }
+            }));
+        }
+
+        // Wait for all tasks to complete
+        for handle in handles {
+            handle
+                .await
+                .expect("Task should complete without panicking");
+        }
+
+        // Verify operations completed without panic
+        let final_get_count = get_count.load(Ordering::Relaxed);
+        let final_insert_count = insert_count.load(Ordering::Relaxed);
+        assert!(
+            final_get_count >= 100,
+            "Should have completed at least 100 get operations"
+        );
+        assert!(
+            final_insert_count >= 50,
+            "Should have completed at least 50 insert operations"
+        );
+
+        // Cache should be in a consistent state
+        let stats = cache.stats().await;
+        assert!(
+            stats.size <= 3,
+            "Cache size should not exceed capacity after evictions, got {}",
+            stats.size
+        );
+    }
+
+    /// Test EDGE-043 variant: Cache eviction during get of specific key
+    /// Specifically tests when the key being retrieved gets evicted during the operation
+    #[tokio::test]
+    async fn test_cache_eviction_during_get_specific_key() {
+        use std::sync::Arc;
+        use tokio::task;
+
+        // Small capacity cache with 1-second TTL
+        let cache: Arc<Cache<String, i32>> = Arc::new(Cache::new(2, Duration::from_secs(60)));
+
+        // Insert two keys at capacity
+        cache.insert("target_key".to_string(), 42).await;
+        cache.insert("other_key".to_string(), 99).await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Spawn a task that repeatedly tries to get the target_key
+        let cache_clone = Arc::clone(&cache);
+        let get_handle = task::spawn(async move {
+            let mut success_count = 0;
+            let mut none_count = 0;
+            for _ in 0..50 {
+                match cache_clone.get(&"target_key".to_string()).await {
+                    Some(val) => {
+                        assert_eq!(val, 42, "Retrieved value should match inserted value");
+                        success_count += 1;
+                    }
+                    None => {
+                        none_count += 1;
+                    }
+                }
+            }
+            (success_count, none_count)
+        });
+
+        // Meanwhile, spawn tasks that cause evictions by inserting new keys
+        let mut insert_handles = vec![];
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            insert_handles.push(task::spawn(async move {
+                for j in 0..10 {
+                    cache
+                        .insert(format!("eviction_key_{}_{}", i, j), i * 10 + j)
+                        .await;
+                }
+            }));
+        }
+
+        // Wait for all tasks
+        let (success_count, none_count) = get_handle.await.unwrap();
+        for handle in insert_handles {
+            handle.await.unwrap();
+        }
+
+        // Verify we got results (either Some or None, but no panics)
+        assert!(
+            success_count + none_count == 50,
+            "All 50 get operations should complete without panic"
+        );
+
+        // The test passes if we didn't panic - the cache handled the race condition gracefully
+        let stats = cache.stats().await;
+        assert!(
+            stats.size <= 2,
+            "Cache size should not exceed capacity, got {}",
+            stats.size
+        );
+    }
 }

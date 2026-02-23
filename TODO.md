@@ -393,11 +393,14 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_042_mount_unmount_race`: Tests immediate unmount during mount
     - `test_edge_042b_rapid_mount_unmount_cycles`: Tests multiple rapid cycles
 
-- [ ] **EDGE-043**: Test cache eviction during get
+- [x] **EDGE-043**: Test cache eviction during get
   - Start get() operation
   - Trigger cache eviction simultaneously
   - Should handle gracefully
   - Return valid data or None
+  - Implemented: 2 tests in `src/cache.rs`:
+    - `test_cache_eviction_during_get`: Tests concurrent get operations during cache evictions
+    - `test_cache_eviction_during_get_specific_key`: Tests race condition when specific key being retrieved gets evicted
 
 ---
 

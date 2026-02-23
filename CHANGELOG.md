@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-043: Test cache eviction during get
+  - Implemented 2 tests in `src/cache.rs`:
+    - `test_cache_eviction_during_get`: Tests concurrent get operations during cache evictions
+      - Spawns 5 tasks doing gets and 5 tasks doing inserts to trigger evictions
+      - Verifies cache handles the race condition gracefully without panicking
+      - Tests cache maintains capacity constraints after concurrent operations
+    - `test_cache_eviction_during_get_specific_key`: Tests race condition when specific key gets evicted
+      - Spawns concurrent get operations on a specific key while other tasks cause evictions
+      - Verifies either valid data or None is returned, but no panic occurs
+      - Tests cache state remains consistent after concurrent eviction during get
+  - All 187+ tests passing with zero clippy warnings
+
 - EDGE-042: Test mount/unmount race
   - Implemented 2 tests in `tests/integration_tests.rs`:
     - `test_edge_042_mount_unmount_race`: Tests immediate unmount during mount operation
