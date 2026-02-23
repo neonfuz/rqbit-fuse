@@ -98,16 +98,14 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - [x] Update all imports across codebase - Updated 3 files (filesystem.rs, performance_tests.rs, performance.rs)
 - [x] Verified code structure - 291 lines consolidated, 5 lines net reduction
 
-### 12. Remove Unused Config Fields
-- [ ] Review `src/config/mod.rs` for unimplemented features:
-  - [ ] `prefetch_enabled` - verify if prefetching is implemented
-  - [ ] `piece_check_enabled` - verify if piece verification is implemented
-- [ ] For each unused field:
-  - [ ] Remove from struct
-  - [ ] Remove from default functions
-  - [ ] Remove from env var parsing
-  - [ ] Remove from validation
-  - [ ] Run tests to verify
+### 12. Review Config Fields for Unused Features
+- [x] Review `src/config/mod.rs` for unimplemented features:
+  - [x] `prefetch_enabled` - verified: actively used in `src/fs/filesystem.rs:944` for prefetch triggering
+  - [x] `piece_check_enabled` - verified: actively used in `src/fs/filesystem.rs:888` for piece availability checks
+- [x] **Conclusion**: All config fields are legitimately used and implemented
+  - `piece_check_enabled`: Controls piece verification (default: true) - WORKING FEATURE
+  - `prefetch_enabled`: Controls read-ahead prefetching (default: false) - WORKING FEATURE
+- [x] No unused fields found, no removal necessary
 
 ## Verification Steps
 
