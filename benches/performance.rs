@@ -15,8 +15,7 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 
 use rqbit_fuse::cache::Cache;
-use rqbit_fuse::fs::inode::InodeManager;
-use rqbit_fuse::types::inode::InodeEntry;
+use rqbit_fuse::fs::inode::{InodeEntry, InodeManager};
 
 /// Create a Tokio runtime for async benchmarks
 fn create_runtime() -> Runtime {

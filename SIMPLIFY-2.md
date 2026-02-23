@@ -92,11 +92,11 @@ This checklist contains individually actionable items to simplify the rqbit-fuse
 - [x] No code changes needed - design is correct as-is
 
 ### 11. Consolidate Inode Types
-- [ ] Review `src/types/inode.rs` and `src/fs/inode.rs`
-- [ ] Identify split responsibilities
-- [ ] Merge into single module or clarify separation
-- [ ] Update all imports across codebase
-- [ ] Run tests to verify inodes still work
+- [x] Review `src/types/inode.rs` and `src/fs/inode.rs`
+- [x] Identify split responsibilities - InodeEntry (data) and InodeManager (logic)
+- [x] Merge into single module - Moved InodeEntry from types/inode.rs into fs/inode.rs
+- [x] Update all imports across codebase - Updated 3 files (filesystem.rs, performance_tests.rs, performance.rs)
+- [x] Verified code structure - 291 lines consolidated, 5 lines net reduction
 
 ### 12. Remove Unused Config Fields
 - [ ] Review `src/config/mod.rs` for unimplemented features:

@@ -22,18 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created research document: `research/config_fields_usage_analysis.md`
   - Location: `src/config/mod.rs`, `src/fs/filesystem.rs`
 
-- SIMPLIFY-2-011: Evaluate consolidating inode types across modules
-  - Analyzed `InodeEntry` data type in `src/types/inode.rs` (292 lines)
-  - Analyzed `InodeManager` in `src/fs/inode.rs` (765 lines)
-  - Reviewed separation of concerns between data and logic
-  - **Conclusion**: Types should NOT be consolidated
-  - Rationale: Clean separation - data model vs. management logic
-  - `types/inode.rs` defines the InodeEntry data structure
-  - `fs/inode.rs` implements allocation and lifecycle management
-  - Merging would create unnecessarily large mixed-concern module
-  - Current design follows Single Responsibility Principle
-  - Created research document: `research/inode_types_consolidation_analysis.md`
-  - Location: `src/types/inode.rs`, `src/fs/inode.rs`
+- SIMPLIFY-2-011: Consolidate inode types across modules
+  - Moved `InodeEntry` from `src/types/inode.rs` to `src/fs/inode.rs`
+  - Consolidated inode-related code into single module for better maintainability
+  - Updated imports in `src/fs/filesystem.rs`, `tests/performance_tests.rs`, `benches/performance.rs`
+  - Removed empty `src/types/inode.rs` file
+  - Updated `src/types/mod.rs` to re-export from `fs::inode`
+  - Updated `src/fs/mod.rs` to export both `InodeEntry` and `InodeManager`
+  - Net result: 291 lines consolidated, 5 lines net reduction in imports
+  - Location: `src/fs/inode.rs` (now contains both InodeEntry and InodeManager)
 
 - SIMPLIFY-2-010: Evaluate merging FuseError and ApiError types
   - Analyzed `FuseError` in `src/fs/error.rs` (12 variants, FUSE-specific)

@@ -3,6 +3,7 @@ use crate::api::create_api_client;
 use crate::api::types::{TorrentState, TorrentStatus};
 use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
+use crate::fs::inode::InodeEntry;
 use crate::fs::inode::InodeManager;
 use crate::fs::macros::{
     fuse_error, fuse_log, fuse_ok, reply_ino_not_found, reply_no_permission, reply_not_directory,
@@ -10,7 +11,6 @@ use crate::fs::macros::{
 };
 use crate::metrics::Metrics;
 use crate::types::handle::FileHandleManager;
-use crate::types::inode::InodeEntry;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use dashmap::DashSet;
@@ -1039,8 +1039,8 @@ impl TorrentFS {
     ///
     /// # Returns
     /// * `fuser::FileAttr` - The FUSE file attributes
-    pub fn build_file_attr(&self, entry: &crate::types::inode::InodeEntry) -> fuser::FileAttr {
-        use crate::types::inode::InodeEntry;
+    pub fn build_file_attr(&self, entry: &crate::fs::inode::InodeEntry) -> fuser::FileAttr {
+        use crate::fs::inode::InodeEntry;
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
         let now = SystemTime::now();
