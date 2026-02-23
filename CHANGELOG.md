@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-036: Test HTTP 429 Too Many Requests
+  - Implemented rate limit handling in `src/api/client.rs`
+  - Modified `execute_with_retry` to respect `Retry-After` header on 429 responses
+  - Added 4 comprehensive tests:
+    - `test_edge_036_rate_limit_with_retry_after_header`: Verifies client waits specified duration
+    - `test_edge_036_rate_limit_without_retry_after_uses_default_delay`: Tests fallback behavior
+    - `test_edge_036_rate_limit_exhausts_retries`: Verifies error returned when retries exhausted
+    - `test_edge_036_multiple_rate_limits_eventually_succeed`: Tests multiple rate limits before success
+  - All 172+ tests passing with zero clippy warnings
+
 - EDGE-035: Test case sensitivity
   - Implemented `test_edge_035_case_sensitivity` in `tests/fuse_operations.rs`
   - Tests verify case-sensitive file lookups on Linux filesystems

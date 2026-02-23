@@ -159,6 +159,31 @@ impl RqbitClient {
                         sleep(self.retry_delay * (attempt + 1)).await;
                         continue;
                     }
+
+                    // Handle 429 Too Many Requests with Retry-After header
+                    if status == StatusCode::TOO_MANY_REQUESTS && attempt < self.max_retries {
+                        // Extract Retry-After header value
+                        let retry_after = response
+                            .headers()
+                            .get("retry-after")
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .map(Duration::from_secs)
+                            .unwrap_or_else(|| self.retry_delay * (attempt + 1));
+
+                        self.metrics.record_retry(endpoint, attempt + 1);
+                        warn!(
+                            endpoint = endpoint,
+                            status = status.as_u16(),
+                            retry_after_secs = retry_after.as_secs(),
+                            attempt = attempt + 1,
+                            max_attempts = self.max_retries + 1,
+                            "Rate limited, retrying after delay..."
+                        );
+                        sleep(retry_after).await;
+                        continue;
+                    }
+
                     final_result = Some(Ok(response));
                     break;
                 }
@@ -1771,5 +1796,168 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
         assert!(matches!(err, RqbitFuseError::ApiError { status: 500, .. }));
+    }
+
+    // =========================================================================
+    // EDGE-036: HTTP 429 Too Many Requests Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_edge_036_rate_limit_with_retry_after_header() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            1,
+            Duration::from_millis(100),
+            None,
+            metrics,
+        )
+        .unwrap();
+
+        // First request returns 429 with Retry-After: 1 second
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "1")
+                    .set_body_string("Rate limited"),
+            )
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        // Second request succeeds
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let start = Instant::now();
+        let result = client.list_torrents().await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Should succeed after retry
+        assert!(result.is_empty());
+        // Should wait at least 1 second (Retry-After header value)
+        assert!(
+            elapsed >= Duration::from_secs(1),
+            "Should respect Retry-After header"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edge_036_rate_limit_without_retry_after_uses_default_delay() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            1,
+            Duration::from_millis(50),
+            None,
+            metrics,
+        )
+        .unwrap();
+
+        // First request returns 429 without Retry-After header
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(ResponseTemplate::new(429).set_body_string("Rate limited"))
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        // Second request succeeds
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let start = Instant::now();
+        let result = client.list_torrents().await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Should succeed after retry
+        assert!(result.is_empty());
+        // Should use default retry delay (50ms * attempt 1 = 50ms)
+        assert!(
+            elapsed >= Duration::from_millis(50),
+            "Should use default retry delay when no Retry-After header"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edge_036_rate_limit_exhausts_retries() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        // Client with 0 retries (only initial attempt)
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            0,
+            Duration::from_millis(10),
+            None,
+            metrics,
+        )
+        .unwrap();
+
+        // Always returns 429
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "0")
+                    .set_body_string("Rate limited"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let result = client.list_torrents().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
+        // Should get the 429 error after exhausting retries
+        assert!(matches!(err, RqbitFuseError::ApiError { status: 429, .. }));
+    }
+
+    #[tokio::test]
+    async fn test_edge_036_multiple_rate_limits_eventually_succeed() {
+        let mock_server = MockServer::start().await;
+        let metrics = Arc::new(ApiMetrics::new());
+        let client = RqbitClient::with_config(
+            mock_server.uri(),
+            3,
+            Duration::from_millis(10),
+            None,
+            metrics,
+        )
+        .unwrap();
+
+        // First 3 requests return 429, 4th succeeds
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "0")
+                    .set_body_string("Rate limited"),
+            )
+            .up_to_n_times(3)
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/torrents"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"torrents": []})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let result = client.list_torrents().await.unwrap();
+        assert!(result.is_empty());
     }
 }

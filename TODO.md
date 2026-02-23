@@ -316,10 +316,15 @@ Each item is designed to be completed independently. These are edge case tests t
 
 ### API Error Scenarios (src/api/client.rs)
 
-- [ ] **EDGE-036**: Test HTTP 429 Too Many Requests
+- [x] **EDGE-036**: Test HTTP 429 Too Many Requests
   - Server returns 429 with Retry-After header
   - Should respect rate limit
   - Should retry appropriately
+  - **Implemented**: 4 tests in `src/api/client.rs`:
+    - `test_edge_036_rate_limit_with_retry_after_header`: Tests respecting Retry-After header
+    - `test_edge_036_rate_limit_without_retry_after_uses_default_delay`: Tests fallback to default delay
+    - `test_edge_036_rate_limit_exhausts_retries`: Tests error when retries exhausted
+    - `test_edge_036_multiple_rate_limits_eventually_succeed`: Tests multiple 429s before success
 
 - [ ] **EDGE-037**: Test malformed JSON response
   - Server returns invalid JSON
