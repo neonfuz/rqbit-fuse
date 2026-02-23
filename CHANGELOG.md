@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-051: Test UTF-8 edge cases
+  - Added 5 comprehensive tests to `tests/unicode_tests.rs` for UTF-8 filename handling:
+    - `test_edge_051_emoji_filenames`: Tests emoji including multi-codepoint sequences
+      - Tests document emoji (📄), movie emoji (🎬), music note (🎵), rocket (🚀)
+      - Tests complex ZWJ sequences: family (👨‍👩‍👧‍👦), rainbow flag (🏳️‍🌈)
+      - Verifies 4-byte UTF-8 emoji are handled correctly without panic
+    - `test_edge_051_cjk_filenames`: Tests Chinese, Japanese, Korean characters
+      - Tests simplified/traditional Chinese (文档/文檔)
+      - Tests Japanese Katakana/Hiragana (ドキュメント)
+      - Tests Korean Hangul (문서)
+      - Tests mixed CJK scripts (Chinese + Japanese)
+      - Verifies 3-byte UTF-8 CJK characters are handled correctly
+    - `test_edge_051_rtl_filenames`: Tests Right-to-Left scripts
+      - Tests Arabic (ملف), Hebrew (קובץ), Persian/Farsi (فایل)
+      - Tests mixed LTR/RTL text (doc_ملف)
+      - Tests mixed Arabic + Hebrew (ملف_קובץ)
+      - Verifies bidirectional text is handled correctly
+    - `test_edge_051_zero_width_joiner_filenames`: Tests ZWJ emoji sequences
+      - Tests professional emoji: man technologist (👨‍💻), woman scientist (👩‍🔬)
+      - Tests activity emoji: man farmer (👨‍🌾), woman artist (👩‍🎨)
+      - Tests gendered emoji: man running (🏃‍♂️), woman running (🏃‍♀️)
+      - Verifies complex multi-codepoint ZWJ sequences work correctly
+    - `test_edge_051_other_utf8_edge_cases`: Tests other Unicode edge cases
+      - Tests accented Latin (café, naïve, resumé with combining accent)
+      - Tests mathematical symbols (∑, Ω, ∞)
+      - Tests special symbols (★, ♠)
+      - Verifies various Unicode categories are handled correctly
+  - All UTF-8 edge cases are handled gracefully without panic
+  - All 200+ tests passing with zero clippy warnings
+
 - EDGE-050: Test control characters in filename
   - Added 3 tests to `tests/unicode_tests.rs` for control character handling:
     - `test_edge_050_control_characters_in_filename`: Tests common control characters

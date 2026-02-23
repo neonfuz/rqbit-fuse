@@ -466,12 +466,18 @@ Each item is designed to be completed independently. These are edge case tests t
     - `test_edge_050_multiple_control_characters`: Tests combinations of control characters
     - `test_edge_050_control_chars_with_valid_files`: Verifies control char handling doesn't affect other files
 
-- [ ] **EDGE-051**: Test UTF-8 edge cases
+- [x] **EDGE-051**: Test UTF-8 edge cases
   - Emoji (multi-byte sequences)
   - CJK characters (Chinese, Japanese, Korean)
   - Right-to-left text (Arabic, Hebrew)
   - Zero-width joiners (emoji sequences)
   - Should handle all correctly
+  - **Implemented**: 5 tests in `tests/unicode_tests.rs`:
+    - `test_edge_051_emoji_filenames`: Tests emoji including multi-codepoint and ZWJ sequences
+    - `test_edge_051_cjk_filenames`: Tests Chinese, Japanese (Katakana/Hiragana), and Korean
+    - `test_edge_051_rtl_filenames`: Tests Arabic, Hebrew, Persian, and mixed LTR/RTL
+    - `test_edge_051_zero_width_joiner_filenames`: Tests ZWJ emoji sequences
+    - `test_edge_051_other_utf8_edge_cases`: Tests accented Latin, mathematical symbols, etc.
 
 - [ ] **EDGE-052**: Test path normalization
   - NFD vs NFC unicode normalization

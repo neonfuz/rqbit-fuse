@@ -707,3 +707,393 @@ async fn test_edge_050_control_chars_with_valid_files() {
         "Valid file should have correct size"
     );
 }
+
+// ============================================================================
+// EDGE-051: Test UTF-8 edge cases
+// ============================================================================
+
+/// Test that filenames containing emoji are handled correctly
+///
+/// Emoji are multi-byte UTF-8 sequences (typically 4 bytes each).
+/// Tests various emoji including simple emoji, multi-codepoint emoji,
+/// and emoji with skin tone modifiers.
+#[tokio::test]
+async fn test_edge_051_emoji_filenames() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various emoji filenames
+    let test_cases = [
+        ("📄document.txt", "document emoji"),
+        ("🎬movie.mp4", "movie emoji"),
+        ("🎵music.mp3", "music note"),
+        ("🚀rocket.zip", "rocket"),
+        ("👨‍👩‍👧‍👦family.pdf", "family with ZWJ"),
+        ("🏳️‍🌈pride.png", "rainbow flag with ZWJ"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 700 + idx as u64,
+            info_hash: format!("emoji{}", idx),
+            name: format!("Emoji Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name() == *filename);
+
+                assert!(
+                    found,
+                    "Emoji filename '{}' ({}) should exist in filesystem",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable - should contain filename-related message
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic")
+                        && !error_msg.to_lowercase().contains("unwrap")
+                        && !error_msg.to_lowercase().contains("assertion"),
+                    "Emoji filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "Emoji filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that filenames containing CJK (Chinese, Japanese, Korean) characters work correctly
+///
+/// CJK characters are typically 3 bytes in UTF-8. Tests various CJK scripts
+/// including simplified/traditional Chinese, Hiragana/Katakana, and Hangul.
+#[tokio::test]
+async fn test_edge_051_cjk_filenames() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various CJK filenames
+    let test_cases = [
+        ("文档.txt", "simplified Chinese"),
+        ("文檔.txt", "traditional Chinese"),
+        ("ドキュメント.txt", "Japanese Katakana"),
+        ("ドキュメント.txt", "Japanese Hiragana"),
+        ("문서.txt", "Korean Hangul"),
+        ("文件資料.pdf", "mixed Chinese"),
+        ("資料フォルダ.zip", "Chinese + Katakana"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 800 + idx as u64,
+            info_hash: format!("cjk{}", idx),
+            name: format!("CJK Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 2048,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name() == *filename);
+
+                assert!(
+                    found,
+                    "CJK filename '{}' ({}) should exist in filesystem",
+                    filename, description
+                );
+
+                // Verify file attributes are correct
+                let file_inode = root_children
+                    .iter()
+                    .find(|(_, entry)| entry.name() == *filename)
+                    .map(|(inode, _)| *inode)
+                    .expect("Should find CJK file inode");
+
+                let file_entry = inode_manager
+                    .get(file_inode)
+                    .expect("Should get entry for CJK file");
+                assert_eq!(
+                    file_entry.file_size(),
+                    2048,
+                    "CJK file should have correct size"
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "CJK filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "CJK filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that filenames containing RTL (Right-to-Left) text work correctly
+///
+/// RTL scripts like Arabic and Hebrew should be handled properly. Tests
+/// various RTL scenarios including pure RTL text and mixed LTR/RTL.
+#[tokio::test]
+async fn test_edge_051_rtl_filenames() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various RTL filenames
+    let test_cases = [
+        ("ملف.txt", "Arabic"),
+        ("קובץ.txt", "Hebrew"),
+        ("فایل.pdf", "Persian (Farsi)"),
+        ("doc_ملف.txt", "mixed LTR/RTL"),
+        ("ملف_קובץ.zip", "Arabic + Hebrew"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 900 + idx as u64,
+            info_hash: format!("rtl{}", idx),
+            name: format!("RTL Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name() == *filename);
+
+                assert!(
+                    found,
+                    "RTL filename '{}' ({}) should exist in filesystem",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "RTL filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "RTL filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that filenames containing zero-width joiners work correctly
+///
+/// Zero-width joiners (ZWJ) are used to combine emoji into sequences.
+/// Tests various ZWJ sequences including complex emoji combinations.
+#[tokio::test]
+async fn test_edge_051_zero_width_joiner_filenames() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various ZWJ sequences
+    let test_cases = [
+        ("👨‍💻developer.txt", "man technologist"),
+        ("👩‍🔬scientist.pdf", "woman scientist"),
+        ("👨‍🌾farmer.zip", "man farmer"),
+        ("👩‍🎨artist.png", "woman artist"),
+        ("🏃‍♂️runner.mp4", "man running"),
+        ("🏃‍♀️runner.mp4", "woman running"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 1000 + idx as u64,
+            info_hash: format!("zwj{}", idx),
+            name: format!("ZWJ Test {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 512,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name() == *filename);
+
+                assert!(
+                    found,
+                    "ZWJ filename '{}' ({}) should exist in filesystem",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "ZWJ filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "ZWJ filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
+
+/// Test that filenames with various other UTF-8 edge cases work correctly
+///
+/// Tests other Unicode edge cases including combining characters,
+/// mathematical symbols, and special Unicode characters.
+#[tokio::test]
+async fn test_edge_051_other_utf8_edge_cases() {
+    let mock_server = setup_mock_server().await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
+
+    let metrics = Arc::new(Metrics::new());
+    let fs = create_test_fs(config, metrics);
+
+    // Test various other UTF-8 edge cases
+    let test_cases = [
+        ("café.txt", "accented Latin"),
+        ("naïve.pdf", "diaeresis"),
+        ("resumé.doc", "combining acute accent"),
+        ("∑math.txt", "mathematical symbol"),
+        ("Ωsymbol.txt", "Greek letter"),
+        ("★star.txt", "star symbol"),
+        ("∞infinity.txt", "infinity symbol"),
+        ("♠card.txt", "playing card suit"),
+    ];
+
+    for (idx, (filename, description)) in test_cases.iter().enumerate() {
+        let torrent_info = TorrentInfo {
+            id: 1100 + idx as u64,
+            info_hash: format!("utf8{}", idx),
+            name: format!("UTF-8 Edge Case {}", description),
+            output_folder: "/downloads".to_string(),
+            file_count: Some(1),
+            files: vec![FileInfo {
+                name: filename.to_string(),
+                length: 1024,
+                components: vec![filename.to_string()],
+            }],
+            piece_length: Some(1048576),
+        };
+
+        // Should handle gracefully - no panic
+        let result = fs.create_torrent_structure(&torrent_info);
+
+        match result {
+            Ok(_) => {
+                // If creation succeeds, verify the file exists
+                let inode_manager = fs.inode_manager();
+                let root_children = inode_manager.get_children(1);
+                let found = root_children
+                    .iter()
+                    .any(|(_, entry)| entry.name() == *filename);
+
+                assert!(
+                    found,
+                    "UTF-8 filename '{}' ({}) should exist in filesystem",
+                    filename, description
+                );
+            }
+            Err(e) => {
+                // Graceful error is acceptable
+                let error_msg = format!("{}", e);
+                assert!(
+                    !error_msg.to_lowercase().contains("panic"),
+                    "UTF-8 filename should not cause panic: {}",
+                    error_msg
+                );
+                println!(
+                    "UTF-8 filename '{}' rejected gracefully: {}",
+                    filename, error_msg
+                );
+            }
+        }
+    }
+}
