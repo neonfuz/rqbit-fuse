@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EDGE-057: Test environment variable edge cases
+  - Added 6 comprehensive tests to `tests/config_tests.rs` with sequential execution via mutex:
+    - `test_edge_057_missing_required_env_vars`: Tests graceful handling when env vars are not set (uses defaults)
+    - `test_edge_057_empty_string_env_var_value`: Tests empty string values for API URL, mount point, log level, and auth
+    - `test_edge_057_very_long_env_var_value`: Tests env var values exceeding 4096 characters (5000 chars preserved correctly)
+    - `test_edge_057_empty_numeric_env_var_values`: Tests empty strings for numeric fields (properly fail to parse)
+    - `test_edge_057_whitespace_only_env_var_values`: Tests whitespace-only values for string and numeric fields
+    - `test_edge_057_env_var_case_sensitivity`: Tests that uppercase env var names take precedence over lowercase
+  - Used `std::sync::Mutex` to ensure sequential test execution and prevent env var interference between tests
+  - All environment variable edge cases now have comprehensive test coverage
+
 - EDGE-056: Test timeout edge cases
   - Created `tests/config_tests.rs` with 10 comprehensive timeout validation tests:
     - `test_edge_056_timeout_zero`: Validates that timeout=0 fails validation

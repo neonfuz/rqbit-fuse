@@ -520,11 +520,14 @@ Each item is designed to be completed independently. These are edge case tests t
   - Invalid formats (letters, decimals, empty) - Implemented: comprehensive test coverage
   - **Implemented**: 10 tests in `tests/config_tests.rs` covering all timeout edge cases
 
-- [ ] **EDGE-057**: Test environment variable edge cases
-  - Missing required env vars
-  - Empty string env var value
-  - Very long env var value (>4096 chars)
-  - Should handle gracefully
+- [x] **EDGE-057**: Test environment variable edge cases
+  - Missing required env vars - defaults used gracefully
+  - Empty string env var value - handled without panic
+  - Very long env var value (>4096 chars) - preserved correctly
+  - Whitespace-only values - handled appropriately
+  - Empty numeric fields - fail to parse with proper error
+  - Case sensitivity - uppercase env vars take precedence
+  - **Implemented**: 6 tests in `tests/config_tests.rs` with sequential execution via mutex
 
 ---
 

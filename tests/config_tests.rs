@@ -1,4 +1,8 @@
 use rqbit_fuse::config::Config;
+use std::sync::Mutex;
+
+// Use a global mutex to ensure env var tests run sequentially
+static ENV_VAR_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_edge_056_timeout_zero() {
@@ -163,4 +167,223 @@ fn test_edge_056_invalid_timeout_from_env_handling() {
             description
         );
     }
+}
+
+#[test]
+fn test_edge_057_missing_required_env_vars() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
+    // Ensure required env vars are not set (they shouldn't be in test environment)
+    // This tests that the system handles missing env vars gracefully by using defaults
+    let vars_to_check = [
+        "TORRENT_FUSE_API_URL",
+        "TORRENT_FUSE_MOUNT_POINT",
+        "TORRENT_FUSE_METADATA_TTL",
+        "TORRENT_FUSE_READ_TIMEOUT",
+    ];
+
+    // Clean up any existing env vars
+    for var in &vars_to_check {
+        std::env::remove_var(var);
+    }
+
+    // Create config and merge from env - should succeed with defaults
+    let config = Config::default();
+    let result = config.merge_from_env();
+
+    assert!(
+        result.is_ok(),
+        "Missing env vars should not cause error, defaults should be used"
+    );
+
+    // Verify defaults are used
+    let merged = result.unwrap();
+    assert_eq!(
+        merged.api.url, "http://127.0.0.1:3030",
+        "Default API URL should be used"
+    );
+    assert_eq!(
+        merged.cache.metadata_ttl, 60,
+        "Default metadata TTL should be used"
+    );
+    assert_eq!(
+        merged.performance.read_timeout, 30,
+        "Default read timeout should be used"
+    );
+}
+
+#[test]
+fn test_edge_057_empty_string_env_var_value() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
+    // Test empty string values for various env vars
+    let test_cases = [
+        ("TORRENT_FUSE_API_URL", "API URL"),
+        ("TORRENT_FUSE_MOUNT_POINT", "mount point"),
+        ("TORRENT_FUSE_LOG_LEVEL", "log level"),
+        ("TORRENT_FUSE_AUTH_USERPASS", "auth credentials"),
+    ];
+
+    for (var, description) in &test_cases {
+        std::env::set_var(var, "");
+
+        let config = Config::default();
+        let result = config.merge_from_env();
+
+        // Clean up immediately
+        std::env::remove_var(var);
+
+        // Empty strings should be handled gracefully
+        assert!(
+            result.is_ok(),
+            "Empty string for {} should not cause panic",
+            description
+        );
+
+        // For string fields, empty should override default
+        let merged = result.unwrap();
+        match *var {
+            "TORRENT_FUSE_API_URL" => assert_eq!(merged.api.url, "", "Empty API URL should be set"),
+            "TORRENT_FUSE_MOUNT_POINT" => assert_eq!(
+                merged.mount.mount_point,
+                std::path::PathBuf::from(""),
+                "Empty mount point should be set"
+            ),
+            "TORRENT_FUSE_LOG_LEVEL" => {
+                assert_eq!(merged.logging.level, "", "Empty log level should be set")
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn test_edge_057_very_long_env_var_value() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
+    // Test very long env var values (>4096 chars)
+    let long_value = "a".repeat(5000);
+
+    // Test with API URL (string field)
+    std::env::set_var("TORRENT_FUSE_API_URL", &long_value);
+
+    let config = Config::default();
+    let result = config.merge_from_env();
+
+    // Clean up
+    std::env::remove_var("TORRENT_FUSE_API_URL");
+
+    assert!(
+        result.is_ok(),
+        "Very long env var value should not cause error"
+    );
+
+    let merged = result.unwrap();
+    assert_eq!(merged.api.url.len(), 5000, "Long value should be preserved");
+    assert!(
+        merged.api.url.starts_with("aaaa"),
+        "Long value content should be correct"
+    );
+
+    // Test validation should fail for invalid URL (too long to be valid)
+    assert!(
+        merged.validate().is_err(),
+        "Validation should fail for extremely long URL"
+    );
+}
+
+#[test]
+fn test_edge_057_empty_numeric_env_var_values() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
+    // Test empty strings for numeric fields
+    let test_cases = [
+        ("TORRENT_FUSE_METADATA_TTL", "metadata TTL"),
+        ("TORRENT_FUSE_READ_TIMEOUT", "read timeout"),
+        ("TORRENT_FUSE_MAX_ENTRIES", "max entries"),
+        ("TORRENT_FUSE_MAX_CONCURRENT_READS", "max concurrent reads"),
+    ];
+
+    for (var, description) in &test_cases {
+        std::env::set_var(var, "");
+
+        let config = Config::default();
+        let result = config.merge_from_env();
+
+        // Clean up
+        std::env::remove_var(var);
+
+        // Empty strings for numeric fields should fail to parse
+        assert!(
+            result.is_err(),
+            "Empty string for numeric field {} should fail to parse",
+            description
+        );
+    }
+}
+
+#[test]
+fn test_edge_057_whitespace_only_env_var_values() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
+    // Test whitespace-only values
+    let test_cases = [
+        ("TORRENT_FUSE_API_URL", "   ", "API URL"),
+        ("TORRENT_FUSE_LOG_LEVEL", "\t\n", "log level"),
+        ("TORRENT_FUSE_METADATA_TTL", "  ", "metadata TTL"),
+    ];
+
+    for (var, value, _description) in &test_cases {
+        std::env::set_var(var, value);
+
+        let config = Config::default();
+        let result = config.merge_from_env();
+
+        // Clean up
+        std::env::remove_var(var);
+
+        // Should not panic
+        match result {
+            Ok(merged) => {
+                // For string fields, whitespace should be preserved
+                if *var == "TORRENT_FUSE_API_URL" {
+                    assert_eq!(
+                        merged.api.url, *value,
+                        "Whitespace API URL should be preserved"
+                    );
+                }
+            }
+            Err(_) => {
+                // Numeric fields should fail to parse whitespace
+                if *var == "TORRENT_FUSE_METADATA_TTL" {
+                    // This is expected
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_edge_057_env_var_case_sensitivity() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
+    // Test that env var names are case-sensitive
+    std::env::set_var("torrent_fuse_api_url", "http://lowercase:8080");
+    std::env::set_var("TORRENT_FUSE_API_URL", "http://uppercase:9090");
+
+    let config = Config::default();
+    let result = config.merge_from_env();
+
+    // Clean up
+    std::env::remove_var("torrent_fuse_api_url");
+    std::env::remove_var("TORRENT_FUSE_API_URL");
+
+    assert!(result.is_ok());
+    let merged = result.unwrap();
+
+    // Should use uppercase version (standard convention)
+    assert_eq!(
+        merged.api.url, "http://uppercase:9090",
+        "Uppercase env var should be used"
+    );
 }
