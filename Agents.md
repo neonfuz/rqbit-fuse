@@ -84,6 +84,36 @@ The reference directory contains **external documentation** that should **NOT be
 3. Format code: `cargo fmt`
 4. Mark relevant tasks as completed in `TASKS.md`
 
+## Building
+
+### Using Nix
+
+This project uses Nix for dependency management. To build:
+
+```bash
+# Enter the nix shell
+nix-shell
+
+# Build the project
+cargo build
+
+# Build with release optimizations
+cargo build --release
+```
+
+### Without Nix
+
+If you don't have Nix, ensure you have the following system dependencies installed:
+- `pkg-config`
+- `openssl` development headers
+- `fuse3` development headers
+- Rust toolchain (cargo, rustc)
+
+Then run:
+```bash
+cargo build
+```
+
 ## Important Notes
 
 - Treat `src/lib/` as shared utilities
