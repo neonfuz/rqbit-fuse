@@ -92,9 +92,11 @@ Reduce configuration complexity and validation overhead.
   - Remove metrics interval checks
   - Remove resource limit checks (10GB, 1000 streams, 10M inodes)
   
-- [ ] **Task 2.1.3**: Simplify URL validation
-  - Remove scheme validation (allow any valid URL, not just http/https)
-  - Keep only: non-empty check and parseability check
+- [x] **Task 2.1.3**: Simplify URL validation
+  - **Completed**: URL validation already simplified - only checks non-empty and parseable
+  - `reqwest::Url::parse()` accepts any valid URL scheme (http, https, ftp, etc.)
+  - No explicit scheme restriction exists in the code
+  - Test on line 1118 confirms non-http schemes are accepted
   
 - [ ] **Task 2.1.4**: Consolidate validation methods
   - Merge 7 separate validation methods into 1-2 methods

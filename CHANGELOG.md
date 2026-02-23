@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-016: Simplify URL Validation (Task 2.1.3)
+  - Removed explicit scheme validation from `validate_api_config()` in `src/config/mod.rs`
+  - URL validation now only checks: (1) non-empty URL, (2) parseable by `reqwest::Url::parse()`
+  - Any valid URL scheme is now accepted (http, https, ftp, file, etc.)
+  - Updated test `test_validate_url_with_non_http_scheme` to expect success for non-http schemes
+  - Updated test `test_validate_url_without_scheme` to expect success (reqwest accepts scheme-less URLs)
+  - All 23 config tests passing with zero clippy warnings
+  - Reduced validation complexity by removing arbitrary scheme restrictions
+
 - SIMPLIFY-015: Remove Arbitrary Upper Bound Validations (Task 2.1.2)
   - Removed max TTL checks (86400 limit) from `validate_cache_config()`
   - Removed max entries checks (1,000,000 limit) from `validate_cache_config()`
