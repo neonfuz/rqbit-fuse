@@ -676,172 +676,28 @@ impl Config {
     pub fn validate(&self) -> Result<(), RqbitFuseError> {
         let mut issues = Vec::new();
 
-        if let Err(e) = self.validate_api_config() {
-            issues.push(e);
-        }
-        if let Err(e) = self.validate_cache_config() {
-            issues.push(e);
-        }
-        if let Err(e) = self.validate_mount_config() {
-            issues.push(e);
-        }
-        if let Err(e) = self.validate_performance_config() {
-            issues.push(e);
-        }
-        if let Err(e) = self.validate_monitoring_config() {
-            issues.push(e);
-        }
-        if let Err(e) = self.validate_logging_config() {
-            issues.push(e);
-        }
-        if let Err(e) = self.validate_resources_config() {
-            issues.push(e);
-        }
-
-        if issues.is_empty() {
-            Ok(())
-        } else {
-            Err(RqbitFuseError::ValidationError(issues))
-        }
-    }
-
-    fn validate_api_config(&self) -> Result<(), ValidationIssue> {
         if self.api.url.is_empty() {
-            return Err(ValidationIssue {
+            issues.push(ValidationIssue {
                 field: "api.url".to_string(),
                 message: "URL cannot be empty".to_string(),
             });
-        }
-
-        if let Err(e) = reqwest::Url::parse(&self.api.url) {
-            return Err(ValidationIssue {
+        } else if let Err(e) = reqwest::Url::parse(&self.api.url) {
+            issues.push(ValidationIssue {
                 field: "api.url".to_string(),
                 message: format!("Invalid URL format: {}", e),
             });
         }
 
-        Ok(())
-    }
-
-    fn validate_cache_config(&self) -> Result<(), ValidationIssue> {
-        if self.cache.metadata_ttl == 0 {
-            return Err(ValidationIssue {
-                field: "cache.metadata_ttl".to_string(),
-                message: "TTL must be greater than 0".to_string(),
-            });
-        }
-
-        if self.cache.torrent_list_ttl == 0 {
-            return Err(ValidationIssue {
-                field: "cache.torrent_list_ttl".to_string(),
-                message: "TTL must be greater than 0".to_string(),
-            });
-        }
-
-        if self.cache.piece_ttl == 0 {
-            return Err(ValidationIssue {
-                field: "cache.piece_ttl".to_string(),
-                message: "TTL must be greater than 0".to_string(),
-            });
-        }
-
-        if self.cache.max_entries == 0 {
-            return Err(ValidationIssue {
-                field: "cache.max_entries".to_string(),
-                message: "max_entries must be greater than 0".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_mount_config(&self) -> Result<(), ValidationIssue> {
         if !self.mount.mount_point.is_absolute() {
-            return Err(ValidationIssue {
+            issues.push(ValidationIssue {
                 field: "mount.mount_point".to_string(),
                 message: "Mount point must be an absolute path".to_string(),
             });
         }
 
-        if self.mount.mount_point.exists() && !self.mount.mount_point.is_dir() {
-            return Err(ValidationIssue {
-                field: "mount.mount_point".to_string(),
-                message: "Mount point exists but is not a directory".to_string(),
-            });
-        }
-
-        if u64::from(self.mount.uid) > u64::from(u32::MAX) {
-            return Err(ValidationIssue {
-                field: "mount.uid".to_string(),
-                message: "UID exceeds maximum value".to_string(),
-            });
-        }
-
-        if u64::from(self.mount.gid) > u64::from(u32::MAX) {
-            return Err(ValidationIssue {
-                field: "mount.gid".to_string(),
-                message: "GID exceeds maximum value".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_performance_config(&self) -> Result<(), ValidationIssue> {
-        if self.performance.read_timeout == 0 {
-            return Err(ValidationIssue {
-                field: "performance.read_timeout".to_string(),
-                message: "Read timeout must be greater than 0".to_string(),
-            });
-        }
-
-        if self.performance.max_concurrent_reads == 0 {
-            return Err(ValidationIssue {
-                field: "performance.max_concurrent_reads".to_string(),
-                message: "max_concurrent_reads must be greater than 0".to_string(),
-            });
-        }
-
-        if self.performance.readahead_size == 0 {
-            return Err(ValidationIssue {
-                field: "performance.readahead_size".to_string(),
-                message: "readahead_size must be greater than 0".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_monitoring_config(&self) -> Result<(), ValidationIssue> {
-        if self.monitoring.status_poll_interval == 0 {
-            return Err(ValidationIssue {
-                field: "monitoring.status_poll_interval".to_string(),
-                message: "status_poll_interval must be greater than 0".to_string(),
-            });
-        }
-
-        if self.monitoring.stalled_timeout == 0 {
-            return Err(ValidationIssue {
-                field: "monitoring.stalled_timeout".to_string(),
-                message: "stalled_timeout must be greater than 0".to_string(),
-            });
-        }
-
-        if self.monitoring.status_poll_interval > self.monitoring.stalled_timeout {
-            return Err(ValidationIssue {
-                field: "monitoring.status_poll_interval".to_string(),
-                message: "status_poll_interval must be less than or equal to stalled_timeout"
-                    .to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_logging_config(&self) -> Result<(), ValidationIssue> {
         let valid_levels = ["error", "warn", "info", "debug", "trace"];
         if !valid_levels.contains(&self.logging.level.as_str()) {
-            return Err(ValidationIssue {
+            issues.push(ValidationIssue {
                 field: "logging.level".to_string(),
                 message: format!(
                     "Invalid log level '{}'. Valid levels: {}",
@@ -851,41 +707,11 @@ impl Config {
             });
         }
 
-        if self.logging.metrics_interval_secs == 0 && self.logging.metrics_enabled {
-            return Err(ValidationIssue {
-                field: "logging.metrics_interval_secs".to_string(),
-                message:
-                    "metrics_interval_secs must be greater than 0 when metrics_enabled is true"
-                        .to_string(),
-            });
+        if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(RqbitFuseError::ValidationError(issues))
         }
-
-        Ok(())
-    }
-
-    fn validate_resources_config(&self) -> Result<(), ValidationIssue> {
-        if self.resources.max_cache_bytes == 0 {
-            return Err(ValidationIssue {
-                field: "resources.max_cache_bytes".to_string(),
-                message: "max_cache_bytes must be greater than 0".to_string(),
-            });
-        }
-
-        if self.resources.max_open_streams == 0 {
-            return Err(ValidationIssue {
-                field: "resources.max_open_streams".to_string(),
-                message: "max_open_streams must be greater than 0".to_string(),
-            });
-        }
-
-        if self.resources.max_inodes == 0 {
-            return Err(ValidationIssue {
-                field: "resources.max_inodes".to_string(),
-                message: "max_inodes must be greater than 0".to_string(),
-            });
-        }
-
-        Ok(())
     }
 }
 
@@ -1130,33 +956,9 @@ url = "http://localhost:8083"
     }
 
     #[test]
-    fn test_validate_zero_metadata_ttl() {
-        let mut config = Config::default();
-        config.cache.metadata_ttl = 0;
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_zero_max_entries() {
-        let mut config = Config::default();
-        config.cache.max_entries = 0;
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_validate_relative_mount_point() {
         let mut config = Config::default();
         config.mount.mount_point = PathBuf::from("relative/path");
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_zero_read_timeout() {
-        let mut config = Config::default();
-        config.performance.read_timeout = 0;
         let result = config.validate();
         assert!(result.is_err());
     }
@@ -1180,35 +982,10 @@ url = "http://localhost:8083"
     }
 
     #[test]
-    fn test_validate_poll_greater_than_stalled() {
-        let mut config = Config::default();
-        config.monitoring.status_poll_interval = 100;
-        config.monitoring.stalled_timeout = 50;
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_validate_metrics_disabled_no_interval_required() {
         let mut config = Config::default();
         config.logging.metrics_enabled = false;
         config.logging.metrics_interval_secs = 0;
         assert!(config.validate().is_ok());
-    }
-
-    #[test]
-    fn test_validate_zero_max_concurrent_reads() {
-        let mut config = Config::default();
-        config.performance.max_concurrent_reads = 0;
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_zero_readahead_size() {
-        let mut config = Config::default();
-        config.performance.readahead_size = 0;
-        let result = config.validate();
-        assert!(result.is_err());
     }
 }

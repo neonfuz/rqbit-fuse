@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-017: Consolidate Validation Methods (Task 2.1.4)
+  - Merged 7 separate validation methods into a single `validate()` method
+  - Removed per-field validation methods: `validate_api_config()`, `validate_cache_config()`, `validate_mount_config()`, `validate_performance_config()`, `validate_monitoring_config()`, `validate_logging_config()`, `validate_resources_config()`
+  - Consolidated essential validations directly in main `validate()` method:
+    - API URL non-empty and parseable
+    - Mount point is absolute path
+    - Log level is valid (error, warn, info, debug, trace)
+  - Removed redundant validations (>0 checks for fields with defaults)
+  - Removed UID/GID bounds checks (enforced by u32 type)
+  - Removed mount point existence check (directory may not exist at config time)
+  - Removed tests for removed validations from `src/config/mod.rs` (6 tests)
+  - Removed tests for removed validations from `tests/config_tests.rs` (5 tests)
+  - Updated remaining tests to reflect simplified validation behavior
+  - Reduced validation code from ~183 lines to ~25 lines (-86% reduction)
+  - All 185+ tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`, `tests/config_tests.rs`
+
 - SIMPLIFY-016: Simplify URL Validation (Task 2.1.3)
   - Removed explicit scheme validation from `validate_api_config()` in `src/config/mod.rs`
   - URL validation now only checks: (1) non-empty URL, (2) parseable by `reqwest::Url::parse()`

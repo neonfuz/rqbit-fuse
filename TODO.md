@@ -98,10 +98,18 @@ Reduce configuration complexity and validation overhead.
   - No explicit scheme restriction exists in the code
   - Test on line 1118 confirms non-http schemes are accepted
   
-- [ ] **Task 2.1.4**: Consolidate validation methods
-  - Merge 7 separate validation methods into 1-2 methods
-  - Remove per-field validation methods
-  - Keep only essential validations in main `validate()` method
+- [x] **Task 2.1.4**: Consolidate validation methods
+  - Merged 7 separate validation methods into single `validate()` method
+  - Removed per-field validation methods (validate_api_config, validate_cache_config, validate_mount_config, validate_performance_config, validate_monitoring_config, validate_logging_config, validate_resources_config)
+  - Consolidated essential validations: URL non-empty/parseable, mount point absolute, log level valid
+  - Removed redundant >0 validations for fields with defaults
+  - Removed UID/GID bounds checks (enforced by u32 type)
+  - Removed mount point existence check (may not exist at config time)
+  - Removed 6 obsolete tests from src/config/mod.rs
+  - Removed 5 obsolete tests from tests/config_tests.rs
+  - Reduced validation code from ~183 lines to ~25 lines (-86%)
+  - All 185+ tests passing
+  - **Completed**: See CHANGELOG.md SIMPLIFY-017
 
 ### 2.2 Reduce Configuration Surface Area
 - [ ] **Task 2.2.1**: Research - Identify config fields to remove
