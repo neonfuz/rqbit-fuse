@@ -94,31 +94,6 @@ fusermount -u ~/torrents
 umount ~/torrents
 ```
 
-### status
-
-Check the status of the mounted filesystem.
-
-```bash
-rqbit-fuse status [OPTIONS]
-```
-
-**Options:**
-| Option | Description |
-|--------|-------------|
-| `-c, --config <FILE>` | Use custom config file |
-| `-v, --verbose` | Enable verbose output |
-| `-q, --quiet` | Only show errors |
-
-**Examples:**
-
-```bash
-# Show status
-rqbit-fuse status
-
-# Show status with custom config
-rqbit-fuse status -c ~/my-config.toml
-```
-
 ## Usage Examples
 
 ### Basic Workflow
@@ -139,9 +114,6 @@ cp ~/torrents/Ubuntu\ 24.04/ubuntu.iso ~/Downloads/
 
 # Stream a video
 mpv ~/torrents/Movie/video.mkv
-
-# Check status
-rqbit-fuse status
 
 # Unmount when done
 rqbit-fuse umount -m ~/torrents
@@ -206,7 +178,7 @@ head -c 1049600 ~/torrents/file.bin | tail -c 1024
 
 1. **The filesystem is read-only** - All write operations will fail
 2. **Use --auto-unmount for scripts** - Ensures cleanup on exit
-3. **Check status before unmounting** - Verify no active operations
+3. **Ensure no active file operations** - Close all files before unmounting
 
 ### Debugging
 

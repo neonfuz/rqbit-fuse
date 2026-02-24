@@ -81,8 +81,8 @@ curl http://127.0.0.1:3030/
 # Start rqbit if not running
 rqbit server start
 
-# Verify API URL in config
-rqbit-fuse status -f json
+# Verify API URL
+export TORRENT_FUSE_API_URL="http://127.0.0.1:3030"
 ```
 
 ### "Mount point does not exist"
