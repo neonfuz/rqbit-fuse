@@ -125,7 +125,7 @@ impl RqbitClient {
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = reqwest::Result<reqwest::Response>>,
     {
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
 
         let mut last_error = None;
         let mut final_result = None;
@@ -1697,14 +1697,9 @@ mod tests {
     async fn test_retry_on_server_error() {
         let mock_server = MockServer::start().await;
         // Use client with 1 retry for faster test
-        let client = RqbitClient::with_config(
-            mock_server.uri(),
-            1,
-            Duration::from_millis(10),
-            None,
-            metrics,
-        )
-        .unwrap();
+        let client =
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), None)
+                .unwrap();
 
         // First request fails with 503, second succeeds
         Mock::given(method("GET"))
@@ -1750,14 +1745,9 @@ mod tests {
     #[tokio::test]
     async fn test_edge_036_rate_limit_with_retry_after_header() {
         let mock_server = MockServer::start().await;
-        let client = RqbitClient::with_config(
-            mock_server.uri(),
-            1,
-            Duration::from_millis(100),
-            None,
-            metrics,
-        )
-        .unwrap();
+        let client =
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(100), None)
+                .unwrap();
 
         // First request returns 429 with Retry-After: 1 second
         Mock::given(method("GET"))
@@ -1796,14 +1786,9 @@ mod tests {
     #[tokio::test]
     async fn test_edge_036_rate_limit_without_retry_after_uses_default_delay() {
         let mock_server = MockServer::start().await;
-        let client = RqbitClient::with_config(
-            mock_server.uri(),
-            1,
-            Duration::from_millis(50),
-            None,
-            metrics,
-        )
-        .unwrap();
+        let client =
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(50), None)
+                .unwrap();
 
         // First request returns 429 without Retry-After header
         Mock::given(method("GET"))
@@ -1839,14 +1824,9 @@ mod tests {
     async fn test_edge_036_rate_limit_exhausts_retries() {
         let mock_server = MockServer::start().await;
         // Client with 0 retries (only initial attempt)
-        let client = RqbitClient::with_config(
-            mock_server.uri(),
-            0,
-            Duration::from_millis(10),
-            None,
-            metrics,
-        )
-        .unwrap();
+        let client =
+            RqbitClient::with_config(mock_server.uri(), 0, Duration::from_millis(10), None)
+                .unwrap();
 
         // Always returns 429
         Mock::given(method("GET"))
@@ -1869,14 +1849,9 @@ mod tests {
     #[tokio::test]
     async fn test_edge_036_multiple_rate_limits_eventually_succeed() {
         let mock_server = MockServer::start().await;
-        let client = RqbitClient::with_config(
-            mock_server.uri(),
-            3,
-            Duration::from_millis(10),
-            None,
-            metrics,
-        )
-        .unwrap();
+        let client =
+            RqbitClient::with_config(mock_server.uri(), 3, Duration::from_millis(10), None)
+                .unwrap();
 
         // First 3 requests return 429, 4th succeeds
         Mock::given(method("GET"))
@@ -2119,7 +2094,6 @@ mod tests {
             0, // No retries
             Duration::from_millis(10),
             None,
-            metrics.clone(),
         )
         .unwrap();
 
@@ -2199,7 +2173,6 @@ mod tests {
             3,                         // max_retries
             Duration::from_millis(10), // short delay for tests
             None,
-            metrics.clone(),
         )
         .unwrap();
 
@@ -2232,12 +2205,6 @@ mod tests {
         );
         let torrents = result.unwrap();
         assert!(torrents.is_empty(), "Should return empty torrent list");
-
-        // Verify metrics were recorded
-        let retry_count = metrics
-            .retry_count
-            .load(std::sync::atomic::Ordering::Relaxed);
-        assert!(retry_count > 0, "Should have recorded retries");
     }
 
     /// Test that connection reset errors eventually fail when retries are exhausted
@@ -2252,7 +2219,6 @@ mod tests {
             2,                         // max_retries = 2 (total 3 attempts)
             Duration::from_millis(10), // short delay for tests
             None,
-            metrics.clone(),
         )
         .unwrap();
 
@@ -2278,15 +2244,6 @@ mod tests {
             ),
             "Should get appropriate error after retries, got: {:?}",
             err
-        );
-
-        // Verify metrics were recorded - retries should be tracked
-        let retry_count = metrics
-            .retry_count
-            .load(std::sync::atomic::Ordering::Relaxed);
-        assert!(
-            retry_count > 0,
-            "Should have recorded retries for connection reset errors"
         );
     }
 

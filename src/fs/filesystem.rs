@@ -161,7 +161,6 @@ impl TorrentFS {
         let last_discovery = Arc::clone(&self.last_discovery);
         let known_torrents = Arc::clone(&self.known_torrents);
         let file_handles = Arc::clone(&self.file_handles);
-        let metrics = Arc::clone(&self.metrics);
         let poll_interval = Duration::from_secs(30);
 
         let handle = tokio::spawn(async move {
@@ -1300,7 +1299,6 @@ impl Filesystem for TorrentFS {
             let last_discovery = Arc::clone(&self.last_discovery);
             let known_torrents = Arc::clone(&self.known_torrents);
             let file_handles = Arc::clone(&self.file_handles);
-            let metrics = Arc::clone(&self.metrics);
 
             tokio::spawn(async move {
                 const COOLDOWN_MS: u64 = 5000;
@@ -2328,18 +2326,25 @@ mod tests {
     /// Helper function to create a test AsyncFuseWorker
     fn create_test_async_worker() -> Arc<AsyncFuseWorker> {
         let api_config = crate::config::ApiConfig::default();
-        let api_client = Arc::new(
-            create_api_client(&api_config)
-                .expect("Failed to create API client"),
-        );
-        Arc::new(AsyncFuseWorker::new(api_client, 100))
+        let api_client =
+            Arc::new(create_api_client(&api_config).expect("Failed to create API client"));
+        Arc::new(AsyncFuseWorker::new(
+            api_client,
+            Arc::new(crate::metrics::Metrics::new()),
+            100,
+        ))
     }
 
     #[tokio::test]
     async fn test_torrent_fs_creation() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         assert!(!fs.is_initialized());
         assert_eq!(fs.inode_manager().get(1).unwrap().ino(), 1);
@@ -2352,7 +2357,12 @@ mod tests {
         config.mount.mount_point = temp_dir.path().to_path_buf();
 
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
         assert!(fs.validate_mount_point().is_ok());
     }
 
@@ -2362,7 +2372,12 @@ mod tests {
         config.mount.mount_point = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
         let result = fs.validate_mount_point();
 
         assert!(result.is_err());
@@ -2379,7 +2394,12 @@ mod tests {
         config.mount.mount_point = file_path;
 
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
         let result = fs.validate_mount_point();
 
         assert!(result.is_err());
@@ -2395,7 +2415,12 @@ mod tests {
     async fn test_build_mount_options() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         let options = fs.build_mount_options();
 
@@ -2409,7 +2434,12 @@ mod tests {
     async fn test_remove_torrent_cleans_up_inodes() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Create a torrent structure manually
         let torrent_id = 123u64;
@@ -2515,7 +2545,12 @@ mod tests {
     async fn test_symlink_creation() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Create a symlink
         let symlink_inode =
@@ -2537,7 +2572,12 @@ mod tests {
     async fn test_zero_byte_file() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Create a zero-byte file
         let file_inode = fs.inode_manager.allocate_file(
@@ -2562,7 +2602,12 @@ mod tests {
     async fn test_large_file() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Create a large file (>4GB)
         let large_size = 5u64 * 1024 * 1024 * 1024; // 5 GB
@@ -2581,7 +2626,12 @@ mod tests {
     async fn test_unicode_filename() {
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Test various Unicode filenames
         let unicode_names = vec![
@@ -2608,7 +2658,12 @@ mod tests {
 
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Create a single-file torrent info
         let torrent_info = TorrentInfo {
@@ -2647,7 +2702,12 @@ mod tests {
 
         let config = Config::default();
         let async_worker = create_test_async_worker();
-        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
+        let fs = TorrentFS::new(
+            config,
+            Arc::new(crate::metrics::Metrics::new()),
+            async_worker,
+        )
+        .unwrap();
 
         // Create a multi-file torrent info
         let torrent_info = TorrentInfo {

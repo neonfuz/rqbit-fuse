@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-030: Remove Metrics Recording Calls (Task 4.2.2)
+  - Verified metrics system already uses only 4 essential counters
+  - Fixed test compilation errors in src/api/client.rs (removed obsolete retry_count verification)
+  - Fixed test compilation errors in src/fs/filesystem.rs (added missing metrics parameter to AsyncFuseWorker::new)
+  - Removed unused metrics variables in filesystem.rs background tasks
+  - All 180+ tests passing with zero clippy warnings
+  - The simplified Metrics struct correctly maintains only: record_read, record_error, record_cache_hit, record_cache_miss
+  - No obsolete record_* methods (getattr, setattr, lookup, etc.) exist in codebase
+  - Code reduction: Metrics system is now 65 lines with 4 essential methods
+
 - SIMPLIFY-029: Create Minimal Metrics Struct (Task 4.2.1)
   - Replaced 520 lines of complex metrics system with 65 lines of essential counters
   - New `Metrics` struct with only 4 fields: bytes_read, error_count, cache_hits, cache_misses

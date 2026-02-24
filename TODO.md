@@ -275,10 +275,15 @@ Replace 520 lines of metrics with 3 essential metrics.
   - Keep only atomic counters, remove all helper methods
   - **Commit**: c970b3d
   
-- [ ] **Task 4.2.2**: Remove metrics recording calls
-  - Remove all metrics recording except for the 4 essential counters
-  - Delete calls to record_getattr, record_setattr, record_lookup, etc.
-  - Keep only: record_read (for bytes_read), record_error, record_cache_hit, record_cache_miss
+- [x] **Task 4.2.2**: Remove metrics recording calls
+  - **Completed**: Verified metrics system already uses only 4 essential counters
+  - **Completed**: Fixed test compilation errors in src/api/client.rs (removed obsolete metrics verification)
+  - **Completed**: Fixed test compilation errors in src/fs/filesystem.rs (added missing metrics parameter)
+  - **Completed**: Removed unused metrics variable warnings in filesystem.rs
+  - **Completed**: All tests passing (180+ tests)
+  - **Completed**: Zero clippy warnings
+  - **Note**: The simplified Metrics struct already only has record_read, record_error, record_cache_hit, record_cache_miss
+  - **Note**: No calls to record_getattr, record_setattr, record_lookup, etc. exist in the codebase
   
 - [ ] **Task 4.2.3**: Remove periodic logging
   - Remove `spawn_periodic_logging()` method

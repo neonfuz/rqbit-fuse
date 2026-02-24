@@ -597,8 +597,8 @@ async fn test_filesystem_metrics_collection() {
 
     // Verify metrics were initialized by loading the public fields
     use std::sync::atomic::Ordering;
-    let _request_count = metrics.api.request_count.load(Ordering::Relaxed);
-    let _read_count = metrics.fuse.read_count.load(Ordering::Relaxed);
+    let _bytes_read = metrics.bytes_read.load(Ordering::Relaxed);
+    let _error_count = metrics.error_count.load(Ordering::Relaxed);
     // Just verifying these compile and are accessible
     assert!(true);
 }
