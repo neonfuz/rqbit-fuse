@@ -403,10 +403,12 @@ Replace macros with direct tracing calls.
   - Deleted unused `src/fs/macros.rs` file (was not imported anywhere)
   - All tests passing, zero clippy warnings
   
-- [ ] **Task 6.1.6**: Remove macro definitions
-  - Delete `src/fs/macros.rs` file
-  - Remove module declaration from `src/fs/mod.rs`
-  - Remove macro imports from `src/fs/filesystem.rs`
+- [x] **Task 6.1.6**: Remove macro definitions
+  - **Completed**: `src/fs/macros.rs` file already deleted in SIMPLIFY-039
+  - **Completed**: No `mod macros;` declaration found in `src/fs/mod.rs`
+  - **Completed**: No macro imports found in `src/fs/filesystem.rs`
+  - **Completed**: All FUSE macros (fuse_log!, fuse_error!, fuse_ok!, reply_* macros) fully removed
+  - All tests passing with zero clippy warnings
 
 ---
 
