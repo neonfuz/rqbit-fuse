@@ -98,12 +98,10 @@ Default: `http://127.0.0.1:3030`
 // Bytes: [0b00001011, ...]
 ```
 
-**Usage:** 
+**Usage:**
 - Check if file is fully downloaded
 - Show download progress
-- Used for piece availability checking (if `piece_check_enabled` is true)
-
-**Cache TTL:** 5 seconds (configurable via `piece_ttl`)
+- Used for piece availability checking (synchronous, no caching)
 
 ---
 

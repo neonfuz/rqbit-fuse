@@ -63,7 +63,7 @@
   - Remove `--format` from status command
 
 ### api.md
-- [ ] Remove bitfield caching documentation
+- [x] Remove bitfield caching documentation
   - Remove mention of 5-second TTL for bitfields
   - Update to reflect synchronous checking
 - [ ] Update error responses section

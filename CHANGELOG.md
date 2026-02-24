@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-016: Remove bitfield caching documentation in api.md (TODO.md Phase 1)
+  - Removed mention of 5-second TTL for bitfields from the "Get Piece Availability (Bitfield)" endpoint
+  - Updated usage description to reflect synchronous checking (no caching)
+  - Changed "**Cache TTL:** 5 seconds (configurable via `piece_ttl`)" to "Used for piece availability checking (synchronous, no caching)"
+  - Spec documentation now matches actual implementation without bitfield caching
+
 - SPEC-015: Update CLI reference in quickstart.md (TODO.md Phase 1)
   - Removed `--allow-other` and `--auto-unmount` mount options from documentation (lines 197-198)
   - Removed `--format <FORMAT>` option from status command documentation (lines 232-234)
