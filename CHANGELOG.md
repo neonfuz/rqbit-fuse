@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-012: Update status command output in quickstart.md (TODO.md Phase 1)
+  - Removed filesystem/size/used/available from example output (lines 125-128)
+  - Removed `--format json` option documentation (lines 131-134)
+  - Updated to show simplified "MOUNTED"/"NOT MOUNTED" only
+  - Removed JSON output example and jq command reference (line 398)
+  - Updated note at line 136 to reflect simplified output
+  - Spec documentation now matches simplified status command behavior
+
 - SPEC-011: Remove macros section from architecture.md (TODO.md Phase 1)
   - Removed fs/macros.rs from Key Modules section in architecture.md
   - Removed fs/macros.rs entry from file structure diagram (line 160)

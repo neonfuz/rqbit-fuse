@@ -48,7 +48,7 @@
   - Remove Fuse macros documentation
 
 ### quickstart.md
-- [ ] Update status command output
+- [x] Update status command output
   - Remove filesystem/size/used/available from example output
   - Remove `--format json` option
   - Show simplified "MOUNTED"/"NOT MOUNTED" only

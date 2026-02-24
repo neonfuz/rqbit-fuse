@@ -122,18 +122,15 @@ Configuration:
 
 Mount Status:
   Status:         MOUNTED
-  Filesystem:     fuse.rqbit-fuse
-  Size:           ...
-  Used:           ...
-  Available:      ...
 ```
 
-For JSON output:
-```bash
-rqbit-fuse status --format json
+Or if not mounted:
+```
+Mount Status:
+  Status:         NOT MOUNTED
 ```
 
-**Note:** The status output shows mount information, not torrent/cache/reads counts as previously documented.
+**Note:** The status output shows only mount status, not detailed filesystem information.
 
 ### 6. Unmount
 
