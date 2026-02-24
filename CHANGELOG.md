@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-029: Create Minimal Metrics Struct (Task 4.2.1)
+  - Replaced 520 lines of complex metrics system with 65 lines of essential counters
+  - New `Metrics` struct with only 4 fields: bytes_read, error_count, cache_hits, cache_misses
+  - Removed FuseMetrics, ApiMetrics, CacheMetrics structs and all helper methods
+  - Updated all library code to use simplified metrics API
+  - Library compiles successfully with -87% metrics code reduction
+  - Tests need updating (will be handled in Task 4.2.4)
+  - Commit: c970b3d
+
 - SIMPLIFY-028: Research Metrics Usage (Task 4.1.1)
   - Analyzed 520 lines of metrics code in `src/metrics.rs`
   - Documented all metrics recording calls across the codebase

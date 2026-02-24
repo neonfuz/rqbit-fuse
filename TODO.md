@@ -273,7 +273,7 @@ Replace 520 lines of metrics with 3 essential metrics.
   - Define new `Metrics` struct with only: bytes_read, error_count, cache_hits, cache_misses
   - Remove FuseMetrics, ApiMetrics, CacheMetrics structs
   - Keep only atomic counters, remove all helper methods
-  - **Commit**: (to be determined after full implementation)
+  - **Commit**: c970b3d
   
 - [ ] **Task 4.2.2**: Remove metrics recording calls
   - Remove all metrics recording except for the 4 essential counters
