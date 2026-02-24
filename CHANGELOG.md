@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-025: Remove PerformanceConfig Env Vars (Task 2.3.2)
+  - Removed environment variable parsing for performance-related fields:
+    - `TORRENT_FUSE_MAX_CONCURRENT_READS` - no longer configurable via env var
+    - `TORRENT_FUSE_READAHEAD_SIZE` - no longer configurable via env var
+  - These fields can still be configured via config file (TOML/JSON)
+  - Simplified environment variable interface to 9 essential variables:
+    - API_URL, MOUNT_POINT, METADATA_TTL, MAX_ENTRIES
+    - READ_TIMEOUT, LOG_LEVEL
+    - AUTH_USERPASS, AUTH_USERNAME, AUTH_PASSWORD
+  - Updated documentation in `src/config/mod.rs`:
+    - Removed env var references from PerformanceConfig doc comments
+    - Added TORRENT_FUSE_READ_TIMEOUT to main Config env var examples
+  - Updated test in `tests/config_tests.rs`:
+    - Removed TORRENT_FUSE_MAX_CONCURRENT_READS from empty numeric test cases
+  - Environment variables reduced from 11 to 9 (18% reduction in this step)
+  - All tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`, `tests/config_tests.rs`
+
 - SIMPLIFY-024: Simplify CacheConfig (Task 2.2.7)
   - Removed 2 fields from `CacheConfig` struct in `src/config/mod.rs`:
     - `torrent_list_ttl` - now uses `metadata_ttl` for all cache data

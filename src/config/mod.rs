@@ -121,6 +121,9 @@ use std::path::PathBuf;
 /// export TORRENT_FUSE_METADATA_TTL=120
 /// export TORRENT_FUSE_MAX_ENTRIES=5000
 ///
+/// # Set read timeout
+/// export TORRENT_FUSE_READ_TIMEOUT=30
+///
 /// # Enable debug logging
 /// export TORRENT_FUSE_LOG_LEVEL=debug
 ///
@@ -218,8 +221,6 @@ pub struct MountConfig {
 /// # Environment Variables
 ///
 /// - `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds
-/// - `TORRENT_FUSE_MAX_CONCURRENT_READS` - Maximum concurrent reads
-/// - `TORRENT_FUSE_READAHEAD_SIZE` - Read-ahead buffer size in bytes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerformanceConfig {
@@ -347,20 +348,6 @@ impl Config {
         if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
             self.performance.read_timeout = val.parse().map_err(|_| {
                 RqbitFuseError::InvalidValue("TORRENT_FUSE_READ_TIMEOUT has invalid format".into())
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_CONCURRENT_READS") {
-            self.performance.max_concurrent_reads = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_MAX_CONCURRENT_READS has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_READAHEAD_SIZE") {
-            self.performance.readahead_size = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_READAHEAD_SIZE has invalid format".into(),
-                )
             })?;
         }
 

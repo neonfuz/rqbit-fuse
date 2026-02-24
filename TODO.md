@@ -177,14 +177,19 @@ Reduce configuration complexity and validation overhead.
   - All 346+ tests passing
 
 ### 2.3 Update CLI Arguments
-- [ ] **Task 2.3.1**: Remove CLI args for removed config options
+- [x] **Task 2.3.1**: Remove CLI args for removed config options
   - Remove `--allow-other` from Mount command
   - Remove `--auto-unmount` from Mount command
   - Remove any other args corresponding to removed config fields
+  - **Completed**: Already done as part of Task 2.2.2
   
-- [ ] **Task 2.3.2**: Update env var parsing
+- [x] **Task 2.3.2**: Update env var parsing
   - Remove env var parsing for all removed config fields
   - Keep only: API_URL, MOUNT_POINT, METADATA_TTL, MAX_ENTRIES, READ_TIMEOUT, LOG_LEVEL, AUTH credentials
+  - **Completed**: Removed TORRENT_FUSE_MAX_CONCURRENT_READS and TORRENT_FUSE_READAHEAD_SIZE env var parsing
+  - **Completed**: Updated documentation to reflect remaining 9 essential env vars
+  - **Completed**: Updated test to remove references to removed env vars
+  - **See**: CHANGELOG.md SIMPLIFY-025
 
 ---
 

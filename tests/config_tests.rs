@@ -237,7 +237,6 @@ fn test_edge_057_empty_numeric_env_var_values() {
         ("TORRENT_FUSE_METADATA_TTL", "metadata TTL"),
         ("TORRENT_FUSE_READ_TIMEOUT", "read timeout"),
         ("TORRENT_FUSE_MAX_ENTRIES", "max entries"),
-        ("TORRENT_FUSE_MAX_CONCURRENT_READS", "max concurrent reads"),
     ];
 
     for (var, description) in &test_cases {
