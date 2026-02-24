@@ -389,10 +389,12 @@ Replace macros with direct tracing calls.
   - reply_* macros will be replaced in Task 6.1.5
   - All tests passing
   
-- [ ] **Task 6.1.4**: Replace fuse_ok! macro
-  - Replace all `fuse_ok!` calls with `tracing::debug!`
-  - Include success info in message
-  - Update all success logging sites
+- [x] **Task 6.1.4**: Replace fuse_ok! macro
+  - Replaced all 7 `fuse_ok!` calls with `tracing::debug!` in filesystem.rs
+  - Each call now includes `result = "success"` field
+  - Removed unused `fuse_ok` import from filesystem.rs
+  - All 346 tests passing with zero clippy warnings
+  - See CHANGELOG.md SIMPLIFY-035
   
 - [ ] **Task 6.1.5**: Replace reply_* macros
   - Replace `reply_ino_not_found!` with direct error recording and reply

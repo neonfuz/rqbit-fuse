@@ -6,8 +6,7 @@ use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeEntry;
 use crate::fs::inode::InodeManager;
 use crate::fs::macros::{
-    fuse_error, fuse_ok, reply_ino_not_found, reply_no_permission, reply_not_directory,
-    reply_not_file,
+    fuse_error, reply_ino_not_found, reply_no_permission, reply_not_directory, reply_not_file,
 };
 use crate::metrics::Metrics;
 use crate::types::handle::FileHandleManager;
@@ -862,8 +861,9 @@ impl Filesystem for TorrentFS {
 
         // Handle zero-byte reads
         if size == 0 || offset >= file_size {
-            fuse_ok!(
-                "read",
+            tracing::debug!(
+                fuse_op = "read",
+                result = "success",
                 fh = fh,
                 ino = ino,
                 bytes_read = 0,
@@ -917,8 +917,9 @@ impl Filesystem for TorrentFS {
                     );
                 }
 
-                fuse_ok!(
-                    "read",
+                tracing::debug!(
+                    fuse_op = "read",
+                    result = "success",
                     fh = fh,
                     ino = ino,
                     bytes_read = bytes_read,
@@ -979,7 +980,12 @@ impl Filesystem for TorrentFS {
     ) {
         // Clean up the file handle
         if let Some(handle) = self.file_handles.remove(fh) {
-            fuse_ok!("release", fh = fh, ino = handle.inode);
+            tracing::debug!(
+                fuse_op = "release",
+                result = "success",
+                fh = fh,
+                ino = handle.inode
+            );
         } else {
             warn!(
                 fuse_op = "release",
@@ -1043,8 +1049,9 @@ impl Filesystem for TorrentFS {
             if let Some(entry) = self.inode_manager.get(ino) {
                 let attr = self.build_file_attr(&entry);
                 reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
-                fuse_ok!(
-                    "lookup",
+                tracing::debug!(
+                    fuse_op = "lookup",
+                    result = "success",
                     parent = parent,
                     name = name_str.to_string(),
                     ino = ino,
@@ -1089,8 +1096,9 @@ impl Filesystem for TorrentFS {
                     Some(entry) => {
                         let attr = self.build_file_attr(&entry);
                         reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
-                        fuse_ok!(
-                            "lookup",
+                        tracing::debug!(
+                            fuse_op = "lookup",
+                            result = "success",
                             parent = parent,
                             name = name_str.to_string(),
                             ino = ino
@@ -1136,8 +1144,9 @@ impl Filesystem for TorrentFS {
                 let attr = self.build_file_attr(&entry);
                 let ttl = std::time::Duration::from_secs(1);
 
-                fuse_ok!(
-                    "getattr",
+                tracing::debug!(
+                    fuse_op = "getattr",
+                    result = "success",
                     ino = ino,
                     kind = format!("{:?}", attr.kind),
                     size = attr.size
@@ -1206,7 +1215,7 @@ impl Filesystem for TorrentFS {
                     return;
                 }
 
-                fuse_ok!("open", ino = ino, fh = fh);
+                tracing::debug!(fuse_op = "open", result = "success", ino = ino, fh = fh);
                 reply.opened(fh, 0);
             }
             None => {
