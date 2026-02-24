@@ -73,9 +73,9 @@
 ## Phase 2: Additional Spec Files
 
 ### error-handling.md
-- [ ] Replace 28 error variants with 8 simplified variants
-- [ ] Update error mapping table
-- [ ] Simplify error handling flow
+- [x] Replace 28 error variants with 8 simplified variants
+- [x] Update error mapping table
+- [x] Simplify error handling flow
 
 ### cache.md
 - [ ] Simplify to reflect reduced cache implementation

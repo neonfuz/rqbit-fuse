@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-018: Simplify error-handling.md specification (TODO.md Phase 2)
+  - Replaced 28+ error variants with 8 essential variants per enum:
+    - ApiError: NotFound, Unavailable, Network, InvalidArgument, AccessDenied, AlreadyExists, Internal, RetryLimitExceeded
+    - FilesystemError: NotFound, NotADirectory, IsADirectory, InvalidArgument, PermissionDenied, AlreadyExists, DirectoryNotEmpty, ReadOnly
+    - ConfigError: InvalidValue, MountPoint, File, InvalidUrl, MissingField, InvalidTimeout
+  - Simplified error mapping table to 8 essential FUSE error codes (ENOENT, ENOTDIR, EISDIR, EINVAL, EACCES, EEXIST, ENOTEMPTY, EROFS)
+  - Updated From implementations for reqwest::Error, serde_json::Error, StatusCode
+  - Removed verbose error classification sections (current error handling issues, detailed retry classification)
+  - Streamlined FUSE error code mapping implementation (~40% reduction in documentation)
+  - Simplified retry classification to check only transient errors (Unavailable, RetryLimitExceeded)
+  - Removed duplicate content and consolidated into concise reference document
+  - Spec now aligned with simplified error handling approach from technical-design.md
+
 - SPEC-017: Update error responses section in api.md (TODO.md Phase 1)
   - Simplified error responses section from 6 HTTP codes to comprehensive 8 essential error types
   - Added error type mapping table showing HTTP status → FUSE error conversion
