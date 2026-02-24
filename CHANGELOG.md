@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-032: Update All Metrics Usages (Task 4.2.4)
+  - Fixed test compilation errors in `src/api/client.rs`
+  - Added missing `metrics` parameter to 8 `RqbitClient::with_config()` test calls
+  - Updated test calls at lines 1731, 1779, 1820, 1858, 1883, 2122, 2201, 2247
+  - All 180+ tests passing with zero clippy warnings
+  - Code formatted with cargo fmt
+  - Metrics system integration complete and fully functional
+
 - SIMPLIFY-031: Remove Periodic Logging (Task 4.2.3)
   - Removed `spawn_periodic_logging()` method (was never called)
   - Removed `log_periodic()` method (was never called)

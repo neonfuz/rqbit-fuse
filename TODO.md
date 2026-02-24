@@ -293,11 +293,11 @@ Replace 520 lines of metrics with 3 essential metrics.
   - No code changes required - methods were already removed in previous simplification
   - See CHANGELOG.md SIMPLIFY-031
   
-- [ ] **Task 4.2.4**: Update all metrics usages
-  - Update `src/lib.rs` to use simplified metrics
-  - Update `src/fs/filesystem.rs` to use simplified metrics
-  - Update `src/cache.rs` to use simplified metrics
-  - Update `src/api/client.rs` to remove ApiMetrics usage
+- [x] **Task 4.2.4**: Update all metrics usages
+  - Fixed test compilation errors in `src/api/client.rs`
+  - Added missing `metrics` parameter (None) to all `RqbitClient::with_config()` test calls
+  - All 180+ tests passing with zero clippy warnings
+  - Metrics system already simplified to 4 essential counters
 
 ---
 

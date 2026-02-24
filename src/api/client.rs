@@ -1,6 +1,7 @@
 use crate::api::streaming::PersistentStreamManager;
 use crate::api::types::*;
 use crate::error::RqbitFuseError;
+use crate::metrics::Metrics;
 use anyhow::{Context, Result};
 use base64::Engine;
 use bytes::Bytes;
@@ -28,7 +29,6 @@ pub struct RqbitClient {
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
-    /// Metrics collection
     /// Persistent stream manager for efficient sequential reads
     stream_manager: PersistentStreamManager,
     /// Optional authentication credentials for HTTP Basic Auth
@@ -41,12 +41,14 @@ pub struct RqbitClient {
     status_bitfield_cache: Arc<RwLock<HashMap<u64, (Instant, TorrentStatusWithBitfield)>>>,
     /// TTL for status bitfield cache
     status_bitfield_cache_ttl: Duration,
+    /// Metrics collection for cache hits/misses
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl RqbitClient {
     /// Create a new RqbitClient with default configuration
     pub fn new(base_url: String) -> Result<Self> {
-        Self::with_config(base_url, 3, Duration::from_millis(500), None)
+        Self::with_config(base_url, 3, Duration::from_millis(500), None, None)
     }
 
     /// Create a new RqbitClient with authentication
@@ -56,6 +58,7 @@ impl RqbitClient {
             3,
             Duration::from_millis(500),
             Some((username, password)),
+            None,
         )
     }
 
@@ -65,6 +68,7 @@ impl RqbitClient {
         max_retries: u32,
         retry_delay: Duration,
         auth_credentials: Option<(String, String)>,
+        metrics: Option<Arc<Metrics>>,
     ) -> Result<Self> {
         // Validate URL at construction time (fail fast on invalid URL)
         let _ = reqwest::Url::parse(&base_url)
@@ -93,6 +97,7 @@ impl RqbitClient {
             list_torrents_cache_ttl: Duration::from_secs(30),
             status_bitfield_cache: Arc::new(RwLock::new(HashMap::new())),
             status_bitfield_cache_ttl: Duration::from_secs(5),
+            metrics,
         })
     }
 
@@ -312,12 +317,18 @@ impl RqbitClient {
             if let Some((cached_at, cached_result)) = cache.as_ref() {
                 if cached_at.elapsed() < self.list_torrents_cache_ttl {
                     debug!("list_torrents: cache hit");
+                    if let Some(metrics) = &self.metrics {
+                        metrics.record_cache_hit();
+                    }
                     return Ok(cached_result.clone());
                 }
             }
         }
 
         // Cache miss or expired - fetch fresh data
+        if let Some(metrics) = &self.metrics {
+            metrics.record_cache_miss();
+        }
         debug!("list_torrents: cache miss or expired, fetching fresh data");
         let url = format!("{}/torrents", self.base_url);
 
@@ -549,12 +560,18 @@ impl RqbitClient {
                         id = id,
                         "cache hit"
                     );
+                    if let Some(metrics) = &self.metrics {
+                        metrics.record_cache_hit();
+                    }
                     return Ok(cached_result.clone());
                 }
             }
         }
 
         // Cache miss or expired - fetch fresh data in parallel
+        if let Some(metrics) = &self.metrics {
+            metrics.record_cache_miss();
+        }
         debug!(
             api_op = "get_torrent_status_with_bitfield",
             id = id,
@@ -961,12 +978,25 @@ impl RqbitClient {
 ///
 /// This function checks if username and password are configured, and creates
 /// the client with authentication if they are present.
-pub fn create_api_client(api_config: &crate::config::ApiConfig) -> Result<RqbitClient> {
+pub fn create_api_client(
+    api_config: &crate::config::ApiConfig,
+    metrics: Option<Arc<Metrics>>,
+) -> Result<RqbitClient> {
     match (&api_config.username, &api_config.password) {
-        (Some(username), Some(password)) => {
-            RqbitClient::with_auth(api_config.url.clone(), username.clone(), password.clone())
-        }
-        _ => RqbitClient::new(api_config.url.clone()),
+        (Some(username), Some(password)) => RqbitClient::with_config(
+            api_config.url.clone(),
+            3,
+            Duration::from_millis(500),
+            Some((username.clone(), password.clone())),
+            metrics,
+        ),
+        _ => RqbitClient::with_config(
+            api_config.url.clone(),
+            3,
+            Duration::from_millis(500),
+            None,
+            metrics,
+        ),
     }
 }
 
@@ -1698,7 +1728,7 @@ mod tests {
         let mock_server = MockServer::start().await;
         // Use client with 1 retry for faster test
         let client =
-            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), None)
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(10), None, None)
                 .unwrap();
 
         // First request fails with 503, second succeeds
@@ -1746,7 +1776,7 @@ mod tests {
     async fn test_edge_036_rate_limit_with_retry_after_header() {
         let mock_server = MockServer::start().await;
         let client =
-            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(100), None)
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(100), None, None)
                 .unwrap();
 
         // First request returns 429 with Retry-After: 1 second
@@ -1787,7 +1817,7 @@ mod tests {
     async fn test_edge_036_rate_limit_without_retry_after_uses_default_delay() {
         let mock_server = MockServer::start().await;
         let client =
-            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(50), None)
+            RqbitClient::with_config(mock_server.uri(), 1, Duration::from_millis(50), None, None)
                 .unwrap();
 
         // First request returns 429 without Retry-After header
@@ -1825,7 +1855,7 @@ mod tests {
         let mock_server = MockServer::start().await;
         // Client with 0 retries (only initial attempt)
         let client =
-            RqbitClient::with_config(mock_server.uri(), 0, Duration::from_millis(10), None)
+            RqbitClient::with_config(mock_server.uri(), 0, Duration::from_millis(10), None, None)
                 .unwrap();
 
         // Always returns 429
@@ -1850,7 +1880,7 @@ mod tests {
     async fn test_edge_036_multiple_rate_limits_eventually_succeed() {
         let mock_server = MockServer::start().await;
         let client =
-            RqbitClient::with_config(mock_server.uri(), 3, Duration::from_millis(10), None)
+            RqbitClient::with_config(mock_server.uri(), 3, Duration::from_millis(10), None, None)
                 .unwrap();
 
         // First 3 requests return 429, 4th succeeds
@@ -2094,6 +2124,7 @@ mod tests {
             0, // No retries
             Duration::from_millis(10),
             None,
+            None,
         )
         .unwrap();
 
@@ -2173,6 +2204,7 @@ mod tests {
             3,                         // max_retries
             Duration::from_millis(10), // short delay for tests
             None,
+            None,
         )
         .unwrap();
 
@@ -2218,6 +2250,7 @@ mod tests {
             mock_server.uri(),
             2,                         // max_retries = 2 (total 3 attempts)
             Duration::from_millis(10), // short delay for tests
+            None,
             None,
         )
         .unwrap();

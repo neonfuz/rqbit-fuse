@@ -102,8 +102,10 @@ impl TorrentFS {
         metrics: Arc<Metrics>,
         async_worker: Arc<AsyncFuseWorker>,
     ) -> Result<Self> {
-        let api_client =
-            Arc::new(create_api_client(&config.api).context("Failed to create API client")?);
+        let api_client = Arc::new(
+            create_api_client(&config.api, Some(Arc::clone(&metrics)))
+                .context("Failed to create API client")?,
+        );
         let inode_manager = Arc::new(InodeManager::with_max_inodes(100000));
         let read_semaphore = Arc::new(Semaphore::new(config.performance.max_concurrent_reads));
 
@@ -2327,7 +2329,7 @@ mod tests {
     fn create_test_async_worker() -> Arc<AsyncFuseWorker> {
         let api_config = crate::config::ApiConfig::default();
         let api_client =
-            Arc::new(create_api_client(&api_config).expect("Failed to create API client"));
+            Arc::new(create_api_client(&api_config, None).expect("Failed to create API client"));
         Arc::new(AsyncFuseWorker::new(
             api_client,
             Arc::new(crate::metrics::Metrics::new()),
