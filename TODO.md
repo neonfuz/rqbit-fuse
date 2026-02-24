@@ -350,13 +350,16 @@ Remove prefetching code and state tracking.
   - **Completed**: Removed cleanup_handle field from TorrentFS
   - All changes completed as part of Task 5.1.2
   
-- [ ] **Task 5.2.2**: Remove memory tracking
-  - Remove `memory_usage()` method from FileHandleManager
-  - Remove calls to memory usage tracking
+- [x] **Task 5.2.2**: Remove memory tracking
+  - **Completed**: Already removed as part of SIMPLIFY-034 (Task 5.1.2)
+  - The `memory_usage()` method was removed from FileHandleManager along with other state methods
+  - No remaining memory tracking code exists in FileHandleManager
   
-- [ ] **Task 5.2.3**: Simplify FileHandle struct
-  - Keep only: fh, inode, torrent_id, flags
-  - Remove all other fields and methods
+- [x] **Task 5.2.3**: Simplify FileHandle struct
+  - **Completed**: FileHandle struct already has only 4 essential fields
+  - Current fields: fh, inode, torrent_id, flags
+  - Only method: new() constructor
+  - Struct is already minimal with no unnecessary fields or methods
 
 ---
 

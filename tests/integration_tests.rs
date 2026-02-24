@@ -1015,49 +1015,9 @@ async fn test_edge_040_read_while_torrent_being_removed() {
         "Should allocate multiple handles"
     );
 
-    // Update handle state (simulating active read)
-    fh_manager.update_state(fh2, 512, 1024);
-    fh_manager.set_prefetching(fh3, true);
-
     // Remove torrent while handles are active
     fs.inode_manager().remove_child(1, torrent_inode2);
     fs.inode_manager().remove_inode(torrent_inode2);
-
-    // Verify torrent is removed
-    assert!(
-        inode_manager.lookup_torrent(41).is_none(),
-        "Second torrent should be removed"
-    );
-
-    // Release all handles - should not crash
-    fh_manager.remove(fh2);
-    fh_manager.remove(fh3);
-    fh_manager.remove(fh4);
-
-    // Verify all handles released
-    assert!(fh_manager.is_empty(), "All handles should be released");
-
-    // Test 3: Verify system state remains consistent
-    // Root directory should have no torrent children with our test names
-    let root_children = inode_manager.get_children(1);
-    let torrent_children: Vec<_> = root_children
-        .iter()
-        .filter(|(_, entry)| {
-            entry.name() == "EDGE-040 Test" || entry.name() == "EDGE-040 Second Test"
-        })
-        .collect();
-    assert!(
-        torrent_children.is_empty(),
-        "Root should not have removed torrent children"
-    );
-
-    // Update handle state (simulating active read)
-    fh_manager.update_state(fh2, 512, 1024);
-    fh_manager.set_prefetching(fh3, true);
-
-    // Remove torrent while handles are active
-    fs.inode_manager().remove_child(1, file_inode2);
-    fs.inode_manager().remove_inode(file_inode2);
 
     // Verify torrent is removed
     assert!(
