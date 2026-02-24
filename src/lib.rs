@@ -240,7 +240,7 @@ pub use fs::filesystem::TorrentFS;
 ///
 /// Tracks API call latency, cache hits/misses, FUSE operation counts, and other
 /// useful metrics for debugging and optimization.
-pub use metrics::{CacheMetrics, Metrics};
+pub use metrics::Metrics;
 
 use crate::api::create_api_client;
 use anyhow::{Context, Result};
@@ -290,10 +290,8 @@ pub async fn run(config: Config) -> Result<()> {
     let metrics = Arc::new(Metrics::new());
 
     // Create API client for the async worker
-    let api_client = Arc::new(
-        create_api_client(&config.api, Arc::clone(&metrics.api))
-            .context("Failed to create API client")?,
-    );
+    let api_client =
+        Arc::new(create_api_client(&config.api).context("Failed to create API client")?);
 
     // Create async worker for FUSE callbacks
     // Channel capacity of 1000 allows for good concurrency without excessive memory use
@@ -405,7 +403,7 @@ pub async fn run(config: Config) -> Result<()> {
     if let Err(e) = mount_result {
         // If mount fails, we still need to clean up
         fs_arc.shutdown();
-        metrics.log_full_summary();
+        metrics.log_summary();
         return Err(anyhow::anyhow!("Mount task failed: {}", e));
     }
 
@@ -437,7 +435,7 @@ pub async fn run(config: Config) -> Result<()> {
     let _ = tokio::time::timeout(Duration::from_secs(5), signal_handler).await;
 
     // Log final metrics on shutdown
-    metrics.log_full_summary();
+    metrics.log_summary();
 
     Ok(())
 }

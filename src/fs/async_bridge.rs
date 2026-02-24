@@ -201,17 +201,17 @@ impl AsyncFuseWorker {
                 )
                 .await;
 
-                let latency = start.elapsed();
+                let _latency = start.elapsed();
 
                 let response = match result {
                     Ok(Ok(data)) => {
-                        metrics.fuse.record_read(data.len() as u64, latency);
+                        metrics.record_read(data.len() as u64);
                         FuseResponse::ReadSuccess {
                             data: data.to_vec(),
                         }
                     }
                     Ok(Err(e)) => {
-                        metrics.fuse.record_error();
+                        metrics.record_error();
                         let error_code = e.to_fuse_error();
                         FuseResponse::ReadError {
                             error_code,
@@ -219,7 +219,7 @@ impl AsyncFuseWorker {
                         }
                     }
                     Err(_) => {
-                        metrics.fuse.record_error();
+                        metrics.record_error();
                         FuseResponse::ReadError {
                             error_code: libc::ETIMEDOUT,
                             message: "Operation timed out".to_string(),

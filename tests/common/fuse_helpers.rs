@@ -48,16 +48,12 @@ impl TestFilesystem {
         config.api.url = mock_uri;
         config.mount.mount_point = mount_point.path().to_path_buf();
 
-        let metrics = Arc::new(Metrics::new());
         let api_client = Arc::new(
-            rqbit_fuse::api::client::RqbitClient::new(
-                config.api.url.clone(),
-                Arc::clone(&metrics.api),
-            )
+            rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone())
             .expect("Failed to create API client"),
         );
-        let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
-        let fs = Arc::new(TorrentFS::new(config, metrics, async_worker)?);
+        let async_worker = Arc::new(AsyncFuseWorker::new(api_client, 100));
+        let fs = Arc::new(TorrentFS::new(config, Arc::new(Metrics::new()), async_worker)?);
 
         // Note: Actual FUSE mounting requires elevated privileges
         // This creates the filesystem structure without kernel mount
@@ -126,16 +122,15 @@ impl TestFilesystem {
 /// # Example
 /// ```rust
 /// let config = create_test_config(mock_uri, temp_dir.path().to_path_buf());
-/// let metrics = Arc::new(Metrics::new());
-/// let fs = create_test_fs(config, metrics);
+/// /// let fs = create_test_fs(config, metrics);
 /// ```
 pub fn create_test_fs(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
     let api_client = Arc::new(
-        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
+        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics))
             .expect("Failed to create API client"),
     );
-    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
-    TorrentFS::new(config, metrics, async_worker).unwrap()
+    let async_worker = Arc::new(AsyncFuseWorker::new(api_client, 100));
+    TorrentFS::new(config, Arc::new(Metrics::new()), async_worker).unwrap()
 }
 
 /// Wait for a filesystem to be ready

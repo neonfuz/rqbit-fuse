@@ -266,12 +266,14 @@ Replace 520 lines of metrics with 3 essential metrics.
   - **Key Finding**: Only 4 metrics provide value: bytes_read, error_count, cache_hits, cache_misses
   - **Key Finding**: 520 lines of metrics code can be reduced to ~50 lines (-90%)
   - **Key Finding**: CacheMetrics is never populated - Cache has its own internal stats
+  - **Commit**: f859d4d
 
 ### 4.2 Simplify Metrics System
-- [ ] **Task 4.2.1**: Create minimal metrics struct
+- [x] **Task 4.2.1**: Create minimal metrics struct
   - Define new `Metrics` struct with only: bytes_read, error_count, cache_hits, cache_misses
   - Remove FuseMetrics, ApiMetrics, CacheMetrics structs
   - Keep only atomic counters, remove all helper methods
+  - **Commit**: (to be determined after full implementation)
   
 - [ ] **Task 4.2.2**: Remove metrics recording calls
   - Remove all metrics recording except for the 4 essential counters

@@ -51,7 +51,7 @@ macro_rules! fuse_ok {
 #[macro_export]
 macro_rules! reply_ino_not_found {
     ($metrics:expr, $reply:expr, $op:expr, $ino:expr) => {{
-        $metrics.fuse.record_error();
+        $metrics.record_error();
         fuse_error!($op, "ENOENT", ino = $ino);
         $reply.error(libc::ENOENT);
     }};
@@ -61,7 +61,7 @@ macro_rules! reply_ino_not_found {
 #[macro_export]
 macro_rules! reply_not_directory {
     ($metrics:expr, $reply:expr, $op:expr, $ino:expr) => {{
-        $metrics.fuse.record_error();
+        $metrics.record_error();
         fuse_error!($op, "ENOTDIR", ino = $ino);
         $reply.error(libc::ENOTDIR);
     }};
@@ -71,7 +71,7 @@ macro_rules! reply_not_directory {
 #[macro_export]
 macro_rules! reply_not_file {
     ($metrics:expr, $reply:expr, $op:expr, $ino:expr) => {{
-        $metrics.fuse.record_error();
+        $metrics.record_error();
         fuse_error!($op, "EISDIR", ino = $ino);
         $reply.error(libc::EISDIR);
     }};
@@ -81,7 +81,7 @@ macro_rules! reply_not_file {
 #[macro_export]
 macro_rules! reply_no_permission {
     ($metrics:expr, $reply:expr, $op:expr, $ino:expr, $reason:expr) => {{
-        $metrics.fuse.record_error();
+        $metrics.record_error();
         fuse_error!($op, "EACCES", ino = $ino, reason = $reason);
         $reply.error(libc::EACCES);
     }};

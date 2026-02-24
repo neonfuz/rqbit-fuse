@@ -102,10 +102,8 @@ impl TorrentFS {
         metrics: Arc<Metrics>,
         async_worker: Arc<AsyncFuseWorker>,
     ) -> Result<Self> {
-        let api_client = Arc::new(
-            create_api_client(&config.api, Arc::clone(&metrics.api))
-                .context("Failed to create API client")?,
-        );
+        let api_client =
+            Arc::new(create_api_client(&config.api).context("Failed to create API client")?);
         let inode_manager = Arc::new(InodeManager::with_max_inodes(100000));
         let read_semaphore = Arc::new(Semaphore::new(config.performance.max_concurrent_reads));
 
@@ -218,7 +216,6 @@ impl TorrentFS {
                                 known_torrents.remove(&torrent_id);
 
                                 // Record metric
-                                metrics.fuse.record_torrent_removed();
 
                                 info!(
                                     "Successfully removed torrent {} from filesystem",
@@ -367,7 +364,6 @@ impl TorrentFS {
             self.known_torrents.remove(&torrent_id);
 
             // Record metric
-            self.metrics.fuse.record_torrent_removed();
 
             info!(
                 "Successfully removed torrent {} from filesystem",
@@ -877,7 +873,7 @@ impl Filesystem for TorrentFS {
 
         // Validate offset is non-negative
         if offset < 0 {
-            self.metrics.fuse.record_error();
+            self.metrics.record_error();
             fuse_error!("read", "EINVAL", reason = "negative_offset");
             reply.error(libc::EINVAL);
             return;
@@ -889,7 +885,7 @@ impl Filesystem for TorrentFS {
         let ino = match self.file_handles.get_inode(fh) {
             Some(inode) => inode,
             None => {
-                self.metrics.fuse.record_error();
+                self.metrics.record_error();
                 fuse_error!("read", "EBADF", fh = fh, reason = "invalid_file_handle");
                 reply.error(libc::EBADF);
                 return;
@@ -959,7 +955,7 @@ impl Filesystem for TorrentFS {
         match result {
             Ok(data) => {
                 let bytes_read = data.len() as u64;
-                self.metrics.fuse.record_read(bytes_read, latency);
+                self.metrics.record_read(bytes_read);
 
                 // Log slow reads at debug level only
                 if latency > std::time::Duration::from_secs(1) {
@@ -999,7 +995,7 @@ impl Filesystem for TorrentFS {
                 reply.data(data_slice);
             }
             Err(e) => {
-                self.metrics.fuse.record_error();
+                self.metrics.record_error();
 
                 // Map the error appropriately
                 let error_code = e.to_errno();
@@ -1033,8 +1029,6 @@ impl Filesystem for TorrentFS {
         _flush: bool,
         reply: fuser::ReplyEmpty,
     ) {
-        self.metrics.fuse.record_release();
-
         // Clean up the file handle
         if let Some(handle) = self.file_handles.remove(fh) {
             fuse_ok!("release", fh = fh, ino = handle.inode);
@@ -1060,8 +1054,6 @@ impl Filesystem for TorrentFS {
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
-        self.metrics.fuse.record_lookup();
-
         let name_str = name.to_string_lossy();
 
         fuse_log!("lookup", parent = parent, name = name_str.to_string());
@@ -1154,7 +1146,7 @@ impl Filesystem for TorrentFS {
                     }
                     None => {
                         // This shouldn't happen - path maps to non-existent inode
-                        self.metrics.fuse.record_error();
+                        self.metrics.record_error();
 
                         error!(
                             fuse_op = "lookup",
@@ -1184,8 +1176,6 @@ impl Filesystem for TorrentFS {
     /// This is a fundamental operation used by ls, stat, and most file operations.
     #[instrument(skip(self, reply), fields(ino))]
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
-        self.metrics.fuse.record_getattr();
-
         fuse_log!("getattr", ino = ino);
 
         // Get the inode entry
@@ -1213,8 +1203,6 @@ impl Filesystem for TorrentFS {
     /// Returns a file handle that will be used in subsequent read operations.
     #[instrument(skip(self, reply), fields(ino))]
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
-        self.metrics.fuse.record_open();
-
         fuse_log!("open", ino = ino, flags = flags);
 
         // Check if the inode exists
@@ -1228,7 +1216,7 @@ impl Filesystem for TorrentFS {
 
                 // Check if it's a symlink (symlinks should be resolved before open)
                 if entry.is_symlink() {
-                    self.metrics.fuse.record_error();
+                    self.metrics.record_error();
                     fuse_error!("open", "ELOOP");
                     reply.error(libc::ELOOP);
                     return;
@@ -1255,7 +1243,7 @@ impl Filesystem for TorrentFS {
 
                 // Check if handle allocation failed (limit reached)
                 if fh == 0 {
-                    self.metrics.fuse.record_error();
+                    self.metrics.record_error();
                     fuse_error!("open", "EMFILE", reason = "handle_limit_reached");
                     reply.error(libc::EMFILE);
                     return;
@@ -1303,8 +1291,6 @@ impl Filesystem for TorrentFS {
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        self.metrics.fuse.record_readdir();
-
         fuse_log!("readdir", ino = ino, offset = offset);
 
         // Trigger torrent discovery when listing root directory (with cooldown)
@@ -1372,7 +1358,6 @@ impl Filesystem for TorrentFS {
                                     known_torrents.remove(&torrent_id);
 
                                     // Record metric
-                                    metrics.fuse.record_torrent_removed();
 
                                     info!(
                                         "Successfully removed torrent {} from filesystem",
@@ -2341,21 +2326,20 @@ mod tests {
     use tempfile::TempDir;
 
     /// Helper function to create a test AsyncFuseWorker
-    fn create_test_async_worker(metrics: Arc<Metrics>) -> Arc<AsyncFuseWorker> {
+    fn create_test_async_worker() -> Arc<AsyncFuseWorker> {
         let api_config = crate::config::ApiConfig::default();
         let api_client = Arc::new(
-            create_api_client(&api_config, Arc::clone(&metrics.api))
+            create_api_client(&api_config)
                 .expect("Failed to create API client"),
         );
-        Arc::new(AsyncFuseWorker::new(api_client, metrics, 100))
+        Arc::new(AsyncFuseWorker::new(api_client, 100))
     }
 
     #[tokio::test]
     async fn test_torrent_fs_creation() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         assert!(!fs.is_initialized());
         assert_eq!(fs.inode_manager().get(1).unwrap().ino(), 1);
@@ -2367,9 +2351,8 @@ mod tests {
         let mut config = Config::default();
         config.mount.mount_point = temp_dir.path().to_path_buf();
 
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
         assert!(fs.validate_mount_point().is_ok());
     }
 
@@ -2378,9 +2361,8 @@ mod tests {
         let mut config = Config::default();
         config.mount.mount_point = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
         let result = fs.validate_mount_point();
 
         assert!(result.is_err());
@@ -2396,9 +2378,8 @@ mod tests {
         let mut config = Config::default();
         config.mount.mount_point = file_path;
 
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
         let result = fs.validate_mount_point();
 
         assert!(result.is_err());
@@ -2413,9 +2394,8 @@ mod tests {
     #[tokio::test]
     async fn test_build_mount_options() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         let options = fs.build_mount_options();
 
@@ -2428,9 +2408,8 @@ mod tests {
     #[tokio::test]
     async fn test_remove_torrent_cleans_up_inodes() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Create a torrent structure manually
         let torrent_id = 123u64;
@@ -2535,9 +2514,8 @@ mod tests {
     #[tokio::test]
     async fn test_symlink_creation() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Create a symlink
         let symlink_inode =
@@ -2558,9 +2536,8 @@ mod tests {
     #[tokio::test]
     async fn test_zero_byte_file() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Create a zero-byte file
         let file_inode = fs.inode_manager.allocate_file(
@@ -2584,9 +2561,8 @@ mod tests {
     #[tokio::test]
     async fn test_large_file() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Create a large file (>4GB)
         let large_size = 5u64 * 1024 * 1024 * 1024; // 5 GB
@@ -2604,9 +2580,8 @@ mod tests {
     #[tokio::test]
     async fn test_unicode_filename() {
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Test various Unicode filenames
         let unicode_names = vec![
@@ -2632,9 +2607,8 @@ mod tests {
         use crate::api::types::{FileInfo, TorrentInfo};
 
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Create a single-file torrent info
         let torrent_info = TorrentInfo {
@@ -2672,9 +2646,8 @@ mod tests {
         use crate::api::types::{FileInfo, TorrentInfo};
 
         let config = Config::default();
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let async_worker = create_test_async_worker(Arc::clone(&metrics));
-        let fs = TorrentFS::new(config, metrics, async_worker).unwrap();
+        let async_worker = create_test_async_worker();
+        let fs = TorrentFS::new(config, Arc::new(crate::metrics::Metrics::new()), async_worker).unwrap();
 
         // Create a multi-file torrent info
         let torrent_info = TorrentInfo {

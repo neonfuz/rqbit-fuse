@@ -32,7 +32,7 @@ fn create_test_config_with_semaphore(
 /// Helper function to create a TorrentFS with custom config
 fn create_test_fs_with_config(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
     let api_client = Arc::new(
-        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics.api))
+        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone(), Arc::clone(&metrics))
             .expect("Failed to create API client"),
     );
     let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));
