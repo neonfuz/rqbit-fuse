@@ -26,7 +26,7 @@
   - Remove `track_and_prefetch()` from read() description
   - Remove piece availability checking with EAGAIN option
   - Update init() to remove background monitoring task
-- [ ] Simplify error mapping table
+- [x] Simplify error mapping table
   - Reduce from 28 error types to 8
   - Update ApiError section to show simplified enum
 - [ ] Update configuration structures

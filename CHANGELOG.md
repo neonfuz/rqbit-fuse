@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-006: Simplify error mapping table in technical-design.md (TODO.md Phase 1)
+  - Reduced ApiError enum from 13 variants to 8 essential variants
+  - Simplified error types: NotFound, PermissionDenied, InvalidArgument, Timeout, NetworkError, ServiceUnavailable, IoError, InternalError
+  - Updated FUSE error code mapping table with 8 clear mappings
+  - Removed complex HTTP status code mapping section (simplified to 8 core mappings)
+  - Removed is_transient() method complexity, now only checks 3 error types
+  - **Code reduction**: ~40 lines in error mapping section
+  - All documentation now aligned with simplified error handling approach
+
 - SPEC-005: Update FUSE callbacks section in technical-design.md (TODO.md Phase 1)
   - Removed `track_and_prefetch()` call from read() function description (line 381)
   - Removed piece availability checking with EAGAIN option from read() (lines 355-362)

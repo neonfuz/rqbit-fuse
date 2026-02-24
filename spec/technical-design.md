@@ -491,58 +491,42 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> Cache<K, V> {
 
 ### ApiError (src/api/types.rs)
 
+Simplified to 8 essential error types:
+
 ```rust
 #[derive(Debug, Error)]
 pub enum ApiError {
-    #[error("HTTP error: {0}")]
-    HttpError(String),
+    #[error("Not found: {0}")]
+    NotFound(String),
     
-    #[error("API error: {status} - {message}")]
-    ApiError { status: u16, message: String },
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
     
-    #[error("Torrent not found")]
-    TorrentNotFound,
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
     
-    #[error("File not found")]
-    FileNotFound,
-    
-    #[error("Invalid range")]
-    InvalidRange,
-    
-    #[error("Retry limit exceeded")]
-    RetryLimitExceeded,
-    
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-    
-    #[error("Connection timeout")]
-    ConnectionTimeout,
-    
-    #[error("Read timeout")]
-    ReadTimeout,
-    
-    #[error("Server disconnected")]
-    ServerDisconnected,
-    
-    #[error("Circuit breaker open")]
-    CircuitBreakerOpen,
+    #[error("Timeout")]
+    Timeout,
     
     #[error("Network error: {0}")]
     NetworkError(String),
     
     #[error("Service unavailable")]
     ServiceUnavailable,
+    
+    #[error("IO error: {0}")]
+    IoError(String),
+    
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl ApiError {
     /// Check if error is transient and can be retried
     pub fn is_transient(&self) -> bool {
         matches!(self,
-            ApiError::ConnectionTimeout |
-            ApiError::ReadTimeout |
-            ApiError::ServerDisconnected |
+            ApiError::Timeout |
             ApiError::NetworkError(_) |
-            ApiError::CircuitBreakerOpen |
             ApiError::ServiceUnavailable
         )
     }
@@ -550,28 +534,31 @@ impl ApiError {
     /// Convert to FUSE error code
     pub fn to_fuse_error(&self) -> c_int {
         match self {
-            ApiError::TorrentNotFound => libc::ENOENT,
-            ApiError::FileNotFound => libc::ENOENT,
-            ApiError::InvalidRange => libc::EINVAL,
-            ApiError::ConnectionTimeout => libc::EAGAIN,
-            ApiError::ReadTimeout => libc::EAGAIN,
-            ApiError::ServerDisconnected => libc::ENOTCONN,
+            ApiError::NotFound(_) => libc::ENOENT,
+            ApiError::PermissionDenied(_) => libc::EACCES,
+            ApiError::InvalidArgument(_) => libc::EINVAL,
+            ApiError::Timeout => libc::EAGAIN,
             ApiError::NetworkError(_) => libc::ENETUNREACH,
-            ApiError::CircuitBreakerOpen => libc::EAGAIN,
             ApiError::ServiceUnavailable => libc::EAGAIN,
-            ApiError::ApiError { status: 404, .. } => libc::ENOENT,
-            ApiError::ApiError { status: 403, .. } => libc::EACCES,
-            ApiError::ApiError { status: 503, .. } => libc::EAGAIN,
-            _ => libc::EIO,
+            ApiError::IoError(_) => libc::EIO,
+            ApiError::InternalError(_) => libc::EIO,
         }
     }
 }
 ```
 
-**Differences from Spec:**
-- More comprehensive error types
-- `is_transient()` method for retry logic
-- HTTP status code to FUSE error mapping
+**Error Mapping Table:**
+
+| ApiError Variant | FUSE Code | Description |
+|------------------|-----------|-------------|
+| `NotFound` | ENOENT | Resource doesn't exist |
+| `PermissionDenied` | EACCES | Authentication/authorization failed |
+| `InvalidArgument` | EINVAL | Bad request parameters |
+| `Timeout` | EAGAIN | Request timeout (retryable) |
+| `NetworkError` | ENETUNREACH | Connection/transport failure |
+| `ServiceUnavailable` | EAGAIN | Server unavailable (retryable) |
+| `IoError` | EIO | IO operation failed |
+| `InternalError` | EIO | Internal system error |
 
 ## Configuration Structure
 
