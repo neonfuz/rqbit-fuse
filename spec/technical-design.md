@@ -700,54 +700,35 @@ impl RqbitClient {
 
 ### Metrics (src/metrics.rs)
 
+Minimal metrics for essential monitoring:
+
 ```rust
-pub struct FuseMetrics {
-    pub getattr_count: AtomicU64,
-    pub lookup_count: AtomicU64,
-    pub readdir_count: AtomicU64,
-    pub read_count: AtomicU64,
-    pub open_count: AtomicU64,
-    pub release_count: AtomicU64,
-    pub readlink_count: AtomicU64,
+#[derive(Debug, Default)]
+pub struct Metrics {
+    /// Total bytes read
+    pub bytes_read: AtomicU64,
+    /// Total number of errors
     pub error_count: AtomicU64,
-    pub total_bytes_read: AtomicU64,
+    /// Total number of cache hits
+    pub cache_hits: AtomicU64,
+    /// Total number of cache misses
+    pub cache_misses: AtomicU64,
 }
 
-pub struct ApiMetrics {
-    pub request_count: AtomicU64,
-    pub retry_count: AtomicU64,
-    pub circuit_breaker_state: AtomicU8,
-    pub response_time_ms: AtomicU64,
-}
-```
-
-### ShardedCounter (src/sharded_counter.rs)
-
-A high-performance counter for reducing atomic contention under high concurrency:
-
-```rust
-/// Sharded counter to reduce contention under high concurrency.
-/// Uses a thread-local counter to select shards, avoiding atomic contention
-/// while working in async contexts where tasks migrate between threads.
-pub struct ShardedCounter {
-    shards: Vec<AtomicU64>,
-}
-
-impl ShardedCounter {
-    /// Increment a counter shard using round-robin selection via thread-local counter.
-    #[inline]
-    pub fn increment(&self);
-    
-    /// Sum all shards to get the total count.
-    pub fn sum(&self) -> u64;
+impl Metrics {
+    pub fn new() -> Self;
+    pub fn record_read(&self, bytes: u64);
+    pub fn record_error(&self);
+    pub fn record_cache_hit(&self);
+    pub fn record_cache_miss(&self);
+    pub fn log_summary(&self);
 }
 ```
 
 **Key Features:**
-- Uses 64 shards to distribute atomic operations
-- Thread-local selection avoids contention
-- Works correctly in async contexts
-- Used for high-frequency metrics collection
+- Minimal 4-field struct for essential monitoring
+- Tracks bytes read, errors, and cache performance
+- Provides summary logging on shutdown
 
 ### AsyncFuseWorker (src/fs/async_bridge.rs)
 

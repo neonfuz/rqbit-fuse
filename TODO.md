@@ -34,7 +34,7 @@
   - Remove MonitoringConfig struct
   - Remove detailed LoggingConfig options
   - Update defaults section
-- [ ] Simplify metrics section
+- [x] Simplify metrics section
   - Replace FuseMetrics/ApiMetrics with minimal Metrics struct
   - Remove ShardedCounter (no longer needed)
 - [ ] Update cache section

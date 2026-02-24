@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-008: Simplify metrics section in technical-design.md (TODO.md Phase 1)
+  - Replaced FuseMetrics/ApiMetrics structs with minimal Metrics struct documentation
+  - Removed ShardedCounter struct documentation (module doesn't exist)
+  - Simplified from 2 complex structs + sharded counter to single 4-field Metrics struct
+  - Updated code example to show actual implementation with bytes_read, error_count, cache_hits, cache_misses
+  - Added documentation for record_* methods and log_summary()
+  - Removed ~50 lines of outdated documentation
+  - Spec now aligned with actual minimal implementation in src/metrics.rs
+
 - SPEC-007: Update configuration structures in technical-design.md (TODO.md Phase 1)
   - Replaced complex Config struct documentation with simplified version (5 sub-configs)
   - Removed MonitoringConfig struct documentation (already removed from code)
