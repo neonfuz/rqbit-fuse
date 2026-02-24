@@ -70,18 +70,23 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - Prevents deadlocks from block_in_place + block_on patterns
 - Handles read operations and torrent removal through async worker
 
-#### fs/inode.rs
+#### fs/inode_manager.rs
 - InodeManager for inode allocation and management
 - Thread-safe concurrent access using DashMap
 - Supports directories, files, and symlinks
 - Path-to-inode and torrent-to-inode mappings
+- Configurable maximum inode limit
 
-#### fs/error.rs
-- FuseError enum for FUSE-specific errors
-- Error to FUSE errno mapping
+#### fs/inode_entry.rs
+- InodeEntry enum definition (Directory, File, Symlink)
+- Serialize/deserialize support for inode entries
+- Helper methods for inode operations
+
+#### fs/inode.rs
+- Re-exports from inode_manager and inode_entry for backward compatibility
 
 #### api/client.rs
-- HTTP client for rqbit API with circuit breaker pattern
+- HTTP client for rqbit API with retry logic
 - Endpoints used:
   - `GET /torrents` - List all torrents
   - `GET /torrents/{id}` - Get torrent details
@@ -92,34 +97,33 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
   - `POST /torrents/{id}/start` - Resume torrent
   - `POST /torrents/{id}/forget` - Remove torrent (keep files)
   - `POST /torrents/{id}/delete` - Remove torrent and delete files
+- Simple in-memory caching for torrent list (30 second TTL)
 
 #### api/streaming.rs
 - PersistentStreamManager for efficient sequential reads
 - Connection pooling and reuse for HTTP streaming
 - Handles rqbit's behavior of returning 200 OK instead of 206 Partial Content
 
-#### cache.rs
-- Generic LRU cache with TTL support
-- Caches metadata to reduce API calls
-- Statistics tracking (hits, misses, evictions)
+#### api/types.rs
+- API response types (TorrentInfo, FileInfo, TorrentStats, etc.)
+- PieceBitfield for tracking piece availability
+- ListTorrentsResult with partial failure handling
 
-#### fs/inode.rs
-- InodeManager for inode allocation and management
-- Thread-safe concurrent access using DashMap
-- Supports directories, files, and symlinks
-- Path-to-inode and torrent-to-inode mappings
+#### error.rs
+- RqbitFuseError enum for unified error handling
+- Error to FUSE errno mapping via to_errno()
+- Conversion implementations from std::io::Error, reqwest::Error, etc.
 
 #### types/
-- `torrent.rs` - Torrent metadata structures
-- `file.rs` - TorrentFile structure
-- `inode.rs` - InodeEntry enum (Directory, File, Symlink)
+- `mod.rs` - Module exports and re-exports
 - `attr.rs` - File attribute helpers
+- `handle.rs` - File handle types and FileHandleManager
 
 #### main.rs (CLI)
 - Commands:
   - `mount -m <mount-point>` - Start FUSE filesystem
   - `umount <mount-point>` - Unmount filesystem
-  - `status [--format text|json]` - Show mount status and configuration
+  - `status` - Show mount status and configuration
 
 ### 2. rqbit Server (External Dependency)
 
@@ -144,28 +148,27 @@ rqbit-fuse/
 ├── src/
 │   ├── main.rs              # CLI entry point
 │   ├── lib.rs               # Library exports
-│   ├── cache.rs             # Generic LRU cache with TTL (Moka-based)
 │   ├── mount.rs             # Mount point utilities
+│   ├── error.rs             # Unified error types (RqbitFuseError)
+│   ├── metrics.rs           # Metrics collection
 │   ├── config/
 │   │   └── mod.rs           # Configuration management
 │   ├── fs/                  # FUSE filesystem implementation
-│   │   ├── mod.rs
-│   │   ├── filesystem.rs    # FUSE callbacks
-│   │   ├── inode.rs         # Inode management
-│   │   ├── async_bridge.rs # Async/sync bridge for FUSE
-│   │   └── error.rs        # FUSE error types
+│   │   ├── mod.rs           # Module exports
+│   │   ├── filesystem.rs    # FUSE callbacks (TorrentFS)
+│   │   ├── inode.rs         # Re-exports for backward compatibility
+│   │   ├── inode_manager.rs # InodeManager implementation
+│   │   ├── inode_entry.rs   # InodeEntry enum definition
+│   │   └── async_bridge.rs  # Async/sync bridge for FUSE
 │   ├── api/                 # HTTP API client
-│   │   ├── mod.rs
+│   │   ├── mod.rs           # Module exports
 │   │   ├── client.rs        # HTTP client with retry logic
-│   │   ├── types.rs         # API types and error mapping
-│   │   ├── streaming.rs     # Persistent streaming manager
-│   │   └── circuit_breaker.rs # Circuit breaker pattern
+│   │   ├── types.rs         # API types and structures
+│   │   └── streaming.rs     # Persistent streaming manager
 │   └── types/               # Core type definitions
-│       ├── mod.rs
-│       ├── inode.rs         # Inode entry types
+│       ├── mod.rs           # Module exports
 │       ├── attr.rs          # File attribute helpers
-│       ├── handle.rs        # File handle types
-│       └── torrent.rs       # Torrent structures
+│       └── handle.rs        # File handle types
 └── spec/
     ├── architecture.md      # This file
     └── api.md               # API endpoint documentation
@@ -186,20 +189,41 @@ Each torrent is mounted as a directory:
     └── video.mkv
 ```
 
-**Note:** Single-file torrents are added directly to root (not in subdirectory) as an optimization.
+**Note:** Single-file torrents are also placed in a subdirectory (consistent with multi-file torrents).
 
 ### Inode Management
 
 - Root inode (1): `/mnt/torrents`
 - All entries: Sequential starting from 2
 - Uses `InodeManager` with concurrent access via DashMap
+- Configurable maximum inode limit (0 = unlimited)
 
 **InodeEntry Types:**
 ```rust
 pub enum InodeEntry {
-    Directory { ino, name, parent, children },
-    File { ino, name, parent, torrent_id, file_index, size },
-    Symlink { ino, name, parent, target },
+    Directory { 
+        ino: u64, 
+        name: String, 
+        parent: u64, 
+        children: DashSet<u64>,
+        canonical_path: String 
+    },
+    File { 
+        ino: u64, 
+        name: String, 
+        parent: u64, 
+        torrent_id: u64, 
+        file_index: u64, 
+        size: u64,
+        canonical_path: String 
+    },
+    Symlink { 
+        ino: u64, 
+        name: String, 
+        parent: u64, 
+        target: String,
+        canonical_path: String 
+    },
 }
 ```
 
@@ -210,6 +234,7 @@ pub struct InodeManager {
     entries: DashMap<u64, InodeEntry>,
     path_to_inode: DashMap<String, u64>,
     torrent_to_inode: DashMap<u64, u64>,
+    max_inodes: usize,  // 0 = unlimited
 }
 ```
 
@@ -241,8 +266,7 @@ pub struct InodeManager {
    ```
 4. Uses `read_file_streaming()` with persistent connections
 5. Implements read-ahead/prefetching for sequential reads
-6. Handles piece availability checking (can return EAGAIN)
-7. Return data to FUSE
+6. Return data to FUSE
 
 #### getattr(inode)
 - Returns file/directory attributes derived from InodeEntry
@@ -251,7 +275,7 @@ pub struct InodeManager {
 
 #### open() and release()
 - File open with permission checks
-- File handle cleanup
+- File handle cleanup via FileHandleManager
 
 #### readlink()
 - Symlink resolution for InodeEntry::Symlink
@@ -279,61 +303,70 @@ let data = client
 
 ## Caching Strategy
 
-### Generic Cache Implementation
+### Torrent List Cache
 
-The cache is a generic LRU cache with TTL support:
+The API client maintains a simple in-memory cache for the torrent list:
 
 ```rust
-pub struct Cache<K, V> {
-    entries: DashMap<K, Arc<CacheEntry<V>>>,
-    max_entries: usize,
-    lru_counter: AtomicU64,
-}
-
-pub struct CacheEntry<T> {
-    value: T,
-    created_at: Instant,
-    sequence: u64,
+pub struct RqbitClient {
+    // ... other fields ...
+    list_torrents_cache: Arc<RwLock<Option<(Instant, ListTorrentsResult)>>>,
+    list_torrents_cache_ttl: Duration,  // Default: 30 seconds
 }
 ```
 
-### Metadata Cache TTLs (Configurable)
-- **Torrent list**: 30 second TTL (default)
-- **Torrent details**: 60 second TTL (default)
-- **Piece bitfields**: 5 second TTL (default)
-
 ### Cache Features
-- LRU eviction when capacity reached
-- TTL-based expiration
-- Statistics tracking (hits, misses, evictions, expired)
+- TTL-based expiration (30 seconds for torrent list)
+- Manual invalidation on torrent add/remove operations
+- Cache hit/miss metrics tracking
+
+### Metadata Cache TTLs
+- **Torrent list**: 30 second TTL (configurable via Config)
 
 ## Error Handling
+
+### RqbitFuseError Types
+
+| Error Type | Description |
+|------------|-------------|
+| `NotFound` | Entity not found (torrent, file, etc.) |
+| `PermissionDenied` | Permission denied |
+| `TimedOut` | Operation timed out |
+| `NetworkError` | Server disconnected or network error |
+| `ApiError { status, message }` | API returned error with HTTP status |
+| `IoError` | General I/O error |
+| `InvalidArgument` | Invalid argument (e.g., invalid byte range) |
+| `ValidationError` | Configuration validation failed |
+| `NotReady` | Resource temporarily unavailable |
+| `ParseError` | Parse/serialization error |
+| `IsDirectory` | Is a directory |
+| `NotDirectory` | Not a directory |
 
 ### FUSE Error Mapping
 
 | Error Type | FUSE Error | Description |
 |------------|------------|-------------|
-| `TorrentNotFound` | `ENOENT` | Torrent not found |
-| `FileNotFound` | `ENOENT` | File not found |
-| `InvalidRange` | `EINVAL` | Invalid byte range |
-| `ConnectionTimeout` | `EAGAIN` | Connection timeout |
-| `ReadTimeout` | `EAGAIN` | Read timeout |
-| `ServerDisconnected` | `ENOTCONN` | Server disconnected |
+| `NotFound` | `ENOENT` | Not found |
+| `PermissionDenied` | `EACCES` | Permission denied |
+| `TimedOut` | `ETIMEDOUT` | Operation timed out |
 | `NetworkError` | `ENETUNREACH` | Network unreachable |
-| `CircuitBreakerOpen` | `EAGAIN` | Circuit breaker open |
+| `NotReady` | `EAGAIN` | Resource temporarily unavailable |
+| `InvalidArgument` | `EINVAL` | Invalid argument |
+| `IoError` | `EIO` | I/O error |
+| `IsDirectory` | `EISDIR` | Is a directory |
+| `NotDirectory` | `ENOTDIR` | Not a directory |
+| HTTP 400/416 | `EINVAL` | Bad request / Range not satisfiable |
+| HTTP 401/403 | `EACCES` | Unauthorized / Forbidden |
 | HTTP 404 | `ENOENT` | Not found |
-| HTTP 403 | `EACCES` | Permission denied |
-| HTTP 503 | `EAGAIN` | Service unavailable |
+| HTTP 408/423/429/503/504 | `EAGAIN` | Various retryable errors |
+| HTTP 409 | `EEXIST` | Conflict |
+| HTTP 413 | `EFBIG` | Entity too large |
+| HTTP 500/502 | `EIO` | Server error |
 
-### Retry and Circuit Breaker
-- Exponential backoff with configurable max retries
-- Circuit breaker pattern for rqbit unavailability
+### Retry Logic
+- Exponential backoff with configurable max retries (default: 3)
 - Transient error detection for retry logic
-
-### Piece Availability
-- Configurable piece checking with `piece_check_enabled`
-- Can return EAGAIN for unavailable pieces if `return_eagain_for_unavailable` is true
-- Otherwise blocks until data is available (with timeout)
+- Configurable retry delay (default: 500ms)
 
 ## Configuration
 
@@ -400,6 +433,8 @@ Options:
   -m, --mount-point <PATH>    Mount point (env: TORRENT_FUSE_MOUNT_POINT)
   -u, --api-url <URL>         API URL (env: TORRENT_FUSE_API_URL)
   -c, --config <FILE>         Config file path
+  --username <USERNAME>       API username for HTTP Basic Auth
+  --password <PASSWORD>       API password for HTTP Basic Auth
   -v, --verbose               Increase verbosity (repeatable)
   -q, --quiet                 Suppress output except errors
 ```
@@ -424,7 +459,6 @@ Options:
 - `dirs` - Config directory detection
 - `libc` - FUSE error codes
 - `dashmap` - Concurrent hash map
-- `moka` - High-performance cache (TinyLFU algorithm)
 - `tokio-util` - Async utilities including cancellation tokens
 
 ## Security Considerations
@@ -433,7 +467,7 @@ Options:
 2. **No execute**: Files are not executable (mode 0444)
 3. **Local only**: API connection to localhost only by default
 4. **User permissions**: Run as regular user, not root
-5. **Circuit breaker**: Prevents cascading failures when rqbit is unavailable
+5. **Retry with backoff**: Prevents cascading failures when rqbit is unavailable
 
 ## Performance Considerations
 
@@ -448,7 +482,6 @@ Options:
 3. **Metadata caching**: 
    - Cache directory listings with TTL
    - Cache file attributes
-   - LRU eviction prevents unbounded growth
 
 4. **Piece prioritization**: 
    - Rely on rqbit's 32MB readahead
@@ -469,17 +502,19 @@ Options:
 - Basic FUSE mount/unmount
 - Directory listing (torrents as dirs, files)
 - File read via HTTP Range requests
-- Metadata caching with TTL and LRU (Moka-based)
+- Simple metadata caching with TTL
 - Background torrent discovery
-- Circuit breaker pattern
 - Persistent HTTP streaming
 - Comprehensive error handling
 - Configuration file support
 - CLI with status command
 - AsyncFuseWorker for safe async/sync bridging
-- FuseError types for proper error mapping
+- RqbitFuseError types for proper error mapping
 - Mount utilities module
 - Signal handling for graceful shutdown
+- File handle management with limits
+- Inode management with configurable limits
+- HTTP Basic Auth support
 
 ### Not Implemented
 - `list` command (documented but not implemented)
@@ -487,5 +522,7 @@ Options:
 - `daemon` command (documented but not implemented)
 - Write support
 - macOS support (FUSE-T or macFUSE)
+- Generic LRU cache with LRU eviction
+- Circuit breaker pattern
 
-Last updated: 2026-02-15
+Last updated: 2026-02-24

@@ -1,641 +1,437 @@
-# Public API Design Specification
+# Public API Specification
+
+**Status:** Current as of codebase review (February 2026)
 
 ## Overview
 
-This document specifies the public API design for `rqbit-fuse`, addressing module visibility concerns and establishing clear boundaries between public and internal APIs.
+This document specifies the actual public API for `rqbit-fuse` as currently implemented. It documents the existing module structure, public exports, and identifies areas where the implementation differs from the original design.
 
-## Current Issues
+## Current Public API
 
-### ARCH-001: Audit Module Visibility
+### Crate Root Exports (lib.rs)
 
-**Problem Statement:**
-The current codebase exposes too many internal implementation details through public module declarations, creating an inconsistent and overly broad API surface.
-
-**Current Issues:**
-
-1. **Excessive pub declarations (64 total):**
-   - All top-level modules are public: `api`, `cache`, `config`, `fs`, `metrics`, `types`
-   - All sub-modules are public: `api::client`, `api::streaming`, `api::types`, `fs::filesystem`, `fs::inode`, `types::attr`, `types::file`, `types::inode`, `types::torrent`
-   - Internal implementation types exposed: `CircuitBreaker`, `CircuitState`, `InodeManager`
-
-2. **Internal modules exposed:**
-   - `fs::inode` - inode management is internal implementation detail
-   - `api::client::CircuitBreaker` - circuit breaker is internal retry mechanism
-   - `types::attr` - attribute helpers are internal to FUSE implementation
-   - `types::torrent` - appears to be dead code (see TYPES-001)
-
-3. **Inconsistent API surface:**
-   - `TorrentFS` accessed via `fs::filesystem::TorrentFS` (deep nesting)
-   - No convenience re-exports at module level
-   - Mixed patterns: some types exported via `pub use`, others only via module path
-   - `types::*` wildcard export includes everything (no filtering)
-
-4. **Dead code exposed:**
-   - `types::torrent::Torrent` - appears unused (see TYPES-001 research)
-   - `TorrentSummary` and `FileStats` - marked for removal (TYPES-003)
-
-### ARCH-002: Implement Module Re-exports
-
-**Problem Statement:**
-Users must navigate deep module hierarchies to access commonly used types, resulting in verbose and confusing import paths.
-
-**Current Pain Points:**
+The following modules and types are publicly exported from the crate root:
 
 ```rust
-// Current: Verbose and inconsistent imports
-use rqbit_fuse::fs::filesystem::TorrentFS;
-use rqbit_fuse::api::client::RqbitClient;
-use rqbit_fuse::api::types::TorrentInfo;
-use rqbit_fuse::config::Config;
-```
+// Public modules
+pub mod api;
+pub mod config;
+pub mod error;
+pub mod fs;
+pub mod metrics;
+pub mod mount;
+pub mod types;
 
-**Target Experience:**
-
-```rust
-// Target: Clean, intuitive imports
-use rqbit_fuse::{TorrentFS, Client, Config, TorrentInfo};
-```
-
-## Public API Design
-
-### Design Principles
-
-1. **Minimal Surface:** Only expose what external users need
-2. **Ergonomic Paths:** Common types at crate root, organized by domain
-3. **Clear Boundaries:** Separate public API from implementation details
-4. **Stability:** Public API changes require semver bumps
-5. **Documentation:** Every public item has comprehensive docs
-
-### Public vs Private Decision Matrix
-
-| Item | Current | Target | Rationale |
-|------|---------|--------|-----------|
-| `TorrentFS` | `fs::filesystem::TorrentFS` | `fs::TorrentFS` + crate root | Primary API - main filesystem type |
-| `RqbitClient` | `api::client::RqbitClient` | `api::Client` | Primary API - HTTP client |
-| `Config` | `config::Config` | crate root | Essential configuration |
-| `CliArgs` | `config::CliArgs` | `config::CliArgs` | CLI-specific, keep in config |
-| `Cache` | `cache::Cache` | `cache::Cache` | Advanced users may customize |
-| `CacheStats` | `cache::CacheStats` | `cache::CacheStats` | Metrics access |
-| `Metrics` | `metrics::Metrics` | `metrics::Metrics` | Observability |
-| `TorrentInfo` | `api::types::TorrentInfo` | `api::TorrentInfo` | Core data type |
-| `TorrentState` | `api::types::TorrentState` | `api::TorrentState` | Core data type |
-| `InodeManager` | `fs::inode::InodeManager` | private | Internal implementation |
-| `CircuitBreaker` | `api::client::CircuitBreaker` | private | Internal retry mechanism |
-| `attr` module | `types::attr` | private | Internal FUSE helpers |
-| `torrent` module | `types::torrent` | remove | Dead code (TYPES-003) |
-
-### Module Re-export Strategy
-
-#### lib.rs - Crate Root Exports
-
-```rust
-// Primary API - most common types
-pub use config::Config;
-pub use fs::TorrentFS;
-pub use api::Client;
-
-// Secondary API - advanced usage  
-pub use cache::{Cache, CacheStats};
+// Re-exports
+pub use config::{CliArgs, Config};
+pub use fs::async_bridge::AsyncFuseWorker;
+pub use fs::filesystem::TorrentFS;
 pub use metrics::Metrics;
 
-// Data types
-pub use api::types::{TorrentInfo, TorrentState, FileInfo, TorrentStats, LiveStats};
-pub use types::{InodeEntry, TorrentFile};
+// Main entry point
+pub async fn run(config: Config) -> Result<()>;
+```
 
-// Error types
-pub use api::types::ApiError;
-pub use config::ConfigError;
+### Module Structure
 
-// Internal modules - NOT PUBLIC
-mod internal {
-    // These modules contain implementation details
-    // and should not be accessed by external users
+#### `api` Module
+
+**File:** `src/api/mod.rs`
+
+**Public Submodules:**
+- `pub mod client` - HTTP client implementation
+- `pub mod streaming` - Persistent streaming manager
+- `pub mod types` - API data types
+
+**Re-exports:**
+```rust
+pub use client::create_api_client;
+pub use streaming::{PersistentStreamManager, StreamManagerStats};
+pub use types::{ListTorrentsResult, TorrentInfo, TorrentSummary};
+pub use crate::error::RqbitFuseError as ApiError;
+```
+
+**Key Types:**
+- `RqbitClient` (in `client` module) - HTTP client for rqbit API
+- `PersistentStreamManager` - Manages persistent HTTP streams for file reads
+- `StreamManagerStats` - Statistics for stream manager
+- `TorrentInfo` - Full torrent information
+- `TorrentSummary` - Brief torrent summary for lists
+- `ListTorrentsResult` - Result type for torrent listing with partial failure support
+
+#### `config` Module
+
+**File:** `src/config/mod.rs`
+
+**Public Types:**
+- `Config` - Main configuration struct
+- `CliArgs` - Command-line arguments
+- `ApiConfig` - API connection settings
+- `CacheConfig` - Cache configuration (note: cache module not implemented)
+- `MountConfig` - FUSE mount options
+- `PerformanceConfig` - Performance tuning options
+- `LoggingConfig` - Logging configuration
+
+**Methods on Config:**
+- `Config::new()` - Create default config
+- `Config::from_file(path)` - Load from file (JSON or TOML)
+- `Config::from_default_locations()` - Load from standard config paths
+- `Config::merge_from_env()` - Override from environment variables
+- `Config::merge_from_cli(cli)` - Override from CLI args
+- `Config::load()` - Load with env merge
+- `Config::load_with_cli(cli)` - Load with env and CLI merge
+- `Config::validate()` - Validate configuration
+
+#### `error` Module
+
+**File:** `src/error.rs`
+
+**Public Types:**
+- `RqbitFuseError` - Main error enum with 11 variants:
+  - `NotFound(String)` - ENOENT equivalent
+  - `PermissionDenied(String)` - EACCES equivalent
+  - `TimedOut(String)` - ETIMEDOUT equivalent
+  - `NetworkError(String)` - Network failures
+  - `ApiError { status, message }` - HTTP API errors
+  - `IoError(String)` - I/O errors
+  - `InvalidArgument(String)` - EINVAL equivalent
+  - `ValidationError(Vec<ValidationIssue>)` - Config validation errors
+  - `NotReady(String)` - EAGAIN equivalent
+  - `ParseError(String)` - Parsing failures
+  - `IsDirectory` - EISDIR equivalent
+  - `NotDirectory` - ENOTDIR equivalent
+
+- `ValidationIssue` - Single validation error with field and message
+- `RqbitFuseResult<T>` - Type alias for `Result<T, RqbitFuseError>`
+- `ToFuseError` trait - Convert errors to FUSE error codes
+
+**Methods on RqbitFuseError:**
+- `to_errno(&self) -> i32` - Convert to libc error code
+- `is_transient(&self) -> bool` - Check if error is retryable
+- `is_server_unavailable(&self) -> bool` - Check if server is unreachable
+
+#### `fs` Module
+
+**File:** `src/fs/mod.rs`
+
+**Public Submodules:**
+- `pub mod async_bridge` - Async bridge for FUSE callbacks
+- `pub mod filesystem` - Main filesystem implementation
+- `pub mod inode` - Inode management (backward compatibility)
+- `pub mod inode_entry` - Inode entry definitions
+- `pub mod inode_manager` - Inode table management
+
+**Re-exports:**
+```rust
+pub use crate::error::{RqbitFuseError, RqbitFuseResult};
+pub use async_bridge::AsyncFuseWorker;
+pub use filesystem::TorrentFS;
+pub use inode_entry::InodeEntry;
+pub use inode_manager::{InodeEntryRef, InodeManager};
+```
+
+**Key Types:**
+- `TorrentFS` - Main FUSE filesystem implementation
+- `AsyncFuseWorker` - Worker for handling async FUSE operations
+- `InodeManager` - Manages inode table (currently public but should be internal)
+- `InodeEntry` - Represents a filesystem entry
+- `InodeEntryRef` - Reference to an inode entry
+
+#### `metrics` Module
+
+**File:** `src/metrics.rs` (single file, not a directory)
+
+**Public Types:**
+- `Metrics` - Metrics collection with atomic counters
+
+**Methods on Metrics:**
+- `Metrics::new()` - Create new metrics instance
+- `record_read(bytes)` - Record bytes read
+- `record_error()` - Record an error
+- `record_cache_hit()` - Record cache hit
+- `record_cache_miss()` - Record cache miss
+- `log_summary()` - Log metrics summary
+
+**Fields (all public AtomicU64):**
+- `bytes_read`
+- `error_count`
+- `cache_hits`
+- `cache_misses`
+
+#### `mount` Module
+
+**File:** `src/mount.rs` (single file, not a directory)
+
+**Public Functions:**
+- `setup_logging(verbose, quiet) -> Result<()>` - Initialize tracing subscriber
+- `try_unmount(path, force) -> Result<()>` - Unmount FUSE filesystem
+- `is_mount_point(path) -> Result<bool>` - Check if path is a mount point
+- `unmount_filesystem(path, force) -> Result<()>` - Unmount wrapper
+- `run_command(program, args, context) -> Result<Output>` - Run external command
+
+#### `types` Module
+
+**File:** `src/types/mod.rs`
+
+**Public Submodules:**
+- `pub mod attr` - FUSE attribute helpers
+- `pub mod handle` - File handle management
+
+**Re-exports:**
+```rust
+pub use crate::fs::inode::InodeEntry;
+pub use fuser::FileAttr;
+pub use handle::FileHandle;
+```
+
+**Key Types:**
+- `InodeEntry` - Filesystem entry (re-exported from fs::inode)
+- `FileAttr` - FUSE file attributes (from fuser crate)
+- `FileHandle` - File handle for open files
+- `FileHandleManager` - Manages file handles (in handle submodule)
+
+**Note:** The `attr` module contains FUSE attribute helpers that are implementation details.
+
+## Discrepancies from Original Design
+
+### 1. Missing `cache` Module
+
+**Expected:** `src/cache/mod.rs` with `Cache` and `CacheStats` types
+
+**Actual:** Cache module does not exist. The `metrics` module exists and tracks cache hits/misses, but no actual caching implementation is present.
+
+**Impact:** The `CacheConfig` in `config` module configures a non-existent cache.
+
+### 2. Excessive Public Modules
+
+Several modules that should be internal implementation details are currently public:
+
+| Module | Current Visibility | Should Be | Reason |
+|--------|-------------------|-----------|---------|
+| `api::client` | `pub mod` | `mod` | Contains internal client implementation |
+| `fs::inode` | `pub mod` | `mod` | Internal inode management |
+| `fs::inode_entry` | `pub mod` | `mod` | Internal inode implementation |
+| `fs::inode_manager` | `pub mod` | `mod` | Internal inode table management |
+| `types::attr` | `pub mod` | `mod` | FUSE attribute helpers |
+| `types::handle` | `pub mod` | `mod` | File handle management |
+
+### 3. Missing Re-exports
+
+The original design planned for convenience re-exports that don't exist:
+
+- `api::Client` should be a re-export of `api::client::RqbitClient`
+- `fs::TorrentFS` should be a re-export (exists, but path is direct)
+- `api::TorrentInfo` should be a re-export from `api::types`
+
+### 4. Additional Public Items Not in Original Design
+
+The following items are public but were not in the original design:
+
+- `error` module - Unified error types (good addition)
+- `mount` module - Mount utilities (good addition)
+- `CliArgs` re-exported at crate root (convenient for CLI users)
+- `AsyncFuseWorker` re-exported at crate root
+- `InodeManager` and `InodeEntryRef` are public (should be internal)
+
+### 5. Module Structure Differences
+
+**Expected (from design):**
+```
+metrics/
+  └── mod.rs
+```
+
+**Actual:**
+```
+metrics.rs (single file)
+```
+
+Same for `mount.rs` and `error.rs`.
+
+## Current API Usage Examples
+
+### Basic Library Usage
+
+```rust
+use rqbit_fuse::{Config, TorrentFS, Metrics, run};
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = Config::load()?;
+    run(config).await
 }
 ```
 
-#### api/mod.rs - Clean Client API
+### Using the API Client Directly
 
 ```rust
-// Make internal modules private
-mod client;
-mod streaming;
-mod types;
-
-// Re-export primary types
-pub use client::RqbitClient as Client;
-pub use streaming::{PersistentStreamManager, StreamManagerStats};
-
-// Selective type exports (not wildcard)
-pub use types::{
-    ApiError,
-    TorrentInfo,
-    TorrentState,
-    TorrentStats,
-    TorrentStatus,
-    LiveStats,
-    FileInfo,
-    DownloadSpeed,
-    UploadSpeed,
-    PieceBitfield,
-    AddTorrentResponse,
-    AddMagnetRequest,
-    AddTorrentUrlRequest,
-};
-
-// Remove: CircuitBreaker, CircuitState (internal)
-// Remove: TorrentSummary, FileStats (dead code - TYPES-003)
-```
-
-#### fs/mod.rs - Filesystem Module
-
-```rust
-// Make internal modules private
-mod filesystem;
-mod inode;
-
-// Re-export public types
-pub use filesystem::TorrentFS;
-
-// InodeEntry comes from types::inode, not fs::inode
-// fs::inode::InodeManager stays private
-```
-
-#### types/mod.rs - Type Definitions
-
-```rust
-// Keep public - these are data types users work with
-pub mod file;
-pub mod inode;
-
-// Make private - internal helpers
-mod attr;  // FUSE attribute helpers
-
-// Remove: torrent module (dead code)
-
-// Re-export common types
-pub use file::TorrentFile;
-pub use inode::InodeEntry;
-```
-
-#### cache/mod.rs - Cache Module
-
-No changes needed - already well-structured:
-
-```rust
-pub struct Cache;  // Already public
-pub struct CacheStats;  // Already public
-
-// Internal implementation details private by default
-```
-
-#### config/mod.rs - Configuration Module
-
-Minor adjustment - keep CLI args separate:
-
-```rust
-pub struct Config;  // Keep public
-pub struct ConfigError;  // Keep public
-
-// CLI-specific, not part of library API
-pub struct CliArgs;  // Keep but document as CLI-only
-
-// Internal config structs - consider making fields private
-// or providing builder pattern
-```
-
-### API Stability Considerations
-
-#### Stability Levels
-
-1. **Stable (1.x.x):** Core types that won't change
-   - `TorrentFS` - main filesystem interface
-   - `Config` - configuration structure
-   - `Client` - HTTP client interface
-   - `TorrentInfo` - core data type
-
-2. **Unstable (0.x.x):** May change in minor versions
-   - `Cache` - implementation may evolve
-   - `Metrics` - observability interface evolving
-   - `PersistentStreamManager` - streaming internals
-
-3. **Internal:** Not part of public API
-   - `InodeManager` - implementation detail
-   - `CircuitBreaker` - internal retry logic
-   - `attr` helpers - FUSE internals
-
-#### SemVer Policy
-
-- **Major:** Breaking changes to stable API
-- **Minor:** New features, unstable API changes
-- **Patch:** Bug fixes, docs, internal refactoring
-
-## Module Organization
-
-### Target Structure
-
-```
-rqbit-fuse/
-├── lib.rs              # Crate root with selective re-exports
-├── api/
-│   ├── mod.rs          # Re-exports: Client, types
-│   ├── client.rs       # RqbitClient (private)
-│   ├── streaming.rs    # PersistentStreamManager (public)
-│   └── types.rs        # API types (selective re-export)
-├── cache/
-│   └── mod.rs          # Cache, CacheStats (public)
-├── config/
-│   └── mod.rs          # Config, CliArgs, ConfigError (public)
-├── fs/
-│   ├── mod.rs          # Re-exports: TorrentFS
-│   ├── filesystem.rs   # TorrentFS impl (private)
-│   └── inode.rs        # InodeManager (private)
-├── metrics/
-│   └── mod.rs          # Metrics (public)
-├── types/
-│   ├── mod.rs          # Re-exports: TorrentFile, InodeEntry
-│   ├── file.rs         # TorrentFile (public)
-│   ├── inode.rs        # InodeEntry (public)
-│   └── attr.rs         # FUSE helpers (private)
-└── main.rs             # CLI entry point
-```
-
-### Import Path Examples
-
-**Before:**
-```rust
-use rqbit_fuse::fs::filesystem::TorrentFS;
 use rqbit_fuse::api::client::RqbitClient;
-use rqbit_fuse::api::types::{TorrentInfo, TorrentState};
-use rqbit_fuse::config::Config;
-use rqbit_fuse::cache::{Cache, CacheStats};
+use rqbit_fuse::config::ApiConfig;
+
+async fn use_client() -> anyhow::Result<()> {
+    let client = RqbitClient::new("http://localhost:3030".to_string())?;
+    let result = client.list_torrents().await?;
+    Ok(())
+}
 ```
 
-**After:**
+### Accessing Metrics
+
 ```rust
-// Option 1: Crate root imports (recommended)
-use rqbit_fuse::{TorrentFS, Client, Config, TorrentInfo, TorrentState};
+use rqbit_fuse::metrics::Metrics;
+use std::sync::Arc;
 
-// Option 2: Module-specific imports
-use rqbit_fuse::fs::TorrentFS;
-use rqbit_fuse::api::{Client, TorrentInfo};
-use rqbit_fuse::config::Config;
-use rqbit_fuse::cache::Cache;
-
-// Option 3: Full paths for clarity
-use rqbit_fuse::api::types::{TorrentInfo, TorrentState};
+fn setup_metrics() -> Arc<Metrics> {
+    Arc::new(Metrics::new())
+}
 ```
 
-## Refactoring Plan
+### Configuration
 
-### Phase 1: Audit and Inventory
+```rust
+use rqbit_fuse::config::Config;
 
-1. **Generate pub inventory:**
-   ```bash
-   grep -r "^pub " src/ --include="*.rs" | wc -l
-   grep -r "^pub mod" src/ --include="*.rs"
-   grep -r "^pub use" src/ --include="*.rs"
-   ```
+fn configure() -> anyhow::Result<()> {
+    let config = Config::from_default_locations()?
+        .merge_from_env()?;
+    config.validate()?;
+    Ok(())
+}
+```
 
-2. **Categorize each pub item:**
-   - Public API (external users need this)
-   - Internal but exposed (implementation detail)
-   - Dead code (nothing uses it)
+## Recommended Refactoring
 
-3. **Document dependencies:**
-   - Which external imports use which paths?
-   - What would break if we made X private?
+### Priority 1: Make Internal Modules Private
 
-### Phase 2: Make Internal Modules Private
+The following should be changed from `pub mod` to `mod`:
 
-**Priority order (least impact first):**
-
-1. **types/attr.rs** - Only used internally
-   - Change `pub mod attr` to `mod attr` in types/mod.rs
-   - Update any cross-module usage
-
-2. **types/torrent.rs** - Dead code
-   - Remove module entirely (coordinate with TYPES-003)
-
-3. **fs/inode.rs** - Internal implementation
-   - Change `pub mod inode` to `mod inode` in fs/mod.rs
-   - Ensure InodeManager stays private
-   - InodeEntry remains public via types::inode
-
-4. **api/client.rs** - Circuit breaker internal
-   - Keep `RqbitClient` public
-   - Make `CircuitBreaker` and `CircuitState` private
-   - Add `pub use client::RqbitClient as Client` in api/mod.rs
-
-### Phase 3: Add Convenience Re-exports
-
-1. **lib.rs re-exports:**
+1. **In `src/api/mod.rs`:**
    ```rust
-   pub use fs::TorrentFS;
-   pub use api::Client;
-   pub use config::Config;
+   mod client;  // Change from pub mod
+   pub use client::RqbitClient;  // Export just the client
    ```
 
-2. **api/mod.rs re-exports:**
+2. **In `src/fs/mod.rs`:**
+   ```rust
+   mod inode;
+   mod inode_entry;
+   mod inode_manager;
+   // Keep InodeEntry public, make managers private
+   pub use inode_entry::InodeEntry;
+   ```
+
+3. **In `src/types/mod.rs`:**
+   ```rust
+   mod attr;  // Internal FUSE helpers
+   mod handle;  // File handle management
+   ```
+
+### Priority 2: Add Convenience Re-exports
+
+1. **In `src/api/mod.rs`:**
    ```rust
    pub use client::RqbitClient as Client;
-   pub use types::{TorrentInfo, TorrentState, /* ... */};
+   pub use types::{TorrentInfo, TorrentState, TorrentStats, FileInfo};
    ```
 
-3. **fs/mod.rs re-exports:**
+2. **In `src/lib.rs` (optional):**
    ```rust
-   pub use filesystem::TorrentFS;
+   pub use api::{Client, TorrentInfo};
    ```
 
-4. **types/mod.rs re-exports:**
-   ```rust
-   pub use file::TorrentFile;
-   pub use inode::InodeEntry;
-   ```
+### Priority 3: Implement or Remove Cache
 
-### Phase 4: Update All Imports
+Either:
+- Implement the `cache` module with `Cache` and `CacheStats` types
+- Or remove `CacheConfig` from config module if caching is handled elsewhere
 
-**Files to update:**
+### Priority 4: Document Stability Levels
 
-1. **src/main.rs** - Update CLI imports
-2. **src/lib.rs** - Update re-exports
-3. **src/fs/filesystem.rs** - Update internal imports
-4. **src/api/client.rs** - Update type imports
-5. **src/api/streaming.rs** - Update type imports
-6. **tests/** - Update all test imports
-
-**Migration strategy:**
+Add documentation to each public item indicating its stability:
 
 ```rust
-// Old (keep for backward compat during transition)
-#[deprecated(since = "0.2.0", note = "Use fs::TorrentFS instead")]
-pub use fs::filesystem::TorrentFS;
-
-// New
-pub use fs::TorrentFS;
+/// Main FUSE filesystem implementation.
+/// 
+/// # Stability
+/// This type is considered stable and will not change in breaking ways
+/// without a major version bump.
+pub struct TorrentFS { ... }
 ```
 
-### Phase 5: Verification
+## Public API Inventory
 
-1. **Check compilation:**
-   ```bash
-   cargo check
-   cargo build
-   ```
+### Total Public Items
 
-2. **Run tests:**
-   ```bash
-   cargo test
-   ```
+```bash
+$ grep -r "^pub " src/ --include="*.rs" | wc -l
+# Approximately 80+ public items
 
-3. **Verify public API:**
-   ```bash
-   cargo doc --no-deps --open
-   # Review what appears in documentation
-   ```
+$ grep -r "^pub mod" src/ --include="*.rs"
+# 11 public modules
 
-4. **Check for unused pub items:**
-   ```bash
-   cargo +nightly rustdoc -- -D rustdoc::missing_docs
-   ```
-
-## Documentation Requirements
-
-### Public API Documentation Standards
-
-Every public item must have:
-
-1. **Doc comment** explaining purpose and usage
-2. **Example code** showing typical usage
-3. **Error conditions** documented
-4. **Panics** section if applicable
-
-**Example:**
-
-```rust
-/// A FUSE filesystem backed by torrent data from an rqbit server.
-///
-/// This is the primary interface for mounting torrents as a filesystem.
-/// It handles all FUSE callbacks, manages inodes, and coordinates
-/// with the rqbit API for data retrieval.
-///
-/// # Example
-///
-/// ```no_run
-/// use rqbit_fuse::{TorrentFS, Config};
-/// use std::sync::Arc;
-///
-/// # async fn example() -> anyhow::Result<()> {
-/// let config = Config::default();
-/// let metrics = Arc::new(rqbit_fuse::Metrics::new());
-/// let fs = TorrentFS::new(config, metrics)?;
-/// fs.mount().await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The mount point doesn't exist or isn't accessible
-/// - The rqbit server is unreachable
-/// - FUSE initialization fails
-///
-/// # Panics
-///
-/// Panics if called from a thread that is not a Tokio runtime thread.
-pub struct TorrentFS { /* ... */ }
+$ grep -r "^pub use" src/ --include="*.rs"
+# 12 public re-exports
 ```
 
-### Crate-Level Documentation (lib.rs)
+### Public Modules (11)
 
-```rust
-//! # rqbit-fuse
-//!
-//! Mount torrents from an [rqbit](https://github.com/ikatson/rqbit) server as a FUSE filesystem.
-//!
-//! ## Quick Start
-//!
-//! ```no_run
-//! use rqbit_fuse::{TorrentFS, Config};
-//!
-//! # async fn quickstart() -> anyhow::Result<()> {
-//! let config = Config::default();
-//! let fs = TorrentFS::new(config)?;
-//! fs.mount().await?;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ## Features
-//!
-//! - **Streaming reads**: Read torrent data on-demand without full download
-//! - **Intelligent caching**: LRU cache with TTL for metadata and pieces
-//! - **Resilient**: Circuit breaker pattern for API resilience
-//! - **Observable**: Built-in metrics and logging
-//!
-//! ## Modules
-//!
-//! - `api`: HTTP client for rqbit server
-//! - `cache`: Caching layer for torrent data
-//! - `config`: Configuration management
-//! - `fs`: FUSE filesystem implementation
-//! - `metrics`: Performance and health metrics
-//! - `types`: Core data types
-//!
-//! ## Stability
-//!
-//! This crate follows Semantic Versioning. The public API is marked as
-//! stable once we reach 1.0.0. Until then, minor versions may include
-//! breaking changes to unstable APIs.
-```
+1. `api`
+2. `api::client`
+3. `api::streaming`
+4. `api::types`
+5. `config`
+6. `error`
+7. `fs`
+8. `fs::async_bridge`
+9. `fs::filesystem`
+10. `fs::inode`
+11. `fs::inode_entry`
+12. `fs::inode_manager`
+13. `metrics`
+14. `mount`
+15. `types`
+16. `types::attr`
+17. `types::handle`
 
-### Examples Directory
+### Core Public Types
 
-Create `examples/` with:
+**Must Be Public:**
+- `TorrentFS` - Main filesystem
+- `Config` - Configuration
+- `RqbitClient` - API client
+- `Metrics` - Metrics collection
+- `RqbitFuseError` - Error handling
+- `TorrentInfo` - Data type
+- `FileInfo` - Data type
+- `InodeEntry` - Filesystem entries
 
-1. **basic_mount.rs** - Simple filesystem mount
-2. **custom_cache.rs** - Custom cache configuration
-3. **api_client.rs** - Using the API client directly
-4. **metrics.rs** - Accessing metrics programmatically
+**Should Be Internal:**
+- `InodeManager` - Implementation detail
+- `InodeEntryRef` - Implementation detail
+- `FileHandleManager` - Implementation detail
+- `AsyncFuseWorker` - Could be internal
+- `PersistentStreamManager` - Implementation detail
 
-### Stability Guarantees
+## Verification Commands
 
-**Document in README.md and lib.rs:**
+```bash
+# Check public API
+cargo doc --no-deps
 
-```markdown
-## API Stability
+# Check for unused public items
+cargo +nightly rustdoc -- -D rustdoc::missing_docs
 
-### Stable API (1.0.0+)
-These types will not change in breaking ways:
-- `TorrentFS` - Main filesystem interface
-- `Config` - Configuration structure  
-- `Client` - HTTP client interface
-- `TorrentInfo`, `TorrentState` - Core data types
+# Count public items
+grep -r "^pub " src/ --include="*.rs" | wc -l
+grep -r "^pub mod" src/ --include="*.rs"
+grep -r "^pub use" src/ --include="*.rs"
 
-### Evolving API (0.x.x)
-These may change in minor versions:
-- `Cache` - Cache configuration and access
-- `Metrics` - Metrics interface
-- `PersistentStreamManager` - Streaming internals
-
-### Internal API
-These are implementation details and not covered by semver:
-- `InodeManager` - Inode table management
-- `CircuitBreaker` - Retry logic
-- Attribute helpers in `types::attr`
-```
-
-## Export Structure
-
-### Final lib.rs Structure
-
-```rust
-// Primary API - Most common types at crate root
-pub use config::Config;
-pub use fs::TorrentFS;
-pub use api::Client;
-
-// Secondary API - Advanced usage
-pub mod api;
-pub mod cache;
-pub mod config;
-pub mod fs;
-pub mod metrics;
-pub mod types;
-
-// Re-exports for convenience
-pub use api::types::{
-    TorrentInfo,
-    TorrentState,
-    TorrentStats,
-    FileInfo,
-};
-pub use types::{InodeEntry, TorrentFile};
-
-// Internal modules - private implementation
-// mod internal { ... }
-
-// Main entry point for the library
-pub async fn run(config: Config) -> anyhow::Result<()> { ... }
-```
-
-### Module Re-exports Summary
-
-| Module | Public Types | Re-export Location |
-|--------|-------------|-------------------|
-| `api::client` | `RqbitClient` | `api::Client` |
-| `api::streaming` | `PersistentStreamManager`, `StreamManagerStats` | `api::` |
-| `api::types` | `TorrentInfo`, `TorrentState`, etc. | `api::`, `crate::` |
-| `fs::filesystem` | `TorrentFS` | `fs::`, `crate::` |
-| `types::file` | `TorrentFile` | `types::`, `crate::` |
-| `types::inode` | `InodeEntry` | `types::`, `crate::` |
-
-### Feature Flags (Future Considerations)
-
-If needed in the future:
-
-```rust
-[features]
-default = ["fuse"]
-fuse = ["fuser"]                    # FUSE filesystem support
-api-client = ["reqwest"]            # Standalone API client only
-metrics = []                        # Metrics collection
-tracing = ["tracing-subscriber"]    # Enhanced logging
-```
-
-Current: No feature flags needed - all features are core functionality.
-
-## Implementation Checklist
-
-- [ ] Audit all `pub` declarations (64 items)
-- [ ] Categorize: public API / internal / dead code
-- [ ] Create `fs::TorrentFS` re-export
-- [ ] Create `api::Client` re-export
-- [ ] Make `fs::inode` module private
-- [ ] Make `api::client` module private (keep Client public)
-- [ ] Make `types::attr` module private
-- [ ] Remove `types::torrent` module (coordinate TYPES-003)
-- [ ] Remove wildcard export `api::types::*`
-- [ ] Add selective type re-exports in `api/mod.rs`
-- [ ] Update all imports in `src/` files
-- [ ] Update all imports in `tests/` files
-- [ ] Add comprehensive doc comments
-- [ ] Create crate-level documentation
-- [ ] Write examples in `examples/` directory
-- [ ] Verify `cargo doc` output
-- [ ] Run `cargo test` to verify
-- [ ] Update CHANGELOG with breaking changes
-- [ ] Update README with new import paths
-
-## Breaking Changes
-
-This refactoring includes breaking changes requiring a minor version bump:
-
-### Removed (Internal → Private)
-- `rqbit_fuse::fs::inode` - Use fs module APIs instead
-- `rqbit_fuse::api::client::CircuitBreaker` - Internal implementation
-- `rqbit_fuse::api::client::CircuitState` - Internal implementation
-- `rqbit_fuse::types::attr` - Internal helpers
-- `rqbit_fuse::types::torrent` - Dead code
-
-### Changed (Path Changes)
-- `rqbit_fuse::fs::filesystem::TorrentFS` → `rqbit_fuse::fs::TorrentFS` or `rqbit_fuse::TorrentFS`
-- `rqbit_fuse::api::client::RqbitClient` → `rqbit_fuse::api::Client` or `rqbit_fuse::Client`
-
-### Migration Guide
-
-```rust
-// Before
-use rqbit_fuse::fs::filesystem::TorrentFS;
-use rqbit_fuse::api::client::RqbitClient;
-
-// After
-use rqbit_fuse::{TorrentFS, Client};
-// or
-use rqbit_fuse::fs::TorrentFS;
-use rqbit_fuse::api::Client;
+# List all public modules
+grep -r "^pub mod" src/ --include="*.rs" | sed 's/.*pub mod \([^;]*\).*/\1/'
 ```
 
 ---
 
-*This specification addresses ARCH-001 and ARCH-002 from TODO.md*
+*Last Updated: February 2026*
+*This specification documents the actual public API as implemented in the codebase.*

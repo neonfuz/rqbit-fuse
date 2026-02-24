@@ -14,7 +14,7 @@ Default: `http://127.0.0.1:3030`
 
 **Endpoint:** `GET /torrents`
 
-**Description:** Returns list of all torrents in the session.
+**Description:** Returns list of all torrents in the session with basic information only. Does not include file lists.
 
 **Response:**
 ```json
@@ -24,23 +24,21 @@ Default: `http://127.0.0.1:3030`
       "id": 1,
       "info_hash": "aabbccdd...",
       "name": "Ubuntu 24.04 ISO",
-      "output_folder": "/home/user/Downloads",
-      "file_count": 1,
-      "files": [
-        {
-          "name": "ubuntu-24.04.iso",
-          "length": 5120000000,
-          "components": ["ubuntu-24.04.iso"]
-        }
-      ]
+      "output_folder": "/home/user/Downloads"
     }
   ]
 }
 ```
 
-**Usage:** Build directory structure, get torrent IDs for operations.
+**Fields:**
+- `id`: Torrent ID (integer)
+- `info_hash`: Info hash (40-character hex string)
+- `name`: Torrent name
+- `output_folder`: Download output directory
 
-**Cache TTL:** 30 seconds (configurable via `torrent_list_ttl`)
+**Usage:** Get torrent IDs and basic metadata. Use `GET /torrents/{id}` for full details including files.
+
+**Cache TTL:** 30 seconds
 
 ---
 
@@ -48,7 +46,7 @@ Default: `http://127.0.0.1:3030`
 
 **Endpoint:** `GET /torrents/{id_or_infohash}`
 
-**Description:** Get detailed information about a specific torrent.
+**Description:** Get detailed information about a specific torrent, including file list and piece length.
 
 **Parameters:**
 - `id_or_infohash` - Torrent ID (integer) or info hash (40-character hex string)
@@ -74,7 +72,7 @@ Default: `http://127.0.0.1:3030`
 
 **Usage:** Get file list, piece length, verify torrent exists.
 
-**Cache TTL:** 60 seconds (configurable via `metadata_ttl`)
+**Cache TTL:** Not cached (always fetches fresh data)
 
 ---
 
@@ -83,8 +81,7 @@ Default: `http://127.0.0.1:3030`
 **Endpoint:** `GET /torrents/{id_or_infohash}/haves`
 
 **Headers:**
-- `Accept: application/octet-stream` - Binary bitfield (default)
-- `Accept: image/svg+xml` - SVG visualization
+- `Accept: application/octet-stream` - Binary bitfield (required)
 
 **Description:** Returns which pieces have been downloaded.
 
@@ -118,8 +115,7 @@ Default: `http://127.0.0.1:3030`
 | Header | Description |
 |--------|-------------|
 | `Range` | Optional. Standard HTTP Range header for seeking. Format: `bytes=start-[end]` |
-| `transferMode.dlna.org` | Optional. Set to "Streaming" for DLNA streaming mode |
-| `getcontentFeatures.dlna.org` | Optional. Set to "1" to request content features |
+| `Authorization` | Optional. HTTP Basic Auth header if authentication is enabled |
 
 **Range Examples:**
 ```
@@ -145,8 +141,6 @@ Range: bytes=1048576-1179647
 | `Content-Type` | MIME type of the file (determined from filename extension) |
 | `Content-Length` | Size of the response body |
 | `Content-Range` | Present when Range header is used (format: `bytes start-end/total`) |
-| `transferMode.dlna.org` | Set to "Streaming" if requested |
-| `contentFeatures.dlna.org` | DLNA content features if requested |
 
 **Response Status Codes:**
 
@@ -171,36 +165,13 @@ Range: bytes=1048576-1179647
 **Implementation Notes:**
 - Uses `PersistentStreamManager` for connection reuse
 - Handles rqbit bug: may return 200 OK instead of 206 Partial Content
-- Read size clamped to 64KB (FUSE_MAX_READ)
-- Implements read-ahead/prefetching for sequential reads
+- Implements persistent streaming for efficient sequential reads
 
 **Example URLs:**
 ```
 http://127.0.0.1:3030/torrents/0/stream/0
 http://127.0.0.1:3030/torrents/abc123.../stream/1
 ```
-
----
-
-### Playlist API
-
-Generate M3U8 playlists for media players.
-
-#### Global Playlist (All Torrents)
-
-**Endpoint:** `GET /torrents/playlist`
-
-Returns an M3U8 playlist containing all playable (video/audio) files from all torrents.
-
-#### Single Torrent Playlist
-
-**Endpoint:** `GET /torrents/{id_or_infohash}/playlist`
-
-Returns an M3U8 playlist for a specific torrent.
-
-**Response Headers:**
-- `Content-Type: application/mpegurl; charset=utf-8`
-- `Content-Disposition: attachment; filename="rqbit-playlist.m3u8"`
 
 ---
 
@@ -295,7 +266,7 @@ Returns an M3U8 playlist for a specific torrent.
 
 **Endpoint:** `POST /torrents`
 
-**Content-Type:** Depends on method
+**Content-Type:** `application/json`
 
 **Methods:**
 
@@ -311,12 +282,6 @@ Returns an M3U8 playlist for a specific torrent.
 {
   "torrent_link": "http://example.com/file.torrent"
 }
-```
-
-#### Torrent File Upload
-```
-Content-Type: multipart/form-data
-Body: torrent file bytes
 ```
 
 **Response:**
@@ -349,7 +314,7 @@ Body: torrent file bytes
 - `POST /torrents/{id_or_infohash}/forget` - Remove from session, keep files
 - `POST /torrents/{id_or_infohash}/delete` - Remove from session, delete files
 
-**Usage:** Cleanup (optional for rqbit-fuse). Can be triggered by removing torrent directory via FUSE unlink (if implemented).
+**Usage:** Cleanup (optional for rqbit-fuse).
 
 ---
 
@@ -362,12 +327,13 @@ All endpoints return standard HTTP status codes:
 | `200 OK` | Success | - |
 | `206 Partial Content` | Successful range request | - |
 | `400 Bad Request` | Invalid parameters | `EINVAL` |
+| `401 Unauthorized` | Authentication failed | `EACCES` |
 | `403 Forbidden` | Permission denied | `EACCES` |
 | `404 Not Found` | Torrent or file not found | `ENOENT` |
 | `416 Range Not Satisfiable` | Invalid byte range | `EINVAL` |
 | `500 Internal Server Error` | Server error | `EIO` |
 | `503 Service Unavailable` | Server temporarily unavailable | `EAGAIN` |
-| Timeout | Request timeout | `EAGAIN` |
+| Timeout | Request timeout | `ETIMEDOUT` |
 | Connection error | Network/transport failure | `ENETUNREACH` |
 
 **Error Response Body:**
@@ -379,60 +345,59 @@ All endpoints return standard HTTP status codes:
 
 ### Error Types
 
-The rqbit-fuse implementation uses 8 essential error types:
+The rqbit-fuse implementation uses the following error types:
 
 | Error Type | HTTP Status | FUSE Error | Description |
 |------------|-------------|------------|-------------|
 | `NotFound` | 404 | `ENOENT` | Resource doesn't exist |
-| `PermissionDenied` | 403 | `EACCES` | Authentication/authorization failed |
+| `PermissionDenied` | 401, 403 | `EACCES` | Authentication/authorization failed |
 | `InvalidArgument` | 400, 416 | `EINVAL` | Bad request parameters |
-| `Timeout` | - | `EAGAIN` | Request timeout (retryable) |
+| `TimedOut` | - | `ETIMEDOUT` | Request timeout |
 | `NetworkError` | - | `ENETUNREACH` | Connection/transport failure |
-| `ServiceUnavailable` | 503 | `EAGAIN` | Server unavailable (retryable) |
+| `NotReady` | - | `EAGAIN` | Service not ready (e.g., retry limit exceeded) |
+| `ApiError` | Various | Mapped by status | API returned error status |
 | `IoError` | - | `EIO` | IO operation failed |
-| `InternalError` | 500 | `EIO` | Internal system error |
 
 ## Rate Limiting
 
 rqbit does not implement rate limiting, but rqbit-fuse implements protective measures:
 
-- **Concurrent request limiting**: Uses semaphore to limit concurrent `/stream` requests
 - **Connection pooling**: Reuses HTTP connections via `PersistentStreamManager`
-- **Circuit breaker**: Prevents cascading failures when rqbit is unavailable
-- **Cache**: Caches metadata appropriately to reduce API load
+- **Cache**: Caches torrent list to reduce API load
+- **Retry logic**: Implements exponential backoff for transient failures
 
 ## FUSE Read Flow
 
 ```
 FUSE read(offset=1048576, size=131072)
-    │
+    |
     ▼
 Calculate file_idx and byte range
-    │
+    |
     ▼
 GET /torrents/{id}/stream/{file_idx}
 Range: bytes=1048576-1179647
-    │
+    |
     ▼
 PersistentStreamManager checks for existing connection
-    │
+    |
     ├── Reuse connection if at correct offset
     └── Create new connection if needed
-    │
+    |
     ▼
 rqbit receives request
-    │
+    |
     ├── Maps bytes to pieces (piece 4-5)
     ├── Prioritizes pieces for download
     ├── Downloads with 32MB readahead
     └── Blocks until pieces available
-    │
+    |
     ▼
-Return data (131072 bytes, clamped to 64KB)
-    │
+Return data (131072 bytes)
+    |
     ▼
 Update read position for connection reuse
-    │
+    |
     ▼
 FUSE returns to kernel
 ```
@@ -478,81 +443,36 @@ match response.status() {
 }
 ```
 
-### Concurrent Reads
+### Persistent Streaming
 
-Uses semaphore to limit concurrent requests:
-
-```rust
-use tokio::sync::Semaphore;
-
-static CONCURRENT_READS: Semaphore = Semaphore::const_new(10);
-
-async fn read_file(...) -> Result<Bytes> {
-    let _permit = CONCURRENT_READS.acquire().await?;
-    // Make HTTP request with persistent streaming
-}
-```
-
-### Circuit Breaker Pattern
+Uses `PersistentStreamManager` for efficient sequential access:
 
 ```rust
-pub struct CircuitBreaker {
-    state: AtomicU8,  // Closed=0, Open=1, HalfOpen=2
-    failure_count: AtomicU32,
-    threshold: u32,      // Failures before opening
-    timeout: Duration,   // Time before half-open
-}
-
-// Usage
-async fn call_api(&self) -> Result<T, ApiError> {
-    match self.circuit_breaker.state() {
-        CircuitState::Open => Err(ApiError::CircuitBreakerOpen),
-        _ => {
-            match self.make_request().await {
-                Ok(result) => {
-                    self.circuit_breaker.record_success();
-                    Ok(result)
-                }
-                Err(e) => {
-                    self.circuit_breaker.record_failure();
-                    Err(e)
-                }
-            }
-        }
-    }
-}
+// Read via persistent stream manager for connection reuse
+let data = client
+    .read_file_streaming(torrent_id, file_idx, offset, size)
+    .await?;
 ```
 
 ## Usage Examples
 
-### Stream to VLC
-
-```bash
-# Start streaming
-vlc "http://127.0.0.1:3030/torrents/0/stream/0/movie.mp4"
-```
-
-### Use with curl
+### Stream with curl
 
 ```bash
 # Stream with range (seek to 1MB)
 curl -H "Range: bytes=1048576-" http://127.0.0.1:3030/torrents/0/stream/0
 
-# Get playlist
-curl http://127.0.0.1:3030/torrents/playlist
-```
+# Get torrent list
+curl http://127.0.0.1:3030/torrents
 
-### Download Playlist
-
-```bash
-curl -o playlist.m3u8 http://127.0.0.1:3030/torrents/0/playlist
+# Get torrent details
+curl http://127.0.0.1:3030/torrents/0
 ```
 
 ## Related rqbit Source Files
 
 - `crates/librqbit/src/http_api/handlers/streaming.rs` - HTTP handler implementation
-- `crates/librqbit/src/http_api/handlers/playlist.rs` - Playlist generation
 - `crates/librqbit/src/torrent_state/streaming.rs` - Core streaming logic
 - `crates/librqbit/src/api.rs` - Public API methods
 
-Last updated: 2024-02-14
+Last updated: 2025-02-24

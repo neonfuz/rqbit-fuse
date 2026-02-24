@@ -2,212 +2,141 @@
 
 ## Overview
 
-This document specifies the simplified error handling strategy for rqbit-fuse, providing a minimal, typed error system that maps to FUSE error codes.
+This document specifies the unified error handling strategy for rqbit-fuse, providing a simplified, typed error system that maps directly to FUSE error codes.
 
-## Error Enum Hierarchy
+## Design Philosophy
+
+The error handling system uses a **single unified error type** (`RqbitFuseError`) rather than a hierarchical structure. This simplifies error handling throughout the codebase while maintaining comprehensive coverage of all error scenarios.
+
+Key principles:
+- **Single enum**: One error type for all operations (API, filesystem, configuration)
+- **Direct FUSE mapping**: Each error variant maps to a specific libc error code
+- **Automatic conversions**: `From` implementations for common external error types
+- **Retry classification**: Built-in methods to identify transient vs. permanent errors
+
+## Error Type
+
+### RqbitFuseError Enum
 
 ```rust
-/// The top-level error type for rqbit-fuse operations
-#[derive(Error, Debug)]
-pub enum TorrentFuseError {
-    /// Errors from the rqbit HTTP API
-    #[error("API error: {0}")]
-    Api(#[from] ApiError),
-    
-    /// Filesystem-level errors
-    #[error("Filesystem error: {0}")]
-    Filesystem(#[from] FilesystemError),
-    
-    /// Configuration errors
-    #[error("Configuration error: {0}")]
-    Config(#[from] ConfigError),
-    
-    /// Network/IO errors
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+use thiserror::Error;
+
+/// Unified error type for rqbit-fuse with 11 essential variants.
+#[derive(Error, Debug, Clone)]
+pub enum RqbitFuseError {
+    /// Entity not found (ENOENT)
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    /// Permission denied (EACCES)
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+
+    /// Operation timed out (ETIMEDOUT)
+    #[error("Operation timed out: {0}")]
+    TimedOut(String),
+
+    /// Network error - covers server disconnected, connection failures
+    #[error("Network error: {0}")]
+    NetworkError(String),
+
+    /// API returned error with HTTP status code
+    #[error("API error: {status} - {message}")]
+    ApiError { status: u16, message: String },
+
+    /// I/O error
+    #[error("I/O error: {0}")]
+    IoError(String),
+
+    /// Invalid argument (EINVAL)
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+
+    /// Validation error with multiple issues
+    #[error("Validation error: {}", .0.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("; "))]
+    ValidationError(Vec<ValidationIssue>),
+
+    /// Resource temporarily unavailable (EAGAIN)
+    #[error("Resource temporarily unavailable: {0}")]
+    NotReady(String),
+
+    /// Parse/serialization error
+    #[error("Parse error: {0}")]
+    ParseError(String),
+
+    /// Is a directory (EISDIR)
+    #[error("Is a directory")]
+    IsDirectory,
+
+    /// Not a directory (ENOTDIR)
+    #[error("Not a directory")]
+    NotDirectory,
 }
 
-/// Errors specific to API operations (8 essential variants)
-#[derive(Error, Debug, Clone)]
-pub enum ApiError {
-    /// Resource not found (torrent or file)
-    #[error("Not found: {resource}")]
-    NotFound { resource: String },
-    
-    /// API service temporarily unavailable (503, timeouts, circuit breaker)
-    #[error("Service unavailable: {details}")]
-    Unavailable { details: String },
-    
-    /// Network/connection failures
-    #[error("Network error: {details}")]
-    Network { details: String },
-    
-    /// Invalid request parameters
-    #[error("Invalid argument: {details}")]
-    InvalidArgument { details: String },
-    
-    /// Authentication/authorization failures
-    #[error("Access denied: {details}")]
-    AccessDenied { details: String },
-    
-    /// Resource already exists (conflict)
-    #[error("Already exists: {resource}")]
-    AlreadyExists { resource: String },
-    
-    /// HTTP client construction or internal error
-    #[error("Internal error: {details}")]
-    Internal { details: String },
-    
-    /// Request retry limit exceeded
-    #[error("Retry limit exceeded after {attempts} attempts")]
-    RetryLimitExceeded { attempts: u32 },
+/// Represents a single validation error in the configuration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationIssue {
+    pub field: String,
+    pub message: String,
 }
 
-/// Errors specific to filesystem operations (8 essential variants)
-#[derive(Error, Debug, Clone)]
-pub enum FilesystemError {
-    /// Inode or path not found
-    #[error("Not found: {path}")]
-    NotFound { path: String },
-    
-    /// Expected directory, got file
-    #[error("Not a directory: {ino}")]
-    NotADirectory { ino: u64 },
-    
-    /// Expected file, got directory
-    #[error("Is a directory: {ino}")]
-    IsADirectory { ino: u64 },
-    
-    /// Invalid path component or argument
-    #[error("Invalid argument: {details}")]
-    InvalidArgument { details: String },
-    
-    /// Permission denied or path traversal
-    #[error("Permission denied: {details}")]
-    PermissionDenied { details: String },
-    
-    /// File or directory already exists
-    #[error("Already exists: {path}")]
-    AlreadyExists { path: String },
-    
-    /// Directory not empty
-    #[error("Directory not empty: {ino}")]
-    DirectoryNotEmpty { ino: u64 },
-    
-    /// Read-only filesystem
-    #[error("Read-only filesystem")]
-    ReadOnly,
-}
-
-/// Errors specific to configuration (6 essential variants)
-#[derive(Error, Debug, Clone)]
-pub enum ConfigError {
-    /// Invalid configuration value
-    #[error("Invalid configuration: {field} - {reason}")]
-    InvalidValue { field: String, reason: String },
-    
-    /// Mount point does not exist or is not accessible
-    #[error("Mount point error: {path} - {reason}")]
-    MountPoint { path: String, reason: String },
-    
-    /// Configuration file not found or unreadable
-    #[error("Configuration file: {path} - {reason}")]
-    File { path: String, reason: String },
-    
-    /// URL parsing error
-    #[error("Invalid URL: {url} - {reason}")]
-    InvalidUrl { url: String, reason: String },
-    
-    /// Missing required configuration
-    #[error("Missing required field: {field}")]
-    MissingField { field: String },
-    
-    /// Timeout value out of range
-    #[error("Invalid timeout: {value} - {reason}")]
-    InvalidTimeout { value: u64, reason: String },
-}
+/// Result type alias for operations that can fail with RqbitFuseError.
+pub type RqbitFuseResult<T> = Result<T, RqbitFuseError>;
 ```
 
 ## FUSE Error Code Mapping
 
-### Mapping Table (8 Essential Error Codes)
+### Mapping Table
 
 | Error Variant | FUSE Code | Description |
 |--------------|-----------|-------------|
 | `NotFound` | ENOENT | No such file or directory |
-| `NotADirectory` | ENOTDIR | Not a directory |
-| `IsADirectory` | EISDIR | Is a directory |
+| `PermissionDenied` | EACCES | Permission denied |
+| `TimedOut` | ETIMEDOUT | Operation timed out |
+| `NetworkError` | ENETUNREACH | Network is unreachable |
+| `ApiError { status: 400/416, .. }` | EINVAL | Invalid argument |
+| `ApiError { status: 401/403, .. }` | EACCES | Permission denied |
+| `ApiError { status: 404, .. }` | ENOENT | Not found |
+| `ApiError { status: 408/423/429/503/504, .. }` | EAGAIN | Resource temporarily unavailable |
+| `ApiError { status: 409, .. }` | EEXIST | File exists |
+| `ApiError { status: 413, .. }` | EFBIG | File too large |
+| `ApiError { status: 500/502, .. }` | EIO | I/O error |
+| `IoError` | EIO | I/O error |
 | `InvalidArgument` | EINVAL | Invalid argument |
-| `PermissionDenied` / `AccessDenied` | EACCES | Permission denied |
-| `AlreadyExists` | EEXIST | File exists |
-| `DirectoryNotEmpty` | ENOTEMPTY | Directory not empty |
-| `ReadOnly` / `Filesystem` | EROFS | Read-only filesystem |
-| `Unavailable` / `RetryLimitExceeded` | EAGAIN | Resource temporarily unavailable |
-| `Network` | ENETUNREACH | Network is unreachable |
-| `Internal` / `Io` | EIO | I/O error |
+| `ValidationError` | EINVAL | Invalid argument |
+| `NotReady` | EAGAIN | Resource temporarily unavailable |
+| `ParseError` | EINVAL | Invalid argument |
+| `IsDirectory` | EISDIR | Is a directory |
+| `NotDirectory` | ENOTDIR | Not a directory |
 
 ### Implementation
 
 ```rust
-impl TorrentFuseError {
-    /// Convert to FUSE error code
-    pub fn to_fuse_error(&self) -> libc::c_int {
+impl RqbitFuseError {
+    /// Convert the error to a libc error code suitable for FUSE replies.
+    pub fn to_errno(&self) -> i32 {
         match self {
-            TorrentFuseError::Api(api_err) => api_err.to_fuse_error(),
-            TorrentFuseError::Filesystem(fs_err) => fs_err.to_fuse_error(),
-            TorrentFuseError::Config(_) => libc::EINVAL,
-            TorrentFuseError::Io(io_err) => match io_err.kind() {
-                std::io::ErrorKind::NotFound => libc::ENOENT,
-                std::io::ErrorKind::PermissionDenied => libc::EACCES,
-                std::io::ErrorKind::AlreadyExists => libc::EEXIST,
-                std::io::ErrorKind::WouldBlock => libc::EAGAIN,
-                std::io::ErrorKind::InvalidInput => libc::EINVAL,
-                std::io::ErrorKind::TimedOut => libc::EAGAIN,
+            RqbitFuseError::NotFound(_) => libc::ENOENT,
+            RqbitFuseError::PermissionDenied(_) => libc::EACCES,
+            RqbitFuseError::TimedOut(_) => libc::ETIMEDOUT,
+            RqbitFuseError::NetworkError(_) => libc::ENETUNREACH,
+            RqbitFuseError::ApiError { status, .. } => match status {
+                400 | 416 => libc::EINVAL,
+                401 | 403 => libc::EACCES,
+                404 => libc::ENOENT,
+                408 | 423 | 429 | 503 | 504 => libc::EAGAIN,
+                409 => libc::EEXIST,
+                413 => libc::EFBIG,
+                500 | 502 => libc::EIO,
                 _ => libc::EIO,
             },
-        }
-    }
-}
-
-impl ApiError {
-    pub fn to_fuse_error(&self) -> libc::c_int {
-        match self {
-            // Not found errors
-            ApiError::NotFound { .. } => libc::ENOENT,
-            
-            // Service unavailable - suggest retry
-            ApiError::Unavailable { .. } => libc::EAGAIN,
-            ApiError::RetryLimitExceeded { .. } => libc::EAGAIN,
-            
-            // Network errors
-            ApiError::Network { .. } => libc::ENETUNREACH,
-            
-            // Invalid input
-            ApiError::InvalidArgument { .. } => libc::EINVAL,
-            
-            // Access denied
-            ApiError::AccessDenied { .. } => libc::EACCES,
-            
-            // Already exists
-            ApiError::AlreadyExists { .. } => libc::EEXIST,
-            
-            // Internal errors
-            ApiError::Internal { .. } => libc::EIO,
-        }
-    }
-}
-
-impl FilesystemError {
-    pub fn to_fuse_error(&self) -> libc::c_int {
-        match self {
-            FilesystemError::NotFound { .. } => libc::ENOENT,
-            FilesystemError::NotADirectory { .. } => libc::ENOTDIR,
-            FilesystemError::IsADirectory { .. } => libc::EISDIR,
-            FilesystemError::InvalidArgument { .. } => libc::EINVAL,
-            FilesystemError::PermissionDenied { .. } => libc::EACCES,
-            FilesystemError::AlreadyExists { .. } => libc::EEXIST,
-            FilesystemError::DirectoryNotEmpty { .. } => libc::ENOTEMPTY,
-            FilesystemError::ReadOnly => libc::EROFS,
+            RqbitFuseError::IoError(_) => libc::EIO,
+            RqbitFuseError::InvalidArgument(_) => libc::EINVAL,
+            RqbitFuseError::ValidationError(_) => libc::EINVAL,
+            RqbitFuseError::NotReady(_) => libc::EAGAIN,
+            RqbitFuseError::ParseError(_) => libc::EINVAL,
+            RqbitFuseError::IsDirectory => libc::EISDIR,
+            RqbitFuseError::NotDirectory => libc::ENOTDIR,
         }
     }
 }
@@ -216,76 +145,76 @@ impl FilesystemError {
 ## From Implementations for External Errors
 
 ```rust
-impl From<reqwest::Error> for ApiError {
+impl From<std::io::Error> for RqbitFuseError {
+    fn from(err: std::io::Error) -> Self {
+        match err.kind() {
+            std::io::ErrorKind::NotFound => RqbitFuseError::NotFound(err.to_string()),
+            std::io::ErrorKind::PermissionDenied => {
+                RqbitFuseError::PermissionDenied(err.to_string())
+            }
+            std::io::ErrorKind::TimedOut => RqbitFuseError::TimedOut(err.to_string()),
+            std::io::ErrorKind::InvalidInput => RqbitFuseError::InvalidArgument(err.to_string()),
+            _ => RqbitFuseError::IoError(err.to_string()),
+        }
+    }
+}
+
+impl From<reqwest::Error> for RqbitFuseError {
     fn from(err: reqwest::Error) -> Self {
         if err.is_timeout() {
-            ApiError::Unavailable { 
-                details: format!("Request timeout: {}", err) 
-            }
+            RqbitFuseError::TimedOut(err.to_string())
         } else if err.is_connect() {
-            ApiError::Network { 
-                details: format!("Connection failed: {}", err) 
-            }
+            RqbitFuseError::NetworkError(format!("Server disconnected: {}", err))
         } else if err.is_request() {
-            ApiError::InvalidArgument { 
-                details: format!("Invalid request: {}", err) 
-            }
+            RqbitFuseError::NetworkError(err.to_string())
         } else {
-            ApiError::Internal { 
-                details: format!("HTTP error: {}", err) 
-            }
+            RqbitFuseError::IoError(format!("HTTP error: {}", err))
         }
     }
 }
 
-impl From<serde_json::Error> for ApiError {
+impl From<serde_json::Error> for RqbitFuseError {
     fn from(err: serde_json::Error) -> Self {
-        ApiError::InvalidArgument {
-            details: format!("JSON parse error: {}", err),
+        RqbitFuseError::ParseError(err.to_string())
+    }
+}
+
+impl From<toml::de::Error> for RqbitFuseError {
+    fn from(err: toml::de::Error) -> Self {
+        RqbitFuseError::ParseError(err.to_string())
+    }
+}
+```
+
+## ToFuseError Trait for anyhow::Error
+
+```rust
+/// Trait for converting errors to FUSE error codes.
+pub trait ToFuseError {
+    /// Convert the error to a FUSE error code.
+    fn to_fuse_error(&self) -> i32;
+}
+
+impl ToFuseError for anyhow::Error {
+    fn to_fuse_error(&self) -> i32 {
+        // Check for specific error types through downcasting
+        if let Some(rqbit_err) = self.downcast_ref::<RqbitFuseError>() {
+            return rqbit_err.to_errno();
         }
-    }
-}
 
-impl From<reqwest::StatusCode> for ApiError {
-    fn from(status: reqwest::StatusCode) -> Self {
-        match status {
-            StatusCode::NOT_FOUND => ApiError::NotFound {
-                resource: "resource".to_string(),
-            },
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => ApiError::AccessDenied {
-                details: format!("HTTP {}", status),
-            },
-            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => ApiError::InvalidArgument {
-                details: format!("HTTP {}", status),
-            },
-            StatusCode::CONFLICT => ApiError::AlreadyExists {
-                resource: "resource".to_string(),
-            },
-            StatusCode::SERVICE_UNAVAILABLE | StatusCode::GATEWAY_TIMEOUT => ApiError::Unavailable {
-                details: format!("HTTP {}", status),
-            },
-            _ => ApiError::Internal {
-                details: format!("HTTP {}", status),
-            },
+        // Check for std::io::Error
+        if let Some(io_err) = self.downcast_ref::<std::io::Error>() {
+            return match io_err.kind() {
+                std::io::ErrorKind::NotFound => libc::ENOENT,
+                std::io::ErrorKind::PermissionDenied => libc::EACCES,
+                std::io::ErrorKind::TimedOut => libc::ETIMEDOUT,
+                std::io::ErrorKind::InvalidInput => libc::EINVAL,
+                _ => libc::EIO,
+            };
         }
-    }
-}
 
-impl From<ApiError> for TorrentFuseError {
-    fn from(err: ApiError) -> Self {
-        TorrentFuseError::Api(err)
-    }
-}
-
-impl From<FilesystemError> for TorrentFuseError {
-    fn from(err: FilesystemError) -> Self {
-        TorrentFuseError::Filesystem(err)
-    }
-}
-
-impl From<ConfigError> for TorrentFuseError {
-    fn from(err: ConfigError) -> Self {
-        TorrentFuseError::Config(err)
+        // Default to EIO for unknown errors
+        libc::EIO
     }
 }
 ```
@@ -293,31 +222,26 @@ impl From<ConfigError> for TorrentFuseError {
 ## Retry Classification
 
 ```rust
-impl ApiError {
+impl RqbitFuseError {
     /// Check if this error is transient and retryable
     pub fn is_transient(&self) -> bool {
         matches!(
             self,
-            ApiError::Unavailable { .. } | ApiError::RetryLimitExceeded { .. }
+            RqbitFuseError::TimedOut(_)
+                | RqbitFuseError::NetworkError(_)
+                | RqbitFuseError::NotReady(_)
+                | RqbitFuseError::ApiError {
+                    status: 408 | 429 | 502 | 503 | 504,
+                    ..
+                }
         )
     }
-    
+
     /// Check if this error indicates the server is unavailable
     pub fn is_server_unavailable(&self) -> bool {
         matches!(
             self,
-            ApiError::Unavailable { .. } | ApiError::Network { .. }
-        )
-    }
-    
-    /// Check if this is a client error that won't be fixed by retry
-    pub fn is_client_error(&self) -> bool {
-        matches!(
-            self,
-            ApiError::NotFound { .. } 
-                | ApiError::InvalidArgument { .. }
-                | ApiError::AccessDenied { .. }
-                | ApiError::AlreadyExists { .. }
+            RqbitFuseError::TimedOut(_) | RqbitFuseError::NetworkError(_)
         )
     }
 }
@@ -325,14 +249,53 @@ impl ApiError {
 
 ## Usage in Filesystem
 
+### Direct Error Usage
+
 ```rust
 fn read(&mut self, ..., reply: fuser::ReplyData) {
     match self.do_read(ino, offset, size).await {
         Ok(data) => reply.data(&data),
         Err(e) => {
-            let error_code = e.to_fuse_error();
+            let error_code = e.to_errno();
             reply.error(error_code);
         }
+    }
+}
+```
+
+### Creating Errors
+
+```rust
+// Not found error
+return Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into());
+
+// Permission denied
+return Err(RqbitFuseError::PermissionDenied(format!(
+    "Authentication failed: {}", message
+)).into());
+
+// Invalid argument
+return Err(RqbitFuseError::InvalidArgument(format!(
+    "Invalid range: start ({}) > end ({})", start, end
+)).into());
+
+// API error with status code
+return Err(RqbitFuseError::ApiError {
+    status: status.as_u16(),
+    message,
+}.into());
+```
+
+### Converting from anyhow::Error
+
+```rust
+// In async_bridge.rs - converting anyhow errors from API calls
+let error_code = e.to_fuse_error();
+
+// In filesystem.rs - downcasting to check error type
+if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
+    if matches!(api_err, RqbitFuseError::ApiError { status: 404, .. }) {
+        return Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into());
     }
 }
 ```
@@ -340,63 +303,67 @@ fn read(&mut self, ..., reply: fuser::ReplyData) {
 ## Library vs Application Error Separation
 
 **Library Errors** (`src/error.rs`):
-- Used by library code (api, fs, cache modules)
-- Implement `std::error::Error` trait
-- Provide structured error types
-- Can be converted to FUSE error codes
+- Used by library code (api, fs, config modules)
+- Implement `std::error::Error` trait via `thiserror`
+- Provide structured error types with `RqbitFuseError`
+- Can be converted to FUSE error codes via `to_errno()`
 
-**Application Errors** (`src/main.rs`, `src/cli.rs`):
+**Application Errors** (`src/main.rs`):
 - Used by CLI and main application
 - Use `anyhow` for convenient error handling
-- Convert library errors with context
+- Convert library errors with `.context()`
 - Display user-friendly error messages
-- Exit with appropriate status codes
 
 ```rust
-// In main.rs or CLI code
+// In main.rs
 use anyhow::{Context, Result};
 
-fn main() -> Result<()> {
-    let config = Config::load()
-        .context("Failed to load configuration")?;
+async fn run_mount(...) -> Result<()> {
+    let config = load_config(...)?;
     
-    let fs = TorrentFS::new(config)
-        .context("Failed to create filesystem")?;
+    // Create API client with context
+    let api_client = Arc::new(
+        create_api_client(&config.api, Some(Arc::clone(&metrics)))
+            .context("Failed to create API client")?,
+    );
     
-    fs.mount()
-        .context("Failed to mount filesystem")?;
+    // Create filesystem with context
+    let fs = TorrentFS::new(config, Arc::clone(&metrics), async_worker)
+        .context("Failed to create torrent filesystem")?;
     
     Ok(())
 }
 ```
 
-## Error Context Preservation
+## Configuration Validation
 
 ```rust
-use anyhow::Context;
-
-async fn get_torrent(&self, id: u64) -> Result<TorrentInfo, TorrentFuseError> {
-    let url = format!("{}/torrents/{}", self.base_url, id);
-    
-    let response = self
-        .execute_with_retry(&url)
-        .await
-        .with_context(|| format!("Failed to request torrent {} from {}", id, url))?;
-    
-    match response.status() {
-        StatusCode::NOT_FOUND => Err(ApiError::NotFound {
-            resource: format!("torrent {}", id),
-        }.into()),
-        status if !status.is_success() => {
-            Err(ApiError::from(status).into())
+impl Config {
+    pub fn validate(&self) -> Result<(), RqbitFuseError> {
+        let mut issues = Vec::new();
+        
+        // Validate API URL
+        if self.api.url.is_empty() {
+            issues.push(ValidationIssue {
+                field: "api.url".to_string(),
+                message: "API URL cannot be empty".to_string(),
+            });
         }
-        _ => {
-            response.json().await.map_err(|e| {
-                ApiError::InvalidArgument {
-                    details: format!("Failed to parse torrent {}: {}", id, e),
-                }.into()
-            })
+        
+        // Validate mount point
+        if self.mount.mount_point.as_os_str().is_empty() {
+            issues.push(ValidationIssue {
+                field: "mount.mount_point".to_string(),
+                message: "Mount point cannot be empty".to_string(),
+            });
         }
+        
+        // Return validation error if there are issues
+        if !issues.is_empty() {
+            return Err(RqbitFuseError::ValidationError(issues));
+        }
+        
+        Ok(())
     }
 }
 ```
@@ -409,36 +376,172 @@ async fn get_torrent(&self, id: u64) -> Result<TorrentInfo, TorrentFuseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
-    fn test_not_found_mapping() {
-        let err = ApiError::NotFound { resource: "test".to_string() };
-        assert_eq!(err.to_fuse_error(), libc::ENOENT);
-        assert!(!err.is_transient());
-        assert!(err.is_client_error());
-    }
-    
-    #[test]
-    fn test_unavailable_mapping() {
-        let err = ApiError::Unavailable { details: "down".to_string() };
-        assert_eq!(err.to_fuse_error(), libc::EAGAIN);
-        assert!(err.is_transient());
-        assert!(err.is_server_unavailable());
-    }
-    
-    fn test_filesystem_error_mappings() {
+    fn test_error_to_errno() {
+        // Not found errors
         assert_eq!(
-            FilesystemError::NotFound { path: "/test".to_string() }.to_fuse_error(),
+            RqbitFuseError::NotFound("test".to_string()).to_errno(),
+            libc::ENOENT
+        );
+
+        // Permission errors
+        assert_eq!(
+            RqbitFuseError::PermissionDenied("test".to_string()).to_errno(),
+            libc::EACCES
+        );
+
+        // Timeout errors
+        assert_eq!(
+            RqbitFuseError::TimedOut("test".to_string()).to_errno(),
+            libc::ETIMEDOUT
+        );
+
+        // Network errors
+        assert_eq!(
+            RqbitFuseError::NetworkError("test".to_string()).to_errno(),
+            libc::ENETUNREACH
+        );
+
+        // Directory errors
+        assert_eq!(RqbitFuseError::IsDirectory.to_errno(), libc::EISDIR);
+        assert_eq!(RqbitFuseError::NotDirectory.to_errno(), libc::ENOTDIR);
+
+        // Resource errors
+        assert_eq!(
+            RqbitFuseError::NotReady("test".to_string()).to_errno(),
+            libc::EAGAIN
+        );
+    }
+
+    #[test]
+    fn test_api_error_to_errno() {
+        // API error status code mappings
+        assert_eq!(
+            RqbitFuseError::ApiError {
+                status: 400,
+                message: "test".to_string()
+            }
+            .to_errno(),
+            libc::EINVAL
+        );
+        assert_eq!(
+            RqbitFuseError::ApiError {
+                status: 404,
+                message: "test".to_string()
+            }
+            .to_errno(),
             libc::ENOENT
         );
         assert_eq!(
-            FilesystemError::NotADirectory { ino: 1 }.to_fuse_error(),
-            libc::ENOTDIR
+            RqbitFuseError::ApiError {
+                status: 429,
+                message: "test".to_string()
+            }
+            .to_errno(),
+            libc::EAGAIN
         );
-        assert_eq!(
-            FilesystemError::ReadOnly.to_fuse_error(),
-            libc::EROFS
-        );
+    }
+
+    #[test]
+    fn test_is_transient() {
+        assert!(RqbitFuseError::TimedOut("test".to_string()).is_transient());
+        assert!(RqbitFuseError::NetworkError("test".to_string()).is_transient());
+        assert!(RqbitFuseError::NotReady("test".to_string()).is_transient());
+        assert!(RqbitFuseError::ApiError {
+            status: 503,
+            message: "test".to_string()
+        }
+        .is_transient());
+
+        // Non-transient errors
+        assert!(!RqbitFuseError::NotFound("test".to_string()).is_transient());
+        assert!(!RqbitFuseError::InvalidArgument("test".to_string()).is_transient());
+    }
+
+    #[test]
+    fn test_io_error_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let rqbit_err: RqbitFuseError = io_err.into();
+        assert!(matches!(rqbit_err, RqbitFuseError::NotFound(_)));
+
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let rqbit_err: RqbitFuseError = io_err.into();
+        assert!(matches!(rqbit_err, RqbitFuseError::PermissionDenied(_)));
+    }
+
+    #[test]
+    fn test_anyhow_to_fuse_error() {
+        let err = anyhow::Error::new(RqbitFuseError::NotFound("test".to_string()));
+        assert_eq!(err.to_fuse_error(), libc::ENOENT);
+
+        let err = anyhow::Error::new(RqbitFuseError::PermissionDenied("test".to_string()));
+        assert_eq!(err.to_fuse_error(), libc::EACCES);
+    }
+}
+```
+
+## Error Handling Patterns
+
+### Pattern 1: API Error Conversion
+
+```rust
+async fn get_torrent(&self, id: u64) -> Result<TorrentInfo> {
+    let url = format!("{}/torrents/{}", self.base_url, id);
+    
+    match self.get_json::<TorrentInfo>(&endpoint, &url).await {
+        Ok(torrent) => Ok(torrent),
+        Err(e) => {
+            // Check if it's a 404 error from the API
+            if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
+                if matches!(api_err, RqbitFuseError::ApiError { status: 404, .. }) {
+                    return Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into());
+                }
+            }
+            Err(e)
+        }
+    }
+}
+```
+
+### Pattern 2: Retry Logic with Transient Errors
+
+```rust
+async fn execute_with_retry<F, Fut>(...) -> Result<reqwest::Response> {
+    for attempt in 0..=self.max_retries {
+        match operation().await {
+            Ok(response) => { ... }
+            Err(e) => {
+                let api_error: RqbitFuseError = e.into();
+                
+                // Check if error is transient and we should retry
+                if api_error.is_transient() && attempt < self.max_retries {
+                    warn!("Transient error, retrying: {}", api_error);
+                    sleep(self.retry_delay * (attempt + 1)).await;
+                } else {
+                    return Err(api_error.into());
+                }
+            }
+        }
+    }
+}
+```
+
+### Pattern 3: FUSE Callback Error Handling
+
+```rust
+fn read(&mut self, ..., reply: fuser::ReplyData) {
+    // ... validation ...
+    
+    let result = self.async_worker.read_file(torrent_id, file_index, offset, size, timeout);
+
+    match result {
+        Ok(data) => reply.data(&data),
+        Err(e) => {
+            let error_code = e.to_errno();
+            error!("Failed to read file: {}", e);
+            reply.error(error_code);
+        }
     }
 }
 ```
@@ -449,3 +552,4 @@ mod tests {
 - [FUSE Error Codes](https://github.com/libfuse/libfuse/blob/master/include/fuse_kernel.h)
 - [anyhow Documentation](https://docs.rs/anyhow/latest/anyhow/)
 - [thiserror Documentation](https://docs.rs/thiserror/latest/thiserror/)
+- [libc Error Constants](https://docs.rs/libc/latest/libc/)

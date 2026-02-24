@@ -2,61 +2,52 @@
 
 ## Overview
 
-This document describes the design for refactoring the inode management system in rqbit-fuse to address critical issues with atomicity, encapsulation, and correctness.
+This document describes the inode management system implementation in rqbit-fuse. The design uses DashMap for concurrent access, stores canonical paths in entries, and provides atomic operations for inode allocation and removal.
 
 ## 1. Current Inode Table Issues
 
-### 1.1 Non-Atomic Operations
+### 1.1 Atomic Operations
 
-**Problem:** The current `allocate()` method updates `path_to_inode` and `entries` separately (lines 108-109 in `src/fs/inode.rs`):
+**Implementation:** The `allocate_entry()` method uses DashMap's entry API for atomic insertion into the primary storage:
 
 ```rust
+match self.entries.entry(inode) {
+    dashmap::mapref::entry::Entry::Vacant(e) => {
+        e.insert(entry);  // Atomic insertion
+    }
+    dashmap::mapref::entry::Entry::Occupied(_) => {
+        panic!("Inode {} already exists (counter corrupted)", inode);
+    }
+}
+
+// Indices are updated after primary entry is confirmed
 self.path_to_inode.insert(path, inode);
-self.entries.insert(inode, entry);
 ```
 
-**Impact:** If a panic or thread crash occurs between these operations, the inode table enters an inconsistent state:
-- Path exists but entry doesn't → lookup succeeds but get() returns None
-- Entry exists but path doesn't → get() succeeds but lookup_by_path() fails
-- Other operations may see partial state
+**Design:** The primary entry insertion is atomic. Indices (`path_to_inode`, `torrent_to_inode`) are secondary and updated after the primary entry is confirmed. If index updates fail, the entry still exists and can be recovered.
 
-**Affected Operations:**
-- `allocate()` - separates path and entry insertion
-- `remove_inode()` - separates children removal, path removal, and entry removal
-- `clear_torrents()` - multiple independent clear operations
+**Notes:**
+- `allocate()` - Uses entry API for atomic primary insertion
+- `remove_inode()` - Performs removal in consistent order (children first, then parent references, then indices)
+- `clear_torrents()` - Two-phase approach: collect entries, then remove atomically
 
-### 1.2 Torrent Directory Mapping Bug
+### 1.2 Encapsulation
 
-**Problem:** In `allocate()` at lines 104-106:
+**Design:** The `entries` field is private. Controlled accessor methods are provided:
 
 ```rust
-if let InodeEntry::File { torrent_id, .. } = &entry {
-    self.torrent_to_inode.insert(*torrent_id, entry.parent());
-}
+// Read accessors
+pub fn get(&self, inode: u64) -> Option<InodeEntry>
+pub fn contains(&self, inode: u64) -> bool
+pub fn iter_entries(&self) -> impl Iterator<Item = InodeEntryRef> + '_
+pub fn len(&self) -> usize
+pub fn is_empty(&self) -> bool
+
+// Note: torrent_to_inode() returns a reference for internal use
+pub fn torrent_to_inode(&self) -> &DashMap<u64, u64>
 ```
 
-This maps `torrent_id` to the file's parent inode. However, the semantic intent is to map the torrent to its directory inode for direct lookup. The current implementation:
-- Works coincidentally because torrent files are direct children of torrent directories
-- Fails if the file structure changes (nested directories within torrents)
-- Creates confusion about what `torrent_to_inode` actually stores
-
-**Expected Behavior:** `torrent_to_inode` should map `torrent_id` → `torrent_directory_inode`, allowing direct navigation to the torrent's root directory.
-
-### 1.3 Encapsulation Violation
-
-**Problem:** The `entries()` accessor method at line 198 returns a direct reference to the internal DashMap:
-
-```rust
-pub fn entries(&self) -> &DashMap<u64, InodeEntry> {
-    &self.entries
-}
-```
-
-**Impact:**
-- External code can directly modify the inode table, bypassing invariants
-- No control over insertions/removals
-- Cannot maintain consistency between `entries`, `path_to_inode`, and `torrent_to_inode`
-- Tests and production code may accidentally corrupt the table
+**Rationale:** Direct DashMap access is restricted to maintain consistency between `entries`, `path_to_inode`, and `torrent_to_inode`. Tests use public APIs or the internal `entries` field directly via `get_all_inodes()`.
 
 ### 1.4 Stale Path References in remove_inode()
 
@@ -453,6 +444,7 @@ impl InodeManager {
 
 ```rust
 use dashmap::DashMap;
+use dashmap::DashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Thread-safe inode manager with atomic operations
@@ -462,40 +454,57 @@ pub struct InodeManager {
     
     /// Primary storage: inode number -> entry
     /// Source of truth for all inode data
-    entries: DashMap<InodeKey, InodeEntry>,
+    entries: DashMap<u64, InodeEntry>,
     
-    /// Secondary index: canonical path -> inode
+    /// Secondary index: path -> inode
     /// Rebuildable from entries if corrupted
-    path_index: DashMap<PathKey, InodeKey>,
+    path_to_inode: DashMap<String, u64>,
     
     /// Secondary index: torrent ID -> torrent directory inode
     /// Only maps torrent directories (not files)
-    torrent_index: DashMap<TorrentKey, InodeKey>,
+    torrent_to_inode: DashMap<u64, u64>,
+    
+    /// Maximum number of inodes allowed (0 = unlimited)
+    max_inodes: usize,
+}
+
+/// A view into an entry in the inode manager
+#[derive(Debug)]
+pub struct InodeEntryRef {
+    pub inode: u64,
+    pub entry: InodeEntry,
 }
 
 impl InodeManager {
     /// Creates new manager with root inode pre-allocated
     pub fn new() -> Self {
+        Self::with_max_inodes(0)
+    }
+    
+    /// Creates new manager with a maximum inode limit
+    pub fn with_max_inodes(max_inodes: usize) -> Self {
         let entries = DashMap::new();
-        let path_index = DashMap::new();
-        let torrent_index = DashMap::new();
+        let path_to_inode = DashMap::new();
+        let torrent_to_inode = DashMap::new();
         
-        // Root inode
-        let root = InodeEntry::new_directory(
-            InodeKey::ROOT,
-            "",           // Root has no name
-            InodeKey::ROOT, // Root is its own parent
-            "/",          // Root's canonical path
-        );
+        // Root inode is always 1
+        let root = InodeEntry::Directory {
+            ino: 1,
+            name: String::new(),
+            parent: 1,
+            children: DashSet::new(),
+            canonical_path: "/".to_string(),
+        };
         
-        entries.insert(InodeKey::ROOT, root);
-        path_index.insert(PathKey::new("/"), InodeKey::ROOT);
+        entries.insert(1, root);
+        path_to_inode.insert("/".to_string(), 1);
         
         Self {
             next_inode: AtomicU64::new(2),
             entries,
-            path_index,
-            torrent_index,
+            path_to_inode,
+            torrent_to_inode,
+            max_inodes,
         }
     }
 }
@@ -504,142 +513,62 @@ impl InodeManager {
 ### 4.2 InodeEntry Types
 
 ```rust
-/// Type of filesystem entry
-#[derive(Clone, Debug, PartialEq)]
-pub enum EntryType {
-    Directory { children: Vec<InodeKey> },
-    File { 
-        torrent_id: u64,
-        file_index: u64,  // Changed from usize for platform independence
-        size: u64,
+/// Inode entry representing a filesystem object
+#[derive(Debug, Clone)]
+pub enum InodeEntry {
+    Directory {
+        ino: u64,
+        name: String,
+        parent: u64,
+        children: DashSet<u64>,
+        canonical_path: String,
     },
-    Symlink { target: String },
-}
-
-/// Inode entry with full metadata
-#[derive(Clone, Debug)]
-pub struct InodeEntry {
-    ino: InodeKey,
-    name: String,
-    parent: InodeKey,
-    canonical_path: String,
-    entry_type: EntryType,
-}
-
-impl InodeEntry {
-    // Constructors
-    pub fn new_directory(
-        ino: InodeKey,
-        name: impl Into<String>,
-        parent: InodeKey,
-        canonical_path: impl Into<String>,
-    ) -> Self {
-        Self {
-            ino,
-            name: name.into(),
-            parent,
-            canonical_path: canonical_path.into(),
-            entry_type: EntryType::Directory { children: Vec::new() },
-        }
-    }
-    
-    pub fn new_file(
-        ino: InodeKey,
-        name: impl Into<String>,
-        parent: InodeKey,
-        canonical_path: impl Into<String>,
+    File {
+        ino: u64,
+        name: String,
+        parent: u64,
         torrent_id: u64,
         file_index: u64,
         size: u64,
-    ) -> Self {
-        Self {
-            ino,
-            name: name.into(),
-            parent,
-            canonical_path: canonical_path.into(),
-            entry_type: EntryType::File {
-                torrent_id,
-                file_index,
-                size,
-            },
-        }
-    }
-    
-    pub fn new_symlink(
-        ino: InodeKey,
-        name: impl Into<String>,
-        parent: InodeKey,
-        canonical_path: impl Into<String>,
-        target: impl Into<String>,
-    ) -> Self {
-        Self {
-            ino,
-            name: name.into(),
-            parent,
-            canonical_path: canonical_path.into(),
-            entry_type: EntryType::Symlink { target: target.into() },
-        }
-    }
-    
-    // Accessors
-    pub fn ino(&self) -> InodeKey { self.ino }
-    pub fn name(&self) -> &str { &self.name }
-    pub fn parent(&self) -> InodeKey { self.parent }
-    pub fn canonical_path(&self) -> &str { &self.canonical_path }
-    pub fn entry_type(&self) -> &EntryType { &self.entry_type }
+        canonical_path: String,
+    },
+    Symlink {
+        ino: u64,
+        name: String,
+        parent: u64,
+        target: String,
+        canonical_path: String,
+    },
+}
+
+impl InodeEntry {
+    // Common accessors (work across all variants)
+    pub fn ino(&self) -> u64
+    pub fn name(&self) -> &str
+    pub fn parent(&self) -> u64
+    pub fn canonical_path(&self) -> &str
     
     // Type checks
-    pub fn is_directory(&self) -> bool {
-        matches!(self.entry_type, EntryType::Directory { .. })
-    }
+    pub fn is_directory(&self) -> bool
+    pub fn is_file(&self) -> bool
+    pub fn is_symlink(&self) -> bool
     
-    pub fn is_file(&self) -> bool {
-        matches!(self.entry_type, EntryType::File { .. })
-    }
+    // Torrent-related (only valid for files)
+    pub fn torrent_id(&self) -> Option<u64>
     
-    pub fn is_symlink(&self) -> bool {
-        matches!(self.entry_type, EntryType::Symlink { .. })
-    }
+    // File size (only valid for files)
+    pub fn file_size(&self) -> u64
     
-    // Torrent-related
-    pub fn torrent_id(&self) -> Option<u64> {
-        match &self.entry_type {
-            EntryType::File { torrent_id, .. } => Some(*torrent_id),
-            _ => None,
-        }
-    }
-    
-    // Mutators (only for directory children)
-    pub fn add_child(&mut self, child: InodeKey) -> Result<(), InodeError> {
-        match &mut self.entry_type {
-            EntryType::Directory { children } => {
-                if !children.contains(&child) {
-                    children.push(child);
-                }
-                Ok(())
-            }
-            _ => Err(InodeError::NotADirectory { inode: self.ino }),
-        }
-    }
-    
-    pub fn remove_child(&mut self, child: InodeKey) -> Result<(), InodeError> {
-        match &mut self.entry_type {
-            EntryType::Directory { children } => {
-                children.retain(|&c| c != child);
-                Ok(())
-            }
-            _ => Err(InodeError::NotADirectory { inode: self.ino }),
-        }
-    }
-    
-    pub fn children(&self) -> Option<&[InodeKey]> {
-        match &self.entry_type {
-            EntryType::Directory { children } => Some(children),
-            _ => None,
-        }
-    }
+    // Returns a new InodeEntry with the specified inode number
+    pub fn with_ino(&self, ino: u64) -> Self
 }
 ```
+
+**Design Notes:**
+- Uses enum variants instead of struct + EntryType for cleaner pattern matching
+- `DashSet<u64>` for children provides efficient concurrent insert/remove
+- Implements `Serialize` and `Deserialize` for persistence
+- Common fields (`ino`, `name`, `parent`, `canonical_path`) exist in all variants
 
 ### 4.3 Lookup Methods
 

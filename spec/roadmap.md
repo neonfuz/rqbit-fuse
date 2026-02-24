@@ -18,8 +18,7 @@
   - ✅ POST /torrents/{id}/start
   - ✅ POST /torrents/{id}/forget
   - ✅ POST /torrents/{id}/delete
-- ✅ Error types and conversion (ApiError with comprehensive mapping)
-- ✅ Circuit breaker pattern for resilience
+- ✅ Error types and conversion (RqbitFuseError with comprehensive mapping)
 
 #### FUSE Core (Week 2)
 - ✅ Implement InodeManager for inode management (replaces InodeTable)
@@ -37,16 +36,14 @@
 - ✅ Single-file torrent optimization (added directly to root)
 
 #### Caching & Performance (Week 3)
-- ✅ Implement generic LRU cache with TTL
-  - ✅ Torrent list cache (30s TTL, configurable)
-  - ✅ Torrent details cache (60s TTL, configurable)
-- ✅ LRU eviction when capacity reached
-- ✅ Cache statistics (hits, misses, evictions, expired)
+- ✅ Simple TTL-based caching for torrent list (30s TTL, configurable in code)
+- ❌ Generic LRU cache with TTL (not implemented)
+- ❌ Torrent details cache (not implemented - details fetched on-demand)
 - ✅ PersistentStreamManager for connection reuse
 - ✅ Retry logic with exponential backoff
-- ✅ Circuit breaker pattern
-- ✅ Read-ahead/prefetching for sequential reads
-- ✅ Piece availability checking (optional EAGAIN)
+- ❌ Circuit breaker pattern (removed - using retry logic instead)
+- ❌ Read-ahead/prefetching for sequential reads (not implemented)
+- ✅ Piece availability API (implemented but not used in read path)
 
 #### CLI & Configuration (Week 4)
 - ✅ CLI commands:
@@ -61,17 +58,15 @@
 - ✅ Environment variable overrides
 - ✅ Command-line flags override config
 - ✅ Logging and tracing setup with -v/--verbose
-- ✅ Additional config sections: [monitoring], [logging]
+- ✅ Config section: [logging]
 
 #### Background Tasks & Monitoring
 - ✅ Background torrent discovery with configurable poll interval
-- ✅ Status monitoring for download progress
-- ✅ Stalled torrent detection
+- ✅ Status monitoring for download progress via API
 - ✅ Metrics collection (FUSE and API)
 
 #### Error Handling & Resilience
 - ✅ Comprehensive error mapping to FUSE error codes
-- ✅ Circuit breaker pattern for API resilience
 - ✅ Exponential backoff retry logic
 - ✅ Transient error detection
 - ✅ Timeout handling with tokio::time::timeout
@@ -83,6 +78,10 @@
 - `list` command - Documented but not available
 - `cache clear` command - Documented but not available
 - `daemon` command - Documented but not available
+- Generic LRU cache with TTL and eviction
+- Read-ahead/prefetching for sequential reads
+- Stalled torrent detection
+- Circuit breaker pattern
 - Write support (filesystem is read-only)
 - macOS support (FUSE-T or macFUSE)
 - Cache warm-up/preload
@@ -105,7 +104,7 @@ rqbit-fuse/
 ├── src/
 │   ├── main.rs                    # CLI entry point
 │   ├── lib.rs                     # Library exports
-│   ├── cache.rs                   # Generic LRU cache with TTL
+│   ├── error.rs                   # Unified error types and FUSE error mapping
 │   ├── metrics.rs                 # Metrics collection
 │   ├── config/
 │   │   └── mod.rs                 # Configuration management
@@ -115,7 +114,7 @@ rqbit-fuse/
 │   │   └── inode.rs               # InodeManager
 │   ├── api/                       # HTTP API client
 │   │   ├── mod.rs
-│   │   ├── client.rs              # HTTP client with circuit breaker
+│   │   ├── client.rs              # HTTP client with retry logic
 │   │   ├── types.rs               # API types and error mapping
 │   │   └── streaming.rs           # PersistentStreamManager
 │   └── types/                     # Core type definitions
@@ -137,11 +136,10 @@ rqbit-fuse/
 
 **Changes from original spec:**
 - `fuse/` directory renamed to `fs/`
-- `cache/` directory replaced with single `cache.rs` file
 - Added `types/` directory for type definitions
 - Added `metrics.rs` for metrics collection
 - Added `api/streaming.rs` for persistent streaming
-- Removed `error.rs` - errors defined in `api/types.rs`
+- Added `error.rs` - unified error types with FUSE error mapping
 
 ---
 
@@ -202,7 +200,7 @@ dirs = "5.0"              # Config directory detection
 - ✅ Open video file with media player (seeking)
 - ✅ Multiple concurrent reads
 - ✅ Unmount while reading
-- ✅ Mount with rqbit not running (circuit breaker)
+- ✅ Mount with rqbit not running (retry logic with exponential backoff)
 - ✅ Add torrent while mounted (auto-discovery)
 
 ---
@@ -232,7 +230,7 @@ The following commands are documented but not implemented:
 - [x] All core features implemented
 - [x] Basic CLI (mount, umount, status)
 - [x] Configuration file support
-- [x] Error handling and circuit breaker
+- [x] Error handling with retry logic
 - [x] Background tasks (discovery, monitoring)
 - [ ] `list` command implementation
 - [ ] `cache clear` command implementation
@@ -305,4 +303,4 @@ For reference, here was the original development plan:
 
 **Status:** Phases 1-4 mostly complete. Phase 5 partially complete. Phase 6 not started.
 
-Last updated: 2024-02-14
+Last updated: 2025-02-24

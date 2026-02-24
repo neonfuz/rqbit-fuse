@@ -135,12 +135,12 @@ Mount Status:
 ### 6. Unmount
 
 ```bash
-rqbit-fuse umount ~/torrents
+rqbit-fuse umount -m ~/torrents
 ```
 
 With force option:
 ```bash
-rqbit-fuse umount ~/torrents --force
+rqbit-fuse umount -m ~/torrents --force
 ```
 
 Or use fusermount:
@@ -264,7 +264,7 @@ dd if=~/torrents/"Ubuntu ISO"/ubuntu.iso bs=1 skip=1048576 count=1024
 rqbit-fuse mount -m ~/torrents -v -v &
 
 # Later, unmount
-rqbit-fuse umount ~/torrents
+rqbit-fuse umount -m ~/torrents
 ```
 
 ### Systemd Service
