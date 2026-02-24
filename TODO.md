@@ -315,32 +315,40 @@ Remove prefetching code and state tracking.
   - **See**: `research/prefetching-analysis.md` for complete analysis
   - **Safe to remove**: ~145 lines of dead code with ZERO risk
   
-- [ ] **Task 5.1.2**: Remove FileHandleState struct
-  - Delete `FileHandleState` struct from `src/types/handle.rs`
-  - Remove `state: Option<FileHandleState>` field from FileHandle
-  - Remove `init_state()`, `update_state()`, `is_sequential()`, `sequential_count()` methods
-  - Remove `set_prefetching()`, `is_prefetching()` methods
+- [x] **Task 5.1.2**: Remove FileHandleState struct
+  - Deleted `FileHandleState` struct and all sequential tracking infrastructure from `src/types/handle.rs`
+  - Removed `state: Option<FileHandleState>` field from FileHandle
+  - Removed all state-related methods: `init_state()`, `update_state()`, `is_sequential()`, `sequential_count()`
+  - Removed prefetching methods: `set_prefetching()`, `is_prefetching()`
+  - Removed TTL-based expiration: `is_expired()`, `created_at` field
+  - Removed `FileHandleManager` methods: `update_state()`, `set_prefetching()`, `remove_expired_handles()`, `memory_usage()`, `count_expired()`
+  - Removed handle cleanup background task from `src/fs/filesystem.rs`
+  - Deleted cleanup_handle field and related methods: `start_handle_cleanup()`, `stop_handle_cleanup()`
+  - Removed 5 obsolete tests: `test_file_handle_state_tracking`, `test_prefetching_state`, `test_handle_ttl_expiration`, `test_handle_ttl_with_multiple_handles`, `test_handle_is_expired_method`
+  - Code reduction: ~470 lines removed from handle.rs (734 → 264 lines, -64%)
+  - All 175 tests passing with zero clippy warnings
+  - See CHANGELOG.md SIMPLIFY-034
   
-- [ ] **Task 5.1.3**: Remove FileHandleManager state methods
-  - Remove `update_state()` method
-  - Remove `set_prefetching()` method
-  - Remove any methods that operated on state
+- [x] **Task 5.1.3**: Remove FileHandleManager state methods
+  - **Completed**: Removed `update_state()` method
+  - **Completed**: Removed `set_prefetching()` method
+  - **Completed**: Removed all methods that operated on state (already done in Task 5.1.2)
   
-- [ ] **Task 5.1.4**: Remove prefetching from filesystem
-  - Remove `track_and_prefetch()` method from `src/fs/filesystem.rs`
-  - Remove `do_prefetch()` method
-  - Remove call to `track_and_prefetch()` in read handler
-  - Remove `prefetch_enabled` config check
+- [x] **Task 5.1.4**: Remove prefetching from filesystem
+  - **Completed**: No `track_and_prefetch()` or `do_prefetch()` methods exist in filesystem
+  - **Completed**: No prefetch-related code to remove
+  - **Note**: Prefetching was never integrated into the filesystem layer
 
 ### 5.2 Simplify File Handle Cleanup
-- [ ] **Task 5.2.1**: Remove TTL-based cleanup
-  - Remove `created_at` field from FileHandle
-  - Remove `is_expired()` method
-  - Remove `remove_expired_handles()` from FileHandleManager
-  - Remove `count_expired()` method
-  - Remove `start_handle_cleanup()` from filesystem
-  - Remove `stop_handle_cleanup()` from filesystem
-  - Remove cleanup_handle field from TorrentFS
+- [x] **Task 5.2.1**: Remove TTL-based cleanup
+  - **Completed**: Removed `created_at` field from FileHandle
+  - **Completed**: Removed `is_expired()` method
+  - **Completed**: Removed `remove_expired_handles()` from FileHandleManager
+  - **Completed**: Removed `count_expired()` method
+  - **Completed**: Removed `start_handle_cleanup()` from filesystem
+  - **Completed**: Removed `stop_handle_cleanup()` from filesystem
+  - **Completed**: Removed cleanup_handle field from TorrentFS
+  - All changes completed as part of Task 5.1.2
   
 - [ ] **Task 5.2.2**: Remove memory tracking
   - Remove `memory_usage()` method from FileHandleManager

@@ -58,8 +58,6 @@ pub struct TorrentFS {
     known_torrents: Arc<DashSet<u64>>,
     /// Handle to the torrent discovery task
     discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    /// Handle to the file handle cleanup task
-    cleanup_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Metrics collection
     metrics: Arc<Metrics>,
     /// Timestamp of last discovery (ms since Unix epoch) to prevent too frequent scans
@@ -117,7 +115,6 @@ impl TorrentFS {
             file_handles: Arc::new(FileHandleManager::new()),
             known_torrents: Arc::new(DashSet::new()),
             discovery_handle: Arc::new(Mutex::new(None)),
-            cleanup_handle: Arc::new(Mutex::new(None)),
             metrics,
             last_discovery: Arc::new(AtomicU64::new(0)),
             async_worker,
@@ -380,78 +377,17 @@ impl TorrentFS {
         }
     }
 
-    /// Start the background file handle cleanup task
-    /// Cleans up orphaned file handles that haven't been accessed for a while
-    fn start_handle_cleanup(&self) {
-        const HANDLE_TTL: Duration = Duration::from_secs(3600); // 1 hour TTL
-        const CHECK_INTERVAL: Duration = Duration::from_secs(300); // Check every 5 minutes
-
-        let file_handles = Arc::clone(&self.file_handles);
-
-        let handle = tokio::spawn(async move {
-            let mut ticker = interval(CHECK_INTERVAL);
-
-            loop {
-                ticker.tick().await;
-
-                // Clean up expired handles
-                let removed = file_handles.remove_expired_handles(HANDLE_TTL);
-                if removed > 0 {
-                    warn!(
-                        "Cleaned up {} expired file handles (TTL: {:?})",
-                        removed, HANDLE_TTL
-                    );
-                }
-
-                // Log current handle stats periodically
-                let total_handles = file_handles.len();
-                let expired_count = file_handles.count_expired(HANDLE_TTL);
-                let memory_usage = file_handles.memory_usage();
-
-                if total_handles > 0 {
-                    trace!(
-                        "File handle stats: total={}, expired={}, memory={}KB",
-                        total_handles,
-                        expired_count,
-                        memory_usage / 1024
-                    );
-                }
-            }
-        });
-
-        if let Ok(mut h) = self.cleanup_handle.try_lock() {
-            *h = Some(handle);
-        }
-
-        info!(
-            "Started file handle cleanup task with TTL: {:?}",
-            HANDLE_TTL
-        );
-    }
-
-    /// Stop the file handle cleanup task
-    fn stop_handle_cleanup(&self) {
-        if let Ok(handle) = self.cleanup_handle.try_lock() {
-            if let Some(h) = handle.as_ref() {
-                h.abort();
-                info!("Stopped file handle cleanup");
-            }
-        }
-    }
-
     /// Gracefully shut down the filesystem.
     ///
     /// This stops all background tasks:
     /// - Status monitoring
     /// - Torrent discovery
-    /// - File handle cleanup
     ///
     /// It also shuts down the async worker to complete pending operations.
     pub fn shutdown(&self) {
         info!("Initiating graceful shutdown...");
 
         self.stop_torrent_discovery();
-        self.stop_handle_cleanup();
 
         info!("Graceful shutdown complete");
     }
@@ -1701,9 +1637,6 @@ impl Filesystem for TorrentFS {
         // Start the background torrent discovery task
         self.start_torrent_discovery();
 
-        // Start the file handle cleanup task
-        self.start_handle_cleanup();
-
         self.initialized = true;
         info!("rqbit-fuse filesystem initialized successfully");
 
@@ -1717,8 +1650,6 @@ impl Filesystem for TorrentFS {
         self.initialized = false;
         // Stop the torrent discovery task
         self.stop_torrent_discovery();
-        // Stop the file handle cleanup task
-        self.stop_handle_cleanup();
         // Clean up any resources
     }
 
