@@ -25,10 +25,10 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 │  │ FUSE Handler │  │ HTTP Client  │  │ Cache Mgr    │       │
 │  │ (fuser)      │  │ (reqwest)    │  │ (in-mem)     │       │
 │  └──────────────┘  └──────────────┘  └──────────────┘       │
-│  ┌──────────────┐  ┌──────────────┐                          │
-│  │ Metrics      │  │ Streaming    │                          │
-│  │ Collection   │  │ Manager      │                          │
-│  └──────────────┘  └──────────────┘                          │
+│  ┌──────────────┐                                           │
+│  │ Streaming    │                                           │
+│  │ Manager      │                                           │
+│  └──────────────┘                                           │
 └─────────────────────────────────────────────────────────────┘
                               │
                          HTTP API
@@ -55,8 +55,6 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - Communicate with rqbit via HTTP API
 - Cache metadata to reduce API calls
 - Manage concurrent reads with piece prioritization via HTTP Range requests
-- Collect metrics on FUSE operations and API calls
-- Background torrent discovery and status monitoring
 - Bridge sync FUSE callbacks to async operations via AsyncFuseWorker
 
 **Key Modules:**
@@ -65,7 +63,6 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - Implements FUSE filesystem callbacks
 - Maps FUSE operations to torrent file operations
 - Directory structure: One directory per torrent, containing torrent files
-- Background tasks for torrent discovery and status monitoring
 
 #### fs/async_bridge.rs
 - AsyncFuseWorker bridges sync FUSE callbacks to async operations
@@ -121,10 +118,6 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - `inode.rs` - InodeEntry enum (Directory, File, Symlink)
 - `attr.rs` - File attribute helpers
 
-#### metrics.rs
-- FuseMetrics - Tracks FUSE operations (getattr, lookup, read, etc.)
-- ApiMetrics - Tracks API calls, retries, circuit breaker state
-
 #### main.rs (CLI)
 - Commands:
   - `mount -m <mount-point>` - Start FUSE filesystem
@@ -155,9 +148,7 @@ rqbit-fuse/
 │   ├── main.rs              # CLI entry point
 │   ├── lib.rs               # Library exports
 │   ├── cache.rs             # Generic LRU cache with TTL (Moka-based)
-│   ├── metrics.rs           # Metrics collection
 │   ├── mount.rs             # Mount point utilities
-│   ├── sharded_counter.rs   # High-performance sharded counter
 │   ├── config/
 │   │   └── mod.rs           # Configuration management
 │   ├── fs/                  # FUSE filesystem implementation
@@ -231,9 +222,7 @@ pub struct InodeManager {
 #### init()
 - Validates mount point
 - Checks root inode exists
-- Starts background status monitoring task
-- Starts background torrent discovery task
-- Does NOT load torrents immediately (done by discovery task)
+- Does NOT load torrents immediately
 
 #### lookup(parent, name)
 - Uses `inode_manager.lookup_by_path()`
@@ -497,8 +486,7 @@ Options:
    - Read-ahead detection for prefetching
 
 5. **Background tasks**:
-   - Torrent discovery with configurable poll interval
-   - Status monitoring for download progress
+   - Torrent discovery
 
 ## Future Enhancements
 
@@ -516,16 +504,13 @@ Options:
 - File read via HTTP Range requests
 - Metadata caching with TTL and LRU (Moka-based)
 - Background torrent discovery
-- Status monitoring
 - Circuit breaker pattern
-- Metrics collection
 - Persistent HTTP streaming
 - Comprehensive error handling
 - Configuration file support
 - CLI with status command
 - AsyncFuseWorker for safe async/sync bridging
 - FuseError types for proper error mapping
-- ShardedCounter for high-performance metrics
 - Mount utilities module
 - Signal handling for graceful shutdown
 

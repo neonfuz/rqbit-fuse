@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SPEC-001: Simplify metrics in architecture diagram (TODO.md Phase 1)
+  - Removed "Metrics Collection" box from architecture diagram
+  - Removed "Collect metrics on FUSE operations and API calls" from responsibilities
+  - Removed metrics.rs and sharded_counter.rs from file structure list
+  - Removed detailed metrics.rs module documentation
+  - Removed "Metrics collection" and "ShardedCounter for high-performance metrics" from implemented features
+  - All changes to spec/architecture.md only - no code changes
+
 ### Fixed
 
 - Fixed test race condition in `test_edge_056_invalid_timeout_from_env_handling`
