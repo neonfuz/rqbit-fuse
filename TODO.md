@@ -479,10 +479,12 @@ Remove tests that verify external crate behavior.
   - Keep ~200 lines of tests
 
 ### 8.2 Trim Streaming Tests
-- [ ] **Task 8.2.1**: Identify tests to remove
-  - Review all tests in `src/api/streaming.rs` test section
-  - Mark tests that verify reqwest/wiremock behavior
-  - Keep only: basic stream test, one 200-vs-206 test, one concurrent test
+- [x] **Task 8.2.1**: Identify tests to remove
+  - Reviewed all 51 tests in `src/api/streaming.rs` (lines 593-1984)
+  - Marked 46 tests for removal that verify reqwest/wiremock behavior
+  - Keeping only 5 essential tests: basic stream, 200-vs-206, concurrent access, invalid stream, normal response
+  - **See**: `research/streaming-tests-analysis.md` for complete analysis
+  - **Key Finding**: 94% of streaming tests can be removed (-1500 lines)
   
 - [ ] **Task 8.2.2**: Remove redundant streaming tests
   - Remove forward seek within/beyond limit tests (behavioral, not correctness)

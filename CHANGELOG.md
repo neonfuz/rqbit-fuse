@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-044: Research Streaming Tests Removal (Task 8.2.1)
+  - Analyzed all 51 tests in `src/api/streaming.rs` (lines 593-1984)
+  - Identified 46 tests for removal that verify reqwest/wiremock behavior
+  - Keeping only 5 essential tests covering core functionality
+  - **Research**: See `research/streaming-tests-analysis.md` for complete analysis
+  - **Categories marked for removal**:
+    - 15 behavioral/seek tests (forward/backward seek patterns, not correctness)
+    - 5 EOF boundary tests (checked at FUSE layer, redundant at streaming layer)
+    - 3 empty response tests (verify wiremock behavior)
+    - 3 network disconnect tests (mostly wiremock verification)
+    - 2 slow server tests (verify reqwest timeout behavior)
+    - 3 content-length tests (verify hyper behavior)
+    - 12 additional concurrent tests (redundant with main concurrent test)
+  - **Tests to keep**:
+    - `test_sequential_reads_reuse_stream` - core stream reuse logic
+    - `test_edge_021_server_returns_200_instead_of_206` - critical rqbit bug workaround
+    - `test_concurrent_stream_access` - race condition safety
+    - `test_edge_023_stream_marked_invalid_after_error` - error handling
+    - `test_edge_024_normal_server_response` - normal operation path
+  - **Code reduction**: ~1500 lines → ~100 lines (-94% of test code)
+  - **Rationale**: Focus on testing OUR code, not external crate behavior
+  - Phase 8 (Test Suite Trimming) Task 8.2.1 complete
+
 - SIMPLIFY-043: Remove Cache Module (Task 7.2.2)
   - Deleted entire `src/cache.rs` file (~1214 lines including tests)
   - Removed `pub mod cache;` declaration from `src/lib.rs` (line 209)
