@@ -459,9 +459,6 @@ Options:
    - Sequential reads get priority automatically
    - Read-ahead detection for prefetching
 
-5. **Background tasks**:
-   - Torrent discovery
-
 ## Future Enhancements
 
 1. **Write support** (if rqbit supports it): Read-write filesystem

@@ -17,7 +17,7 @@
   - Remove MonitoringConfig section
   - Remove LoggingConfig detailed options
   - Simplify to 6 essential fields
-- [ ] Remove background tasks section
+- [x] Remove background tasks section
   - Remove status monitoring task description
   - Keep only torrent discovery
 

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-004: Remove background tasks section from architecture.md (TODO.md Phase 1)
+  - Removed "5. **Background tasks**:" section from Performance Considerations
+  - Removed "Torrent discovery" bullet point from background tasks section
+  - Section was already minimal (only contained torrent discovery)
+  - All changes to spec/architecture.md only - no code changes
+
 - SPEC-003: Update configuration schema in architecture.md (TODO.md Phase 1)
   - Removed [monitoring] section from config example (MonitoringConfig already removed from code)
   - Simplified [logging] section to only show `level` field (other options already removed from code)
