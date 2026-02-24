@@ -357,12 +357,18 @@ Body: torrent file bytes
 
 All endpoints return standard HTTP status codes:
 
-- `200 OK` - Success
-- `206 Partial Content` - Successful range request
-- `400 Bad Request` - Invalid parameters
-- `404 Not Found` - Torrent or file not found
-- `416 Range Not Satisfiable` - Invalid byte range
-- `500 Internal Server Error` - Server error
+| Status Code | Description | FUSE Error |
+|-------------|-------------|------------|
+| `200 OK` | Success | - |
+| `206 Partial Content` | Successful range request | - |
+| `400 Bad Request` | Invalid parameters | `EINVAL` |
+| `403 Forbidden` | Permission denied | `EACCES` |
+| `404 Not Found` | Torrent or file not found | `ENOENT` |
+| `416 Range Not Satisfiable` | Invalid byte range | `EINVAL` |
+| `500 Internal Server Error` | Server error | `EIO` |
+| `503 Service Unavailable` | Server temporarily unavailable | `EAGAIN` |
+| Timeout | Request timeout | `EAGAIN` |
+| Connection error | Network/transport failure | `ENETUNREACH` |
 
 **Error Response Body:**
 ```json
@@ -371,19 +377,20 @@ All endpoints return standard HTTP status codes:
 }
 ```
 
-### FUSE Error Mapping
+### Error Types
 
-The rqbit-fuse implementation maps HTTP errors to FUSE error codes:
+The rqbit-fuse implementation uses 8 essential error types:
 
-| HTTP Status | FUSE Error | Description |
-|-------------|------------|-------------|
-| 200 OK | - | Success |
-| 206 Partial Content | - | Success (range request) |
-| 404 Not Found | `ENOENT` | File/directory not found |
-| 403 Forbidden | `EACCES` | Permission denied |
-| 503 Service Unavailable | `EAGAIN` | Try again later |
-| Timeout | `EAGAIN` | Request timeout |
-| Connection error | `ENOTCONN` / `ENETUNREACH` | Network issues |
+| Error Type | HTTP Status | FUSE Error | Description |
+|------------|-------------|------------|-------------|
+| `NotFound` | 404 | `ENOENT` | Resource doesn't exist |
+| `PermissionDenied` | 403 | `EACCES` | Authentication/authorization failed |
+| `InvalidArgument` | 400, 416 | `EINVAL` | Bad request parameters |
+| `Timeout` | - | `EAGAIN` | Request timeout (retryable) |
+| `NetworkError` | - | `ENETUNREACH` | Connection/transport failure |
+| `ServiceUnavailable` | 503 | `EAGAIN` | Server unavailable (retryable) |
+| `IoError` | - | `EIO` | IO operation failed |
+| `InternalError` | 500 | `EIO` | Internal system error |
 
 ## Rate Limiting
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-017: Update error responses section in api.md (TODO.md Phase 1)
+  - Simplified error responses section from 6 HTTP codes to comprehensive 8 essential error types
+  - Added error type mapping table showing HTTP status → FUSE error conversion
+  - Removed detailed FUSE error mapping subsection and consolidated into unified table
+  - Updated documentation to align with technical-design.md error handling (8 essential ApiError variants)
+  - Added clear descriptions for each error type (NotFound, PermissionDenied, InvalidArgument, Timeout, NetworkError, ServiceUnavailable, IoError, InternalError)
+  - Spec documentation now matches simplified error handling implementation
+
 - SPEC-016: Remove bitfield caching documentation in api.md (TODO.md Phase 1)
   - Removed mention of 5-second TTL for bitfields from the "Get Piece Availability (Bitfield)" endpoint
   - Updated usage description to reflect synchronous checking (no caching)

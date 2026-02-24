@@ -66,7 +66,7 @@
 - [x] Remove bitfield caching documentation
   - Remove mention of 5-second TTL for bitfields
   - Update to reflect synchronous checking
-- [ ] Update error responses section
+- [x] Update error responses section
   - Simplify error list to 8 essential types
   - Remove detailed error categorization
 
