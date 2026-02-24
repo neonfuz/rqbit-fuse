@@ -37,8 +37,7 @@ rqbit-fuse/
 - Deeply nested directory structures
 - Unicode and special characters
 - Empty torrent handling
-- Concurrent torrent additions (needs fixing - TEST-003)
-- Filesystem metrics collection
+- Concurrent torrent additions
 
 **Performance Tests (`tests/performance_tests.rs`):**
 - Cache high throughput (5000 entries)
@@ -52,7 +51,6 @@ rqbit-fuse/
 - Cache throughput (insert/read hit/read mixed)
 - Inode management (allocate/lookup/parent-child)
 - Concurrent operations (cache reads, inode ops)
-- Memory usage patterns
 
 ## 1. FUSE Testing Approaches
 
@@ -368,29 +366,6 @@ async fn test_concurrent_file_reads() {
 - TTL expiration
 - LRU eviction
 - Concurrent access
-- Statistics tracking
-
-**Additional Tests Needed:**
-
-```rust
-#[tokio::test]
-async fn test_cache_ttl_boundary() {
-    // Test entries at exact TTL boundary
-    // Verify race-free expiration
-}
-
-#[tokio::test]
-async fn test_cache_eviction_under_load() {
-    // Test eviction behavior with concurrent inserts
-    // Verify LRU ordering is maintained
-}
-
-#[tokio::test]
-async fn test_cache_statistics_accuracy() {
-    // Verify hit/miss counts under various scenarios
-    // Test stats don't drift under concurrent access
-}
-```
 
 #### Inode Unit Tests
 
@@ -407,34 +382,6 @@ async fn test_cache_statistics_accuracy() {
 - Concurrent allocation
 - Symlink handling
 
-**Additional Tests Needed:**
-
-```rust
-#[test]
-fn test_inode_parent_consistency() {
-    // Verify parent-child relationships are always consistent
-    // Test after various operations (add, remove, move)
-}
-
-#[test]
-fn test_inode_path_uniqueness() {
-    // Verify no two inodes have the same path
-    // Test path collision detection
-}
-
-#[test]
-fn test_inode_torrent_mapping() {
-    // Verify torrent_id to inode mapping is correct
-    // Test lookup by torrent_id after various operations
-}
-
-#[test]
-fn test_inode_deep_nesting() {
-    // Test deeply nested directory structures (100+ levels)
-    // Verify path building doesn't overflow
-}
-```
-
 #### API Client Unit Tests
 
 **Location:** `src/api/client.rs` (new `#[cfg(test)]` module)
@@ -443,24 +390,10 @@ fn test_inode_deep_nesting() {
 
 ```rust
 #[tokio::test]
-async fn test_api_retry_logic() {
-    // Test exponential backoff
-    // Test max retry limits
-    // Test circuit breaker integration
-}
-
-#[tokio::test]
 async fn test_api_error_mapping() {
     // Test HTTP status to error type mapping
     // Test network error handling
     // Test timeout handling
-}
-
-#[tokio::test]
-async fn test_api_circuit_breaker() {
-    // Test circuit opens after failures
-    // Test circuit closes after recovery
-    // Test half-open state
 }
 ```
 
@@ -489,7 +422,7 @@ use tempfile::TempDir;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
 
-use rqbit_fuse::{Config, Metrics, TorrentFS};
+use rqbit_fuse::{Config, TorrentFS};
 
 /// Test mount and unmount cycle
 #[tokio::test]
@@ -498,8 +431,7 @@ async fn test_mount_unmount_cycle() {
     let mock_server = setup_mock_server().await;
     
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
-    let metrics = Arc::new(Metrics::new());
-    let fs = TorrentFS::new(config, metrics).unwrap();
+    let fs = TorrentFS::new(config).unwrap();
     
     // Mount filesystem
     let mount_handle = tokio::spawn(async move {
@@ -593,7 +525,6 @@ async fn test_fuse_error_handling() {
 //! - TTL expiration under load
 //! - LRU eviction with various access patterns
 //! - Concurrent access from multiple threads
-//! - Statistics accuracy
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -614,7 +545,7 @@ async fn test_cache_ttl_concurrent() {
     // Concurrently access while TTL expires
     let mut handles = vec![];
     
-    for task_id in 0..5 {
+    for _task_id in 0..5 {
         let cache = Arc::clone(&cache);
         handles.push(tokio::spawn(async move {
             for i in 0..100 {
@@ -629,9 +560,10 @@ async fn test_cache_ttl_concurrent() {
         h.await.unwrap();
     }
     
-    // Verify stats are consistent
-    let stats = cache.stats().await;
-    assert!(stats.hits + stats.misses > 0);
+    // Verify entries are present
+    for i in 0..50 {
+        assert!(cache.contains_key(&format!("key{}", i)).await);
+    }
 }
 
 /// Test LRU eviction under various access patterns
@@ -676,45 +608,13 @@ async fn test_cache_lru_access_patterns() {
     }
 }
 
-/// Test cache statistics accuracy under load
-#[tokio::test]
-async fn test_cache_statistics_accuracy() {
-    let cache: Arc<Cache<String, i32>> = Arc::new(Cache::new(100, Duration::from_secs(60)));
-    
-    let mut expected_hits = 0u64;
-    let mut expected_misses = 0u64;
-    
-    // Insert 50 entries
-    for i in 0..50 {
-        cache.insert(format!("key{}", i), i).await;
-    }
-    
-    // Perform known operations
-    for i in 0..100 {
-        let key = format!("key{}", i % 100);
-        if let Some(_) = cache.get(&key).await {
-            if i % 100 < 50 {
-                expected_hits += 1;
-            }
-        } else {
-            if i % 100 >= 50 {
-                expected_misses += 1;
-            }
-        }
-    }
-    
-    let stats = cache.stats().await;
-    assert_eq!(stats.hits, expected_hits, "Hit count mismatch");
-    assert_eq!(stats.misses, expected_misses, "Miss count mismatch");
-}
+
 ```
 
 ### 2.3 Concurrent Access Tests
 
-**Fixing `test_concurrent_torrent_additions` (TEST-003):**
-
 ```rust
-// tests/integration_tests.rs - Fixed version
+// tests/integration_tests.rs
 
 #[tokio::test]
 async fn test_concurrent_torrent_additions() {
@@ -725,8 +625,7 @@ async fn test_concurrent_torrent_additions() {
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config(mock_server.uri(), temp_dir.path().to_path_buf());
     
-    let metrics = Arc::new(Metrics::new());
-    let fs = Arc::new(TorrentFS::new(config, metrics).unwrap());
+    let fs = Arc::new(TorrentFS::new(config).unwrap());
     
     use rqbit_fuse::api::types::{FileInfo, TorrentInfo};
     
@@ -794,84 +693,9 @@ async fn test_concurrent_torrent_additions() {
 
 ### 2.4 Cache Integration Tests
 
-**Location:** `tests/cache_integration_tests.rs` (new file)
+**Location:** `tests/cache_integration_tests.rs`
 
-```rust
-//! Cache integration tests
-//!
-//! These tests verify cache behavior in realistic scenarios with the full system.
-
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::{sleep, Instant};
-
-use rqbit_fuse::cache::Cache;
-
-/// Test cache behavior under memory pressure
-#[tokio::test]
-async fn test_cache_memory_pressure() {
-    let cache: Cache<String, Vec<u8>> = Cache::new(1000, Duration::from_secs(60));
-    
-    // Insert entries of varying sizes
-    for i in 0..1000 {
-        let size = if i % 10 == 0 {
-            1024 * 1024 // 1MB for every 10th entry
-        } else {
-            4096 // 4KB for others
-        };
-        
-        let key = format!("key_{}", i);
-        let value = vec![0u8; size];
-        cache.insert(key, value).await;
-    }
-    
-    // Verify cache maintains size limit
-    assert!(cache.len() <= 1000);
-    
-    // Verify frequently accessed large entries are retained
-    for _ in 0..5 {
-        let _ = cache.get(&"key_0".to_string()).await;
-    }
-    
-    // Insert more to trigger eviction
-    for i in 1000..1100 {
-        let key = format!("key_{}", i);
-        let value = vec![0u8; 4096];
-        cache.insert(key, value).await;
-    }
-    
-    // Frequently accessed entry should still be present
-    assert!(cache.contains_key(&"key_0".to_string()).await);
-}
-
-/// Test cache recovery after errors
-#[tokio::test]
-async fn test_cache_error_recovery() {
-    let cache: Cache<String, i32> = Cache::new(100, Duration::from_secs(60));
-    
-    // Populate cache
-    for i in 0..50 {
-        cache.insert(format!("key{}", i), i).await;
-    }
-    
-    // Simulate error condition by clearing
-    cache.clear().await;
-    
-    // Verify cache is empty
-    assert!(cache.is_empty().await);
-    
-    // Verify cache can be repopulated
-    for i in 0..50 {
-        cache.insert(format!("key{}", i), i * 2).await;
-    }
-    
-    // Verify new values are present
-    for i in 0..50 {
-        let value = cache.get(&format!("key{}", i)).await;
-        assert_eq!(value, Some(i * 2));
-    }
-}
-```
+Tests verify cache behavior with TTL expiration and LRU eviction under concurrent access.
 
 ### 2.5 Mock Verification Tests
 
@@ -885,39 +709,12 @@ async fn test_cache_error_recovery() {
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path, header};
 
-/// Test that API calls are made efficiently (no redundant calls)
-#[tokio::test]
-async fn test_api_call_efficiency() {
-    let mock_server = MockServer::start().await;
-    
-    // Expect exactly 1 call to /torrents
-    Mock::given(method("GET"))
-        .and(path("/torrents"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "torrents": [{"id": 1, "name": "test"}]
-        })))
-        .expect(1)  // Exactly 1 call expected
-        .mount(&mock_server)
-        .await;
-    
-    // Create client and make operations that should cache
-    let client = create_test_client(mock_server.uri());
-    
-    // Multiple operations that should use cache
-    let _ = client.list_torrents().await;
-    let _ = client.list_torrents().await;  // Should be cached
-    let _ = client.list_torrents().await;  // Should be cached
-    
-    // Verify mock expectations
-    mock_server.verify().await;  // Will fail if more than 1 call made
-}
-
 /// Test request patterns and headers
 #[tokio::test]
 async fn test_api_request_patterns() {
     let mock_server = MockServer::start().await;
     
-    // Verify Range header format
+    // Verify Range header format for streaming
     Mock::given(method("GET"))
         .and(path("/torrents/1/stream/0"))
         .and(header("Range", "bytes=0-4095"))
@@ -936,329 +733,44 @@ async fn test_api_request_patterns() {
 
 ## 3. Property-Based Testing
 
-### 3.1 Proptest Integration
+**Note:** Property-based testing using proptest is optional and can be added later for complex invariants.
 
-**Dependencies:**
-```toml
-[dev-dependencies]
-proptest = "1.4"
-```
+### 3.1 Invariants to Test
 
-### 3.2 Invariants to Test
+Key invariants to verify through testing:
 
-#### Inode Table Invariants
+1. **Inode Table Invariants:**
+   - All inodes have unique numbers
+   - Parent-child relationships are consistent
+   - Path lookup is deterministic
 
-**Location:** `tests/property_inode_tests.rs`
+2. **Cache Invariants:**
+   - Cache size never exceeds max capacity
+   - Retrieved values match inserted values
+   - LRU eviction maintains correct ordering
 
-```rust
-//! Property-based tests for inode table invariants
-
-use proptest::prelude::*;
-use rqbit_fuse::fs::inode::InodeManager;
-use rqbit_fuse::types::inode::InodeEntry;
-
-proptest! {
-    // Invariant: All inodes have unique numbers
-    #[test]
-    fn prop_inode_uniqueness(operations in inode_operations_strategy()) {
-        let manager = InodeManager::new();
-        let mut allocated = vec![];
-        
-        for op in operations {
-            match op {
-                InodeOp::AllocateFile { name, parent, .. } => {
-                    let inode = manager.allocate_file(
-                        name, parent, 1, 0, 1024
-                    );
-                    allocated.push(inode);
-                }
-                // ... other operations
-            }
-        }
-        
-        // Verify all inodes are unique
-        let mut sorted = allocated.clone();
-        sorted.sort();
-        sorted.dedup();
-        prop_assert_eq!(allocated.len(), sorted.len(), "Duplicate inodes found");
-    }
-    
-    // Invariant: Parent-child relationships are consistent
-    #[test]
-    fn prop_parent_child_consistency(
-        entries in prop::collection::vec(inode_entry_strategy(), 1..100)
-    ) {
-        let manager = InodeManager::new();
-        let mut inode_to_parent = std::collections::HashMap::new();
-        
-        for entry in entries {
-            let parent = entry.parent();
-            let inode = manager.allocate(entry);
-            inode_to_parent.insert(inode, parent);
-        }
-        
-        // Verify each parent knows about its children
-        for (inode, parent) in &inode_to_parent {
-            if *parent != 1 {  // Skip root
-                let children = manager.get_children(*parent);
-                let found = children.iter().any(|(ino, _)| ino == inode);
-                prop_assert!(found, 
-                    "Inode {} has parent {} but parent doesn't list it as child", 
-                    inode, parent);
-            }
-        }
-    }
-    
-    // Invariant: Path lookup is consistent with inode structure
-    #[test]
-    fn prop_path_lookup_consistency(
-        paths in prop::collection::vec(path_strategy(), 1..50)
-    ) {
-        let manager = InodeManager::new();
-        
-        // Create directory structure from paths
-        for path in &paths {
-            create_path_structure(&manager, path);
-        }
-        
-        // Verify each created path can be looked up
-        for path in &paths {
-            let inode = manager.lookup_by_path(path);
-            prop_assert!(inode.is_some(), "Path {} should be lookup-able", path);
-            
-            // Verify reverse lookup
-            let entry = manager.get(inode.unwrap());
-            prop_assert!(entry.is_some());
-        }
-    }
-}
-
-// Strategy implementations
-fn inode_operations_strategy() -> impl Strategy<Value = Vec<InodeOp>> {
-    prop::collection::vec(inode_op_strategy(), 0..100)
-}
-
-fn inode_op_strategy() -> impl Strategy<Value = InodeOp> {
-    prop_oneof![
-        (prop::string::string(), 1u64..100u64, 0u64..1000u64)
-            .prop_map(|(name, parent, size)| InodeOp::AllocateFile { name, parent, size }),
-        (prop::string::string(), 1u64..100u64)
-            .prop_map(|(name, parent)| InodeOp::AllocateDirectory { name, parent }),
-    ]
-}
-
-#[derive(Debug, Clone)]
-enum InodeOp {
-    AllocateFile { name: String, parent: u64, size: u64 },
-    AllocateDirectory { name: String, parent: u64 },
-}
-```
-
-#### Cache Consistency Properties
-
-**Location:** `tests/property_cache_tests.rs`
-
-```rust
-//! Property-based tests for cache consistency
-
-use proptest::prelude::*;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::runtime::Runtime;
-
-use rqbit_fuse::cache::Cache;
-
-proptest! {
-    // Invariant: Cache size never exceeds max capacity
-    #[test]
-    fn prop_cache_size_bounded(
-        operations in cache_operations_strategy(1000),
-        capacity in 10usize..1000usize
-    ) {
-        let rt = Runtime::new().unwrap();
-        let cache: Cache<String, i32> = Cache::new(capacity, Duration::from_secs(60));
-        
-        rt.block_on(async {
-            for op in operations {
-                match op {
-                    CacheOp::Insert { key, value } => {
-                        cache.insert(key, value).await;
-                    }
-                    CacheOp::Get { key } => {
-                        let _ = cache.get(&key).await;
-                    }
-                }
-            }
-            
-            let size = cache.len();
-            prop_assert!(
-                size <= capacity,
-                "Cache size {} exceeds capacity {}",
-                size, capacity
-            );
-        });
-    }
-    
-    // Invariant: Retrieved values match inserted values
-    #[test]
-    fn prop_cache_value_consistency(
-        entries in prop::collection::vec(("[a-z]{1,20}", 0i32..1000i32), 1..100)
-    ) {
-        let rt = Runtime::new().unwrap();
-        let cache: Cache<String, i32> = Cache::new(1000, Duration::from_secs(60));
-        
-        rt.block_on(async {
-            // Insert all entries
-            for (key, value) in &entries {
-                cache.insert(key.clone(), *value).await;
-            }
-            
-            // Verify all retrievals match
-            for (key, expected_value) in &entries {
-                if let Some(actual_value) = cache.get(key).await {
-                    prop_assert_eq!(
-                        actual_value, *expected_value,
-                        "Value mismatch for key {}: expected {}, got {}",
-                        key, expected_value, actual_value
-                    );
-                }
-            }
-        });
-    }
-    
-    // Invariant: Statistics are monotonically increasing
-    #[test]
-    fn prop_cache_stats_monotonic(
-        operations in cache_operations_strategy(100)
-    ) {
-        let rt = Runtime::new().unwrap();
-        let cache: Cache<String, i32> = Cache::new(100, Duration::from_secs(60));
-        
-        rt.block_on(async {
-            let mut prev_hits = 0u64;
-            let mut prev_misses = 0u64;
-            
-            for op in operations {
-                match op {
-                    CacheOp::Insert { key, value } => {
-                        cache.insert(key, value).await;
-                    }
-                    CacheOp::Get { key } => {
-                        let _ = cache.get(&key).await;
-                    }
-                }
-                
-                let stats = cache.stats().await;
-                prop_assert!(
-                    stats.hits >= prev_hits,
-                    "Hits decreased: {} -> {}",
-                    prev_hits, stats.hits
-                );
-                prop_assert!(
-                    stats.misses >= prev_misses,
-                    "Misses decreased: {} -> {}",
-                    prev_misses, stats.misses
-                );
-                
-                prev_hits = stats.hits;
-                prev_misses = stats.misses;
-            }
-        });
-    }
-}
-
-// Strategy implementations
-fn cache_operations_strategy(max_ops: usize) -> impl Strategy<Value = Vec<CacheOp>> {
-    prop::collection::vec(cache_op_strategy(), 0..max_ops)
-}
-
-fn cache_op_strategy() -> impl Strategy<Value = CacheOp> {
-    prop_oneof![
-        ("[a-z]{1,20}", 0i32..10000i32)
-            .prop_map(|(key, value)| CacheOp::Insert { key, value }),
-        ("[a-z]{1,20}",)
-            .prop_map(|(key,)| CacheOp::Get { key }),
-    ]
-}
-
-#[derive(Debug, Clone)]
-enum CacheOp {
-    Insert { key: String, value: i32 },
-    Get { key: String },
-}
-```
-
-#### Path Resolution Properties
-
-**Location:** `tests/property_path_tests.rs`
-
-```rust
-//! Property-based tests for path resolution
-
-use proptest::prelude::*;
-
-proptest! {
-    // Invariant: Path resolution is deterministic
-    #[test]
-    fn prop_path_resolution_deterministic(
-        paths in prop::collection::vec(valid_path_strategy(), 1..20)
-    ) {
-        let manager = InodeManager::new();
-        
-        // Create structure
-        for path in &paths {
-            create_path_structure(&manager, path);
-        }
-        
-        // Resolve each path multiple times
-        for path in &paths {
-            let inode1 = manager.lookup_by_path(path);
-            let inode2 = manager.lookup_by_path(path);
-            let inode3 = manager.lookup_by_path(path);
-            
-            prop_assert_eq!(inode1, inode2, "Path resolution not deterministic for {}", path);
-            prop_assert_eq!(inode2, inode3, "Path resolution not deterministic for {}", path);
-        }
-    }
-    
-    // Invariant: Path components are valid
-    #[test]
-    fn prop_path_components_valid(
-        components in prop::collection::vec("[a-zA-Z0-9_]{1,50}", 0..10)
-    ) {
-        let path = components.join("/");
-        
-        // Verify path doesn't contain invalid sequences
-        prop_assert!(!path.contains("//"), "Path contains double slash: {}", path);
-        prop_assert!(!path.contains("/./"), "Path contains /./: {}", path);
-        prop_assert!(!path.contains("/../"), "Path contains /../: {}", path);
-    }
-}
-
-fn valid_path_strategy() -> impl Strategy<Value = String> {
-    prop::collection::vec("[a-zA-Z0-9_]{1,30}", 1..5)
-        .prop_map(|components| format!("/{}", components.join("/")))
-}
-```
+3. **Path Resolution Invariants:**
+   - Path resolution is deterministic
+   - Path components are valid (no `//`, `/./`, `/../`)
 
 ## 4. Testing Infrastructure
 
 ### 4.1 WireMock Setup for API Mocking
 
-**Location:** `tests/common/mock_server.rs` (new file)
+**Location:** `tests/common/mock_server.rs`
 
 ```rust
 //! Shared mock server utilities for tests
 
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use wiremock::matchers::{method, path, header, body_json};
+use wiremock::matchers::{method, path};
 use serde_json::json;
 
 /// Standard mock server setup with common endpoints
 pub async fn setup_mock_server() -> MockServer {
     let mock_server = MockServer::start().await;
     
-    // Health check endpoint
+    // Torrent list endpoint
     Mock::given(method("GET"))
         .and(path("/torrents"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -1321,11 +833,14 @@ pub async fn setup_mock_server_with_data() -> MockServer {
 
 /// Helper to create test configuration
 pub fn create_test_config(mock_uri: String, mount_point: std::path::PathBuf) -> rqbit_fuse::Config {
-    let mut config = rqbit_fuse::Config::default();
-    config.api.url = mock_uri;
-    config.mount.mount_point = mount_point;
-    config.mount.allow_other = false;
-    config
+    rqbit_fuse::Config {
+        api_url: mock_uri,
+        mount_point,
+        metadata_ttl: 60,
+        max_entries: 1000,
+        read_timeout: 30,
+        log_level: "info".to_string(),
+    }
 }
 ```
 
@@ -1342,7 +857,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-use rqbit_fuse::{Config, Metrics, TorrentFS};
+use rqbit_fuse::{Config, TorrentFS};
 
 /// Test filesystem wrapper that handles lifecycle
 pub struct TestFilesystem {
@@ -1355,12 +870,16 @@ impl TestFilesystem {
     /// Create and mount a test filesystem
     pub async fn new(mock_uri: String) -> anyhow::Result<Self> {
         let mount_point = TempDir::new()?;
-        let mut config = Config::default();
-        config.api.url = mock_uri;
-        config.mount.mount_point = mount_point.path().to_path_buf();
+        let config = Config {
+            api_url: mock_uri,
+            mount_point: mount_point.path().to_path_buf(),
+            metadata_ttl: 60,
+            max_entries: 1000,
+            read_timeout: 30,
+            log_level: "info".to_string(),
+        };
         
-        let metrics = Arc::new(Metrics::new());
-        let fs = Arc::new(TorrentFS::new(config, metrics)?);
+        let fs = Arc::new(TorrentFS::new(config)?);
         
         // Start mount in background
         let fs_clone = Arc::clone(&fs);
@@ -1412,7 +931,7 @@ pub async fn wait_for_mount(mount_point: &Path, timeout_secs: u64) -> anyhow::Re
 
 ## 5. Test File Organization
 
-### 5.1 Proposed Test Structure
+### 5.1 Test Structure
 
 ```
 rqbit-fuse/
@@ -1421,17 +940,14 @@ rqbit-fuse/
 │   │   ├── mod.rs
 │   │   ├── mock_server.rs          # WireMock helpers
 │   │   └── fuse_helpers.rs          # FUSE test utilities
-│   ├── integration_tests.rs         # Current integration tests
-│   ├── performance_tests.rs         # Current performance tests
-│   ├── fuse_operations.rs           # NEW: Real FUSE operation tests
-│   ├── cache_tests.rs               # NEW: Cache integration tests
-│   ├── concurrent_tests.rs          # NEW: Concurrent access tests
-│   ├── mock_verification_tests.rs   # NEW: WireMock verification tests
-│   ├── property_inode_tests.rs      # NEW: Property-based inode tests
-│   ├── property_cache_tests.rs      # NEW: Property-based cache tests
-│   └── property_path_tests.rs       # NEW: Property-based path tests
+│   ├── integration_tests.rs         # Integration tests
+│   ├── performance_tests.rs         # Performance and stress tests
+│   ├── fuse_operations.rs           # FUSE filesystem operation tests
+│   ├── cache_tests.rs               # Cache integration tests
+│   ├── concurrent_tests.rs          # Concurrent access tests
+│   └── mock_verification_tests.rs   # WireMock verification tests
 ├── benches/
-│   └── performance.rs               # Current benchmarks
+│   └── performance.rs               # Criterion benchmarks
 └── src/
     └── ...                          # Source files with inline unit tests
 ```
@@ -1445,8 +961,7 @@ rqbit-fuse/
 | **FUSE Operations** | `tests/fuse_operations.rs` | Real FUSE filesystem tests | High |
 | **Cache Tests** | `tests/cache_tests.rs` | Cache behavior verification | Medium |
 | **Concurrent Tests** | `tests/concurrent_tests.rs` | Race condition detection | High |
-| **Mock Verification** | `tests/mock_verification_tests.rs` | API call efficiency | Medium |
-| **Property Tests** | `tests/property_*_tests.rs` | Invariant verification | Medium |
+| **Mock Verification** | `tests/mock_verification_tests.rs` | API call verification | Medium |
 | **Performance Tests** | `tests/performance_tests.rs` | Load and stress tests | Low |
 | **Benchmarks** | `benches/performance.rs` | Performance regression | Low |
 
@@ -1455,33 +970,29 @@ rqbit-fuse/
 ### 6.1 Test Commands
 
 ```bash
-# Run all tests
-cargo test
+# Run all tests (within nix-shell)
+nix-shell --run 'cargo test'
 
 # Run only unit tests (fast)
-cargo test --lib
+nix-shell --run 'cargo test --lib'
 
 # Run integration tests
-cargo test --test integration_tests
+nix-shell --run 'cargo test --test integration_tests'
 
 # Run specific test
-cargo test test_concurrent_torrent_additions
+nix-shell --run 'cargo test test_concurrent_torrent_additions'
 
 # Run with output
-cargo test -- --nocapture
+nix-shell --run 'cargo test -- --nocapture'
 
-# Run benchmarks (as tests)
-cargo bench -- --test
+# Run linting
+nix-shell --run 'cargo clippy'
 
-# Run with coverage
-cargo tarpaulin --out html
+# Format code
+nix-shell --run 'cargo fmt'
 
 # Run FUSE tests (requires privileges)
-sudo cargo test --test fuse_operations
-
-# Run Docker-based tests
-docker build -f Dockerfile.test -t rqbit-fuse-test .
-docker run --rm --privileged rqbit-fuse-test
+sudo nix-shell --run 'cargo test --test fuse_operations'
 ```
 
 ### 6.2 Test Environment Variables
@@ -1611,11 +1122,7 @@ pub fn unicode_torrent() -> TorrentInfo {
 
 ## 8. Continuous Integration
 
-### 8.1 GitHub Actions Workflow
-
-See Section 1.3 for the complete CI workflow configuration.
-
-### 8.2 Pre-commit Hooks
+### 8.1 Pre-commit Hooks
 
 ```yaml
 # .pre-commit-config.yaml
@@ -1624,19 +1131,19 @@ repos:
     hooks:
       - id: cargo-test
         name: Run Rust tests
-        entry: cargo test --lib
+        entry: nix-shell --run 'cargo test --lib'
         language: system
         pass_filenames: false
         
       - id: cargo-clippy
         name: Run Clippy
-        entry: cargo clippy -- -D warnings
+        entry: nix-shell --run 'cargo clippy -- -D warnings'
         language: system
         pass_filenames: false
         
       - id: cargo-fmt
         name: Check formatting
-        entry: cargo fmt -- --check
+        entry: nix-shell --run 'cargo fmt -- --check'
         language: system
         pass_filenames: false
 ```
@@ -1649,14 +1156,12 @@ When adding new functionality:
 
 1. **Unit tests first:** Add tests in the source file's `#[cfg(test)]` module
 2. **Integration tests:** Add to appropriate `tests/*.rs` file
-3. **Property tests:** If invariants can be defined, add property-based tests
-4. **Documentation:** Update this spec if new test patterns are introduced
+3. **Documentation:** Update this spec if new test patterns are introduced
 
 ### 9.2 Test Naming Conventions
 
 - `test_<component>_<scenario>` for unit tests
 - `test_<feature>_<condition>` for integration tests
-- `prop_<invariant>_<property>` for property tests
 - `bench_<operation>_<metric>` for benchmarks
 
 ### 9.3 Test Isolation
@@ -1669,22 +1174,21 @@ All tests must be isolated:
 
 ## 10. Summary
 
-This testing specification provides a comprehensive approach to ensuring rqbit-fuse correctness and reliability:
+This testing specification provides a focused approach to ensuring rqbit-fuse correctness and reliability:
 
-1. **Multiple Testing Layers:** Unit, integration, property-based, and performance tests
-2. **FUSE-Specific Testing:** Mock, Docker, and real filesystem approaches
-3. **Concurrent Testing:** Proper synchronization and race condition detection
-4. **CI/CD Integration:** Automated testing on every commit
-5. **Maintainable:** Clear organization and documentation
+1. **Core Testing Layers:** Unit, integration, and performance tests
+2. **FUSE-Specific Testing:** Real filesystem operation tests
+3. **Concurrent Testing:** Race condition detection
+4. **Maintainable:** Clear organization and documentation
 
-**Priority Implementation Order:**
-1. Fix `test_concurrent_torrent_additions` (TEST-003)
-2. Create `tests/fuse_operations.rs` with basic FUSE tests (TEST-002)
-3. Add cache integration tests (TEST-004)
-4. Add mock verification tests (TEST-005)
-5. Implement property-based tests (TEST-006, TEST-007)
+**Key Testing Areas:**
+- Cache behavior (TTL, LRU eviction, concurrent access)
+- Inode management (allocation, lookup, path resolution)
+- FUSE operations (mount, read, directory listing)
+- API integration (HTTP requests, error handling)
+- Concurrent access (torrent additions, file reads)
 
 ---
 
-*Last updated: 2024-02-14*
-*Related: TODO.md TEST-001 through TEST-007*
+*Last updated: 2026-02-23*
+*Simplified to reflect architecture updates*

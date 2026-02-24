@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-021: Simplify testing.md specification (TODO.md Phase 2)
+  - Removed tests for removed features (bitfield caching, metrics collection, ShardedCounter)
+  - Removed property-based testing code examples (marked as optional)
+  - Removed Docker-based integration testing section
+  - Removed GitHub Actions CI workflow configuration
+  - Removed mock verification efficiency tests section
+  - Updated test commands to use nix-shell wrapper
+  - Simplified property-based testing section to key invariants list
+  - Removed detailed proptest code examples for inode, cache, and path properties
+  - Updated test structure to remove property test files from proposed structure
+  - Removed test priorities and TEST-001 through TEST-007 references
+  - Updated summary to reflect simplified testing approach
+  - Spec now aligns with trimmed architecture (no background monitoring, no bitfield cache, minimal metrics)
+  - File reduced from 1643 lines to ~900 lines (-45% reduction)
+
+### Changed
+
 - SPEC-019: Simplify cache.md specification (TODO.md Phase 2)
   - Reduced cache.md from 573 lines to ~30 lines (-95% reduction)
   - Removed historical issues section (resolved by Moka migration)

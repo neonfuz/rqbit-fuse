@@ -82,8 +82,8 @@
 - [x] Remove statistics tracking if removed
 
 ### testing.md
-- [ ] Remove tests for removed features
-- [ ] Update test strategy to reflect trimmed test suite
+- [x] Remove tests for removed features
+- [x] Update test strategy to reflect trimmed test suite
 
 ---
 
