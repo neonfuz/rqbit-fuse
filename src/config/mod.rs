@@ -45,12 +45,8 @@ use std::path::PathBuf;
 /// # password = "secret"
 ///
 /// [cache]
-/// # How long to cache file metadata (seconds)
+/// # How long to cache data (seconds)
 /// metadata_ttl = 60
-/// # How long to cache torrent list (seconds)
-/// torrent_list_ttl = 30
-/// # How long to cache downloaded pieces (seconds)
-/// piece_ttl = 5
 /// # Maximum number of cache entries
 /// max_entries = 1000
 ///
@@ -82,8 +78,6 @@ use std::path::PathBuf;
 ///   },
 ///   "cache": {
 ///     "metadata_ttl": 60,
-///     "torrent_list_ttl": 30,
-///     "piece_ttl": 5,
 ///     "max_entries": 1000
 ///   },
 ///   "mount": {
@@ -176,27 +170,21 @@ pub struct ApiConfig {
 
 /// Configuration for caching behavior.
 ///
-/// Controls TTL (time-to-live) and capacity limits for various cached data types.
+/// Controls TTL (time-to-live) and capacity limits for cached data.
 ///
 /// # Fields
 ///
-/// * `metadata_ttl` - How long to cache file metadata in seconds (default: 60)
-/// * `torrent_list_ttl` - How long to cache torrent list in seconds (default: 30)
-/// * `piece_ttl` - How long to cache downloaded pieces in seconds (default: 5)
+/// * `metadata_ttl` - How long to cache data in seconds (default: 60)
 /// * `max_entries` - Maximum number of entries in the cache (default: 1000)
 ///
 /// # Environment Variables
 ///
-/// - `TORRENT_FUSE_METADATA_TTL` - Metadata cache TTL in seconds
-/// - `TORRENT_FUSE_TORRENT_LIST_TTL` - Torrent list cache TTL in seconds
-/// - `TORRENT_FUSE_PIECE_TTL` - Piece cache TTL in seconds
+/// - `TORRENT_FUSE_METADATA_TTL` - Cache TTL in seconds
 /// - `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CacheConfig {
     pub metadata_ttl: u64,
-    pub torrent_list_ttl: u64,
-    pub piece_ttl: u64,
     pub max_entries: usize,
 }
 
@@ -271,8 +259,6 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             metadata_ttl: 60,
-            torrent_list_ttl: 30,
-            piece_ttl: 5,
             max_entries: 1000,
         }
     }
@@ -351,18 +337,6 @@ impl Config {
         if let Ok(val) = std::env::var("TORRENT_FUSE_METADATA_TTL") {
             self.cache.metadata_ttl = val.parse().map_err(|_| {
                 RqbitFuseError::InvalidValue("TORRENT_FUSE_METADATA_TTL has invalid format".into())
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_TORRENT_LIST_TTL") {
-            self.cache.torrent_list_ttl = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_TORRENT_LIST_TTL has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_PIECE_TTL") {
-            self.cache.piece_ttl = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_PIECE_TTL has invalid format".into())
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_ENTRIES") {
@@ -566,7 +540,7 @@ max_concurrent_reads = 20
             },
             "cache": {
                 "metadata_ttl": 90,
-                "piece_ttl": 10
+                "max_entries": 500
             }
         }"#;
 
@@ -581,7 +555,7 @@ max_concurrent_reads = 20
 
         assert_eq!(config.api.url, "http://localhost:9090");
         assert_eq!(config.cache.metadata_ttl, 90);
-        assert_eq!(config.cache.piece_ttl, 10);
+        assert_eq!(config.cache.max_entries, 500);
     }
 
     #[test]

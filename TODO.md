@@ -165,10 +165,16 @@ Reduce configuration complexity and validation overhead.
   - **Completed**: All 346+ tests passing with zero clippy warnings
   - **See**: CHANGELOG.md SIMPLIFY-023
   
-- [ ] **Task 2.2.7**: Simplify CacheConfig
+- [x] **Task 2.2.7**: Simplify CacheConfig
   - Keep only: `metadata_ttl`, `max_entries`
   - Remove: `torrent_list_ttl`, `piece_ttl` (use metadata_ttl for all)
   - Update all usages to use simplified config
+  - Removed 2 fields from CacheConfig (torrent_list_ttl, piece_ttl)
+  - Removed environment variable parsing for TORRENT_FUSE_TORRENT_LIST_TTL and TORRENT_FUSE_PIECE_TTL
+  - Updated doc comments and examples to reflect simplified config
+  - Updated test_json_config_parsing to use max_entries instead of piece_ttl
+  - Reduced CacheConfig from 4 fields to 2 fields (-50%)
+  - All 346+ tests passing
 
 ### 2.3 Update CLI Arguments
 - [ ] **Task 2.3.1**: Remove CLI args for removed config options

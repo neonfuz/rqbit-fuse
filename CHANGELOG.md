@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-024: Simplify CacheConfig (Task 2.2.7)
+  - Removed 2 fields from `CacheConfig` struct in `src/config/mod.rs`:
+    - `torrent_list_ttl` - now uses `metadata_ttl` for all cache data
+    - `piece_ttl` - now uses `metadata_ttl` for all cache data
+  - Simplified `CacheConfig` to 2 fields: `metadata_ttl`, `max_entries`
+  - Removed environment variable parsing for:
+    - `TORRENT_FUSE_TORRENT_LIST_TTL`
+    - `TORRENT_FUSE_PIECE_TTL`
+  - Updated documentation in `src/config/mod.rs`:
+    - Simplified CacheConfig struct documentation (removed 2 fields)
+    - Updated TOML configuration example to remove torrent_list_ttl and piece_ttl
+    - Updated JSON configuration example to remove torrent_list_ttl and piece_ttl
+    - Updated environment variable documentation to remove 2 env vars
+  - Updated `test_json_config_parsing` to use `max_entries` instead of removed `piece_ttl`
+  - Reduced CacheConfig from 4 fields to 2 fields (50% reduction)
+  - Environment variables reduced from 11 to 9 (18% reduction in this step)
+  - Configuration fields reduced from 8 to 6 (25% reduction in this step)
+  - All 346+ tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`
+
 - SIMPLIFY-023: Remove ResourceLimitsConfig (Task 2.2.6)
   - Removed entire `ResourceLimitsConfig` struct from `src/config/mod.rs`
   - Removed 3 fields: `max_cache_bytes`, `max_open_streams`, `max_inodes`
