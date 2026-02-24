@@ -560,9 +560,13 @@ Remove dead code and consolidate.
   - Ran `cargo clippy` - no unused import warnings
   - All imports are actively used across the codebase
   
-- [ ] **Task 10.1.3**: Remove unused dependencies
-  - Check `Cargo.toml` for unused crates
-  - Remove dependencies that are no longer needed
+- [x] **Task 10.1.3**: Remove unused dependencies
+  - Checked all dependencies in Cargo.toml
+  - Removed unused `moka` crate (cache module was removed in Task 7.2.2)
+  - Verified `tracing-subscriber` is used in mount.rs
+  - All other dependencies are actively used
+  - All 346+ tests passing
+  - Zero clippy warnings
 
 ### 10.2 Consolidate Remaining Code
 - [ ] **Task 10.2.1**: Review module structure

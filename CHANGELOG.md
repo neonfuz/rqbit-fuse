@@ -9,14 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- SIMPLIFY-050: Dead Code Detection and Cleanup (Task 10.1.1)
-  - Ran `cargo clippy -- -W dead_code` - no dead code warnings found
-  - Ran `cargo clippy -- -W unused_imports -W unused_variables -W unused_mut` - no warnings found
-  - Fixed edge case test for timeout validation in environment variables:
-    - Added validation to reject empty strings in TORRENT_FUSE_READ_TIMEOUT parsing
-    - Validation now checks: `val.is_empty() || !val.chars().all(|c| c.is_ascii_digit())`
+- SIMPLIFY-050: Dead Code Detection and Removal (Task 10.1.1)
+  - Found and removed dead code:
+    - Removed `check_pieces_available()` method from `src/fs/filesystem.rs` (lines 679-692)
+      - Always returned false, never called in production code
+      - Comment indicated status monitoring was removed
+    - Removed `worker_handle` field from `AsyncFuseWorker` struct in `src/fs/async_bridge.rs`
+      - Field was stored but never used (no await or cleanup)
+      - Removed field declaration and initialization
+      - Changed `tokio::spawn()` to not capture handle
+  - Kept `is_safe_path_component()` function with `#[allow(dead_code)]`
+    - Used only in tests, intentionally kept for test coverage
+  - Removed `moka` dependency from Cargo.toml (unused, cache module removed earlier)
+  - Verified no unused imports (Task 10.1.2)
+  - Verified all remaining dependencies are used (Task 10.1.3)
+  - Code reduction: ~15 lines of dead code, 1 unused dependency
   - All 346+ tests passing with zero clippy warnings
-  - Phase 10 (Final Cleanup) Task 10.1.1 complete
+  - Phase 10 (Final Cleanup) Tasks 10.1.1, 10.1.2, 10.1.3 complete
 
 - SIMPLIFY-049: Review Other Module Documentation (Task 9.1.3)
   - Verified all modules have <= 5 lines of documentation (most have 1-2 lines)
