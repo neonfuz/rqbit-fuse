@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-037: Replace fuse_error! Macro with Direct Tracing Calls (Task 6.1.3)
+  - Replaced 2 direct `fuse_error!` macro calls with direct `tracing::debug!` calls in filesystem.rs
+  - Updated symlink check at line 1172 to use `tracing::debug!(fuse_op = "open", result = "error", error = "ELOOP")`
+  - Updated handle allocation failure at line 1199 to use `tracing::debug!(fuse_op = "open", result = "error", error = "EMFILE", reason = "handle_limit_reached")`
+  - Tracing automatically handles log level filtering, maintaining same behavior as macro
+  - No functional changes - same error logging with simpler, more explicit code
+  - Note: reply_* macros still use fuse_error! internally (will be replaced in Task 6.1.5)
+  - All 175+ tests passing with zero clippy warnings
+
 - SIMPLIFY-036: Replace fuse_log! Macro with Direct Tracing Calls (Task 6.1.2)
   - Replaced all 7 `fuse_log!` macro calls with direct `tracing::debug!` calls in filesystem.rs
   - Updated read operation logging at lines 809 and 880 to use `tracing::debug!(fuse_op = "read", ...)`

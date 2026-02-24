@@ -1169,7 +1169,7 @@ impl Filesystem for TorrentFS {
                 // Check if it's a symlink (symlinks should be resolved before open)
                 if entry.is_symlink() {
                     self.metrics.record_error();
-                    fuse_error!("open", "ELOOP");
+                    tracing::debug!(fuse_op = "open", result = "error", error = "ELOOP");
                     reply.error(libc::ELOOP);
                     return;
                 }
@@ -1196,7 +1196,12 @@ impl Filesystem for TorrentFS {
                 // Check if handle allocation failed (limit reached)
                 if fh == 0 {
                     self.metrics.record_error();
-                    fuse_error!("open", "EMFILE", reason = "handle_limit_reached");
+                    tracing::debug!(
+                        fuse_op = "open",
+                        result = "error",
+                        error = "EMFILE",
+                        reason = "handle_limit_reached"
+                    );
                     reply.error(libc::EMFILE);
                     return;
                 }

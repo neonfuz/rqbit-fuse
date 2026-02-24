@@ -382,10 +382,12 @@ Replace macros with direct tracing calls.
   - Tracing handles filtering automatically, no conditional check needed
   - Macro definition remains in macros.rs for other macros (will be removed in Task 6.1.6)
   
-- [ ] **Task 6.1.3**: Replace fuse_error! macro
-  - Replace all `fuse_error!` calls with `tracing::debug!` or `tracing::error!`
-  - Include error code in message
-  - Update all error logging sites
+- [x] **Task 6.1.3**: Replace fuse_error! macro
+  - Replaced 2 direct `fuse_error!` calls with `tracing::debug!` in filesystem.rs
+  - Line 1172 (symlink check): `tracing::debug!(fuse_op = "open", result = "error", error = "ELOOP")`
+  - Line 1199 (handle limit): `tracing::debug!(fuse_op = "open", result = "error", error = "EMFILE", reason = "handle_limit_reached")`
+  - reply_* macros will be replaced in Task 6.1.5
+  - All tests passing
   
 - [ ] **Task 6.1.4**: Replace fuse_ok! macro
   - Replace all `fuse_ok!` calls with `tracing::debug!`
