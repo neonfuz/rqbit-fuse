@@ -76,6 +76,8 @@ fn test_edge_056_timeout_one() {
 
 #[test]
 fn test_edge_056_invalid_timeout_from_env_handling() {
+    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+
     // Test various invalid formats in environment variables
     let test_cases = [
         ("-1", "negative number"),
