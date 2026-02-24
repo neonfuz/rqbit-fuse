@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed test race condition in `test_edge_056_invalid_timeout_from_env_handling`
+  - Added missing `ENV_VAR_MUTEX` lock to prevent concurrent test interference
+  - Test was failing intermittently when run with other tests due to environment variable pollution
+  - All tests now pass consistently (346+ tests)
+
 ### Changed
 
 - SIMPLIFY-050: Dead Code Detection and Removal (Task 10.1.1)
