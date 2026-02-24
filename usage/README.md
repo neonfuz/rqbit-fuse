@@ -25,7 +25,7 @@ rqbit download magnet:?xt=urn:btih:...
 
 # 3. Mount the filesystem
 mkdir -p ~/torrents
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 
 # 4. Access your torrents
 ls ~/torrents

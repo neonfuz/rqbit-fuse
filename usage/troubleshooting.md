@@ -63,10 +63,10 @@ cargo install --path . --root ~/.local
 # Force unmount
 fusermount -u ~/torrents
 # or
-rqbit-fuse umount ~/torrents --force
+rqbit-fuse umount -m ~/torrents --force
 
 # Then remount
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 ### "Connection refused" or "Connection reset by peer"
@@ -92,7 +92,7 @@ rqbit-fuse status -f json
 **Solution:**
 ```bash
 mkdir -p ~/torrents
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 ### "Permission denied" when mounting
@@ -109,12 +109,12 @@ sudo usermod -a -G fuse $USER
 
 2. **Allow other users:**
 ```bash
-rqbit-fuse mount ~/torrents --allow-other
+rqbit-fuse mount -m ~/torrents --allow-other
 ```
 
 3. **Use sudo (not recommended):**
 ```bash
-sudo rqbit-fuse mount ~/torrents
+sudo rqbit-fuse mount -m ~/torrents
 ```
 
 ### "Device or resource busy"
@@ -162,14 +162,13 @@ rqbit stats
 
 ### Files appear empty or with wrong size
 
-**Problem:** Metadata cache is stale.
+**Problem:** Filesystem needs to refresh.
 
 **Solution:**
 ```bash
-# Reduce cache TTL in config
-# Or restart the mount
-rqbit-fuse umount ~/torrents
-rqbit-fuse mount ~/torrents
+# Restart the mount
+rqbit-fuse umount -m ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 ### Slow performance or stuttering video
@@ -178,10 +177,18 @@ rqbit-fuse mount ~/torrents
 
 **Solutions:**
 
-1. **Increase read-ahead:**
+1. **Check network connection:**
+- Ensure good connectivity to rqbit server
+- Check torrent swarm health with `rqbit stats`
+
+2. **Use a player with better buffering:**
+- mpv with cache settings: `mpv --cache=yes --cache-secs=60`
+- VLC with increased buffer size
+
+3. **Increase timeout for slow connections:**
 ```toml
 [performance]
-readahead_size = 67108864  # 64MB
+read_timeout = 60
 ```
 
 2. **Increase cache:**
@@ -212,8 +219,8 @@ rqbit list
 rqbit download magnet:?xt=urn:btih:...
 
 # Restart mount to refresh
-rqbit-fuse umount ~/torrents
-rqbit-fuse mount ~/torrents
+rqbit-fuse umount -m ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 ## Permission Issues
@@ -238,7 +245,7 @@ rqbit remove <torrent_id>
 **Solution:**
 ```bash
 # Allow other users
-rqbit-fuse mount ~/torrents --allow-other
+rqbit-fuse mount -m ~/torrents --allow-other
 
 # Or set in config
 # /etc/fuse.conf: user_allow_other
@@ -295,7 +302,7 @@ Add to `~/.bashrc` or `~/.profile`:
 ```bash
 # Auto-mount on WSL2 start
 if [ -d ~/torrents ]; then
-    rqbit-fuse mount ~/torrents 2>/dev/null || true
+    rqbit-fuse mount -m ~/torrents 2>/dev/null || true
 fi
 ```
 
@@ -305,7 +312,7 @@ If you're still experiencing issues:
 
 1. **Enable debug logging:**
 ```bash
-rqbit-fuse mount ~/torrents -vv
+rqbit-fuse mount -m ~/torrents -vv
 ```
 
 2. **Check system logs:**

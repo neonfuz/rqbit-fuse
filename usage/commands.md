@@ -22,16 +22,16 @@ These options work with any command:
 Mount the torrent filesystem to a directory.
 
 ```bash
-rqbit-fuse mount [MOUNT_POINT] [OPTIONS]
+rqbit-fuse mount [OPTIONS]
 ```
-
-**Arguments:**
-- `MOUNT_POINT` - Directory where torrents will be mounted (uses config default if not specified)
 
 **Options:**
 | Option | Description |
 |--------|-------------|
+| `-m, --mount-point <PATH>` | Directory where torrents will be mounted (uses config default if not specified) |
 | `-u, --api-url <URL>` | rqbit API URL (default: http://127.0.0.1:3030) |
+| `--username <USER>` | rqbit API username for HTTP Basic Auth |
+| `--password <PASS>` | rqbit API password for HTTP Basic Auth |
 | `-a, --allow-other` | Allow other users to access the mount |
 | `--auto-unmount` | Automatically unmount when process exits |
 
@@ -42,16 +42,19 @@ rqbit-fuse mount [MOUNT_POINT] [OPTIONS]
 rqbit-fuse mount
 
 # Mount to specific directory
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 
 # Mount with custom API URL
-rqbit-fuse mount ~/torrents -u http://192.168.1.100:3030
+rqbit-fuse mount -m ~/torrents -u http://192.168.1.100:3030
+
+# Mount with authentication
+rqbit-fuse mount -m ~/torrents --username admin --password secret
 
 # Mount with auto-unmount (useful for scripts)
-rqbit-fuse mount ~/torrents --auto-unmount
+rqbit-fuse mount -m ~/torrents --auto-unmount
 
 # Mount with debug logging
-rqbit-fuse mount ~/torrents -v
+rqbit-fuse mount -m ~/torrents -v
 ```
 
 ### umount
@@ -59,13 +62,11 @@ rqbit-fuse mount ~/torrents -v
 Unmount the torrent filesystem.
 
 ```bash
-rqbit-fuse umount <MOUNT_POINT> [OPTIONS]
+rqbit-fuse umount [OPTIONS]
 ```
 
-**Arguments:**
-- `MOUNT_POINT` - Directory to unmount
-
 **Options:**
+| `-m, --mount-point <PATH>` | Directory to unmount (uses config default if not specified) |
 | Option | Description |
 |--------|-------------|
 | `-f, --force` | Force unmount even if in use |
@@ -73,11 +74,14 @@ rqbit-fuse umount <MOUNT_POINT> [OPTIONS]
 **Examples:**
 
 ```bash
-# Unmount normally
-rqbit-fuse umount ~/torrents
+# Unmount using config default
+rqbit-fuse umount
+
+# Unmount specific directory
+rqbit-fuse umount -m ~/torrents
 
 # Force unmount
-rqbit-fuse umount ~/torrents --force
+rqbit-fuse umount -m ~/torrents --force
 ```
 
 **Alternative unmount methods:**
@@ -95,28 +99,24 @@ umount ~/torrents
 Check the status of the mounted filesystem.
 
 ```bash
-rqbit-fuse status [MOUNT_POINT] [OPTIONS]
+rqbit-fuse status [OPTIONS]
 ```
-
-**Arguments:**
-- `MOUNT_POINT` - Mount point to check (uses config default if not specified)
 
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-f, --format <FORMAT>` | Output format: `text` or `json` (default: text) |
+| `-c, --config <FILE>` | Use custom config file |
+| `-v, --verbose` | Enable verbose output |
+| `-q, --quiet` | Only show errors |
 
 **Examples:**
 
 ```bash
-# Show status in text format
+# Show status
 rqbit-fuse status
 
-# Show status for specific mount
-rqbit-fuse status ~/torrents
-
-# Show status as JSON
-rqbit-fuse status -f json
+# Show status with custom config
+rqbit-fuse status -c ~/my-config.toml
 ```
 
 ## Usage Examples
@@ -126,7 +126,7 @@ rqbit-fuse status -f json
 ```bash
 # Start the filesystem
 mkdir -p ~/torrents
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 
 # List your torrents
 ls ~/torrents
@@ -144,14 +144,14 @@ mpv ~/torrents/Movie/video.mkv
 rqbit-fuse status
 
 # Unmount when done
-rqbit-fuse umount ~/torrents
+rqbit-fuse umount -m ~/torrents
 ```
 
 ### Streaming Workflow
 
 ```bash
 # Mount with auto-unmount (good for media players)
-rqbit-fuse mount ~/torrents --auto-unmount
+rqbit-fuse mount -m ~/torrents --auto-unmount
 
 # Play video (starts immediately)
 mpv ~/torrents/Movie\ Name/movie.mkv
@@ -169,9 +169,9 @@ Description=Torrent FUSE filesystem
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/usr/local/bin/rqbit-fuse mount /home/user/torrents --auto-unmount
-ExecStop=/usr/local/bin/rqbit-fuse umount /home/user/torrents
+Type=simple
+ExecStart=/usr/local/bin/rqbit-fuse mount -m /home/user/torrents --auto-unmount
+ExecStop=/usr/local/bin/rqbit-fuse umount -m /home/user/torrents
 Restart=on-failure
 
 [Install]
@@ -195,25 +195,12 @@ dd if=~/torrents/ISO/ubuntu.iso bs=1 skip=1048576 count=1024
 head -c 1049600 ~/torrents/file.bin | tail -c 1024
 ```
 
-### Checking Extended Attributes
-
-Some torrent metadata is available via extended attributes:
-
-```bash
-# List available attributes
-getfattr -d ~/torrents/TorrentName
-
-# Get torrent status as JSON
-getfattr -n user.torrent.status ~/torrents/TorrentName
-```
-
 ## Tips and Best Practices
 
 ### Performance
 
-1. **Use media players with buffering** - Players like mpv, vlc buffer ahead, triggering read-ahead
-2. **Read sequentially** - Sequential access enables prefetching for better performance
-3. **Pre-download for first-time access** - First access to a file may be slow while initial pieces download
+1. **Use media players with buffering** - Players like mpv, vlc buffer ahead for smoother playback
+2. **Pre-download for first-time access** - First access to a file may be slow while initial pieces download
 
 ### Safety
 
