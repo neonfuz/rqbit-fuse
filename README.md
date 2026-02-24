@@ -12,8 +12,7 @@ Access your torrents through standard filesystem operations—stream videos whil
 - **🎬 Stream torrents as files** - Access torrent content through standard filesystem operations without waiting for full download
 - **⬇️ On-demand downloading** - Files and pieces are downloaded only when accessed
 - **📺 Video streaming** - Watch videos while they download with full seeking support
-- **🚀 Read-ahead optimization** - Detects sequential reads and prefetches upcoming pieces (32MB default)
-- **💾 Smart caching** - LRU cache with TTL for metadata, configurable size limits
+- **💾 Metadata caching** - Simple TTL-based caching for torrent list
 - **🛡️ Resilient API client** - Exponential backoff, automatic retry logic
 - **🔒 Read-only filesystem** - Safe, secure access that cannot modify torrents (mode 0444/0555)
 - **🔄 Torrent management** - Add via magnet/URL, remove torrents
@@ -81,7 +80,7 @@ Since Windows does not have native FUSE support and the `fuser` crate used by th
 4. Mount the filesystem to a path inside WSL2:
    ```bash
    mkdir -p ~/torrents
-   rqbit-fuse mount ~/torrents
+   rqbit-fuse mount -m ~/torrents
    ```
 5. Access the mount from Windows via `\\wsl$\Ubuntu\home\<user>\torrents`
 
@@ -133,7 +132,7 @@ Create a mount point and mount:
 
 ```bash
 mkdir -p ~/torrents
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 ### 4. Browse and Stream
@@ -167,7 +166,7 @@ rqbit-fuse status
 ### 6. Unmount
 
 ```bash
-rqbit-fuse umount ~/torrents
+rqbit-fuse umount -m ~/torrents
 ```
 
 Or use:
@@ -183,17 +182,12 @@ Create a configuration file at `~/.config/rqbit-fuse/config.toml`:
 [api]
 url = "http://127.0.0.1:3030"
 
-[cache]
-metadata_ttl = 60
-max_entries = 1000
-
 [mount]
 mount_point = "/mnt/torrents"
 
 [performance]
 read_timeout = 30
 max_concurrent_reads = 10
-readahead_size = 33554432  # 32MB
 
 [logging]
 level = "info"
@@ -206,6 +200,8 @@ Only the settings you want to change from defaults are needed:
 ```toml
 [api]
 url = "http://192.168.1.100:3030"
+username = "admin"
+password = "secret"
 
 [mount]
 mount_point = "~/torrents"
@@ -216,9 +212,9 @@ mount_point = "~/torrents"
 Essential configuration options can be set via environment variables:
 
 - `TORRENT_FUSE_API_URL` - rqbit API URL (default: http://127.0.0.1:3030)
+- `TORRENT_FUSE_AUTH_USERNAME` - HTTP Basic Auth username
+- `TORRENT_FUSE_AUTH_PASSWORD` - HTTP Basic Auth password
 - `TORRENT_FUSE_MOUNT_POINT` - Mount point path (default: /mnt/torrents)
-- `TORRENT_FUSE_METADATA_TTL` - Cache TTL in seconds (default: 60)
-- `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries (default: 1000)
 - `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds (default: 30)
 - `TORRENT_FUSE_LOG_LEVEL` - Log level (default: info)
 
@@ -226,73 +222,69 @@ Essential configuration options can be set via environment variables:
 
 ### Optimizing Read Performance
 
-1. **Use media players with buffering**: mpv, vlc, and other players buffer ahead, which triggers rqbit's readahead and improves streaming performance
+1. **Use media players with buffering**: mpv, vlc, and other players buffer ahead, which improves streaming performance
 
-2. **Read sequentially**: Sequential reads enable the read-ahead optimization (32MB default). Random access cancels prefetching.
+2. **Wait for initial pieces**: First access to a file may be slow while the initial pieces download. rqbit prioritizes pieces needed for the requested range.
 
-3. **Wait for initial pieces**: First access to a file may be slow while the initial pieces download. rqbit prioritizes pieces needed for the requested range.
-
-4. **Pre-download strategy**: Let torrent download some pieces before mounting for better initial performance:
+3. **Pre-download strategy**: Let torrent download some pieces before mounting for better initial performance:
    ```bash
    rqbit add magnet:?xt=urn:btih:...
    # Wait for 5-10% completion
-   rqbit-fuse mount ~/torrents
+   rqbit-fuse mount -m ~/torrents
    ```
 
-5. **Tune cache settings**: Increase cache size for better metadata caching if you have memory available:
-   ```toml
-   [cache]
-   max_entries = 5000  # Increase from default 1000
-   metadata_ttl = 120    # Increase TTL for less frequent API calls
-   ```
-
-6. **Adjust read-ahead for your connection**: For high-latency connections, increase read-ahead:
+4. **Increase timeout for slow connections**:
    ```toml
    [performance]
-   readahead_size = 67108864  # 64MB for high-latency connections
+   read_timeout = 60
    ```
 
 ### Understanding Performance Characteristics
 
 - **Initial piece latency**: First read to a piece requires downloading from peers (typically 100ms-2s depending on swarm health)
-- **Sequential bonus**: rqbit's 32MB readahead means sequential reads get ~32MB of prefetching
 - **HTTP overhead**: Each FUSE read translates to one HTTP Range request (mitigated by kernel buffering)
-- **Cache effectiveness**: Directory listings and file attributes are cached (30-60s TTL by default)
+- **Metadata caching**: Torrent list is cached with 30-second TTL
 
 ## Usage
 
 ### Mount Command
 
 ```bash
-rqbit-fuse mount <MOUNT_POINT> [OPTIONS]
+rqbit-fuse mount [OPTIONS]
 ```
 
 Options:
+- `-m, --mount-point <PATH>` - Mount point path (required unless set in config)
 - `-u, --api-url <URL>` - rqbit API URL (default: http://127.0.0.1:3030)
-- `--mount-point <PATH>` - Mount point path
+- `--username <USER>` - rqbit API username for HTTP Basic Auth
+- `--password <PASS>` - rqbit API password for HTTP Basic Auth
 - `-a, --allow-other` - Allow other users to access the mount
 - `--auto-unmount` - Automatically unmount on process exit
-- `-v, --verbose` - Enable verbose logging (DEBUG level)
-- `-vv, --very-verbose` - Enable very verbose logging (TRACE level)
+- `-c, --config <FILE>` - Config file path
+- `-v, --verbose` - Enable verbose logging (repeatable: INFO -> DEBUG -> TRACE)
 - `-q, --quiet` - Only show errors
 
 ### Umount Command
 
 ```bash
-rqbit-fuse umount <MOUNT_POINT> [OPTIONS]
+rqbit-fuse umount [OPTIONS]
 ```
 
 Options:
+- `-m, --mount-point <PATH>` - Mount point path (required unless set in config)
 - `-f, --force` - Force unmount
+- `-c, --config <FILE>` - Config file path
 
 ### Status Command
 
 ```bash
-rqbit-fuse status [MOUNT_POINT] [OPTIONS]
+rqbit-fuse status [OPTIONS]
 ```
 
 Options:
-- `-f, --format <FORMAT>` - Output format: text or json (default: text)
+- `-c, --config <FILE>` - Config file path
+- `-v, --verbose` - Enable verbose output
+- `-q, --quiet` - Only show errors
 
 ## Examples
 
@@ -300,7 +292,7 @@ Options:
 
 ```bash
 # Mount the filesystem
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 
 # Play video (starts immediately, downloads on demand)
 mpv ~/torrents/"Big Buck Bunny"/bbb_sunflower_1080p_60fps_normal.mp4
@@ -315,16 +307,6 @@ mpv ~/torrents/"Big Buck Bunny"/bbb_sunflower_1080p_60fps_normal.mp4
 dd if=~/torrents/"Ubuntu ISO"/ubuntu.iso bs=1 skip=1048576 count=1024
 ```
 
-### Check Torrent Status via Extended Attributes
-
-```bash
-# Get torrent status as JSON
-getfattr -n user.torrent.status ~/torrents/"Ubuntu 24.04 ISO"
-
-# List available extended attributes
-getfattr -d ~/torrents/"Ubuntu 24.04 ISO"
-```
-
 ### Run as a Systemd Service
 
 Create `~/.config/systemd/user/rqbit-fuse.service`:
@@ -335,9 +317,9 @@ Description=Torrent FUSE filesystem
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/usr/local/bin/rqbit-fuse mount /home/user/torrents --auto-unmount
-ExecStop=/usr/local/bin/rqbit-fuse umount /home/user/torrents
+Type=simple
+ExecStart=/usr/local/bin/rqbit-fuse mount -m /home/user/torrents --auto-unmount
+ExecStop=/usr/local/bin/rqbit-fuse umount -m /home/user/torrents
 Restart=on-failure
 
 [Install]
@@ -364,8 +346,7 @@ When you access a file through the FUSE filesystem:
 1. **On-Demand Access**: Files are downloaded only when you read them
 2. **HTTP Range Requests**: File reads are translated to HTTP Range requests
 3. **Piece Prioritization**: rqbit prioritizes downloading pieces needed for your read
-4. **Smart Caching**: Frequently accessed metadata and pieces are cached in memory
-5. **Read-Ahead**: Sequential file reads trigger prefetching for better performance
+4. **Metadata Caching**: Torrent list is cached with 30-second TTL
 
 ### Error Handling
 
@@ -378,8 +359,8 @@ When you access a file through the FUSE filesystem:
 rqbit-fuse is feature-complete with comprehensive test coverage:
 
 - **Core Features**: Full FUSE filesystem implementation with on-demand downloading
-- **Performance**: LRU cache, read-ahead optimization, connection pooling
-- **Reliability**: 350+ tests, zero clippy warnings, comprehensive error handling
+- **Performance**: Connection pooling, retry logic, concurrent read support
+- **Reliability**: Comprehensive tests, zero clippy warnings, error handling
 - **Edge Cases**: Symlinks, unicode, large files, path traversal protection
 
 See [TODO.md](TODO.md) for remaining documentation and testing tasks.
@@ -402,9 +383,7 @@ See [TODO.md](TODO.md) for remaining documentation and testing tasks.
 
 1. **Initial reads may be slow** - First access to a file piece requires downloading that piece from peers. Subsequent reads are cached.
 
-2. **Random access penalty** - Reading files non-sequentially cancels read-ahead and may result in slower performance.
-
-3. **Memory usage** - Cache size is configurable but unbounded during heavy concurrent access until eviction kicks in.
+2. **Memory usage** - Concurrent reads use memory proportional to the number of simultaneous operations.
 
 4. **Platform differences**:
    - Linux: Full feature support
@@ -418,7 +397,7 @@ See [TODO.md](TODO.md) for remaining documentation and testing tasks.
 The FUSE filesystem crashed or was killed. Unmount and remount:
 ```bash
 fusermount -u ~/torrents
-rqbit-fuse mount ~/torrents
+rqbit-fuse mount -m ~/torrents
 ```
 
 **"Connection refused" to API**
@@ -439,9 +418,9 @@ rm ~/torrents/somefile
 
 **Debug mode**
 
-Run in foreground with debug logging:
+Run with debug logging:
 ```bash
-rqbit-fuse mount ~/torrents --auto-unmount -vv
+rqbit-fuse mount -m ~/torrents --auto-unmount -vv
 ```
 
 ## Development
