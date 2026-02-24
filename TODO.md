@@ -40,7 +40,7 @@
 - [x] Update cache section
   - Remove bitfield cache references
   - Simplify Cache struct (remove stats if removed)
-- [ ] Remove file handle state section
+- [x] Remove file handle state section
   - Remove FileHandleState struct documentation
   - Update FileHandleManager to basic version
 - [ ] Remove macros section

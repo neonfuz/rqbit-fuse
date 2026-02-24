@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-010: Remove file handle state section from read-ahead.md (TODO.md Phase 1)
+  - Removed entire "FileHandleState" struct documentation (was already removed from code in SIMPLIFY-034)
+  - Removed "Implementation Approach" section with ReadaheadManager, SequentialState, PatternDetector
+  - Removed "Prefetch Logic", "Cache Integration", "Performance Considerations" sections
+  - Updated document to reflect that prefetching has been removed from current implementation
+  - Added simplified FileHandleManager documentation showing basic version (no prefetching)
+  - Added rationale section explaining why prefetching was removed (complexity, redundancy with rqbit's 32MB read-ahead)
+  - Reduced document from ~1339 lines to ~67 lines (95% reduction)
+  - Document now accurately reflects simplified codebase without obsolete prefetching documentation
+
 - SPEC-009: Remove Cache Implementation section from technical-design.md (TODO.md Phase 1)
   - Removed entire "Cache Implementation" section that documented non-existent code
   - Deleted documentation for `Cache<K, V>` struct with stats tracking (hits, misses, evictions, expired, size)
