@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-023: Remove ResourceLimitsConfig (Task 2.2.6)
+  - Removed entire `ResourceLimitsConfig` struct from `src/config/mod.rs`
+  - Removed 3 fields: `max_cache_bytes`, `max_open_streams`, `max_inodes`
+  - Removed `resources` field from main `Config` struct
+  - Removed `impl Default for ResourceLimitsConfig`
+  - Removed environment variable parsing for:
+    - `TORRENT_FUSE_MAX_CACHE_BYTES`
+    - `TORRENT_FUSE_MAX_OPEN_STREAMS`
+    - `TORRENT_FUSE_MAX_INODES`
+  - Updated `src/fs/filesystem.rs`:
+    - Changed inode_manager initialization to use hardcoded value of 100000
+    - Previously used `config.resources.max_inodes`, now hardcoded default
+  - Hardcoded reasonable defaults preserved:
+    - max_inodes: 100000 (in filesystem.rs)
+    - max_streams: 50 (in streaming.rs, already the default)
+    - max_cache_bytes: No longer needed (cache uses moka's built-in limits)
+  - Updated documentation in `src/config/mod.rs`:
+    - Removed ResourceLimitsConfig from struct documentation
+    - Removed TOML configuration example for resources section
+    - Removed JSON configuration example for resources section
+    - Removed environment variable documentation for removed fields
+  - Environment variables reduced from 14 to 11 (21% reduction in this step)
+  - Configuration fields reduced from 11 to 8 (27% reduction in this step)
+  - All 346+ tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`, `src/fs/filesystem.rs`
+
 - SIMPLIFY-022: Remove LoggingConfig Options (Task 2.2.5)
   - Removed 4 fields from `LoggingConfig` struct in `src/config/mod.rs`:
     - `log_fuse_operations` - now always logs FUSE operations at debug level

@@ -150,9 +150,6 @@ pub struct Config {
     /// Log verbosity and metrics settings.
     #[serde(default)]
     pub logging: LoggingConfig,
-    /// Resource limits for preventing resource exhaustion.
-    #[serde(default)]
-    pub resources: ResourceLimitsConfig,
 }
 
 /// Configuration for the rqbit API connection.
@@ -260,29 +257,6 @@ pub struct LoggingConfig {
     pub level: String,
 }
 
-/// Configuration for resource limits.
-///
-/// Controls resource consumption limits to prevent resource exhaustion.
-///
-/// # Fields
-///
-/// * `max_cache_bytes` - Maximum cache size in bytes (default: 536870912 = 512MB)
-/// * `max_open_streams` - Maximum number of open HTTP streams (default: 50)
-/// * `max_inodes` - Maximum number of inodes (default: 100000)
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_MAX_CACHE_BYTES` - Maximum cache size in bytes
-/// - `TORRENT_FUSE_MAX_OPEN_STREAMS` - Maximum open streams
-/// - `TORRENT_FUSE_MAX_INODES` - Maximum number of inodes
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ResourceLimitsConfig {
-    pub max_cache_bytes: u64,
-    pub max_open_streams: usize,
-    pub max_inodes: usize,
-}
-
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
@@ -326,16 +300,6 @@ impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             level: "info".to_string(),
-        }
-    }
-}
-
-impl Default for ResourceLimitsConfig {
-    fn default() -> Self {
-        Self {
-            max_cache_bytes: 536870912, // 512MB
-            max_open_streams: 50,
-            max_inodes: 100000,
         }
     }
 }
@@ -428,27 +392,6 @@ impl Config {
 
         if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
             self.logging.level = val;
-        }
-
-        // Resource limits
-        if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_CACHE_BYTES") {
-            self.resources.max_cache_bytes = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_MAX_CACHE_BYTES has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_OPEN_STREAMS") {
-            self.resources.max_open_streams = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_MAX_OPEN_STREAMS has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_INODES") {
-            self.resources.max_inodes = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_MAX_INODES has invalid format".into())
-            })?;
         }
 
         // Auth credentials - support both individual fields and combined format

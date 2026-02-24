@@ -106,7 +106,7 @@ impl TorrentFS {
             create_api_client(&config.api, Arc::clone(&metrics.api))
                 .context("Failed to create API client")?,
         );
-        let inode_manager = Arc::new(InodeManager::with_max_inodes(config.resources.max_inodes));
+        let inode_manager = Arc::new(InodeManager::with_max_inodes(100000));
         let read_semaphore = Arc::new(Semaphore::new(config.performance.max_concurrent_reads));
 
         Ok(Self {

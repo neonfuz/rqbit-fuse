@@ -155,11 +155,15 @@ Reduce configuration complexity and validation overhead.
   - Remove `metrics_interval_secs` - removing metrics system
   - Keep only: `level`
   
-- [ ] **Task 2.2.6**: Remove ResourceLimitsConfig
-  - Remove entire `ResourceLimitsConfig` struct
-  - Remove all resource limit fields
-  - Remove related env var parsing
-  - Use hardcoded reasonable defaults instead
+- [x] **Task 2.2.6**: Remove ResourceLimitsConfig
+  - **Completed**: Removed entire `ResourceLimitsConfig` struct from `src/config/mod.rs`
+  - **Completed**: Removed `resources` field from `Config` struct
+  - **Completed**: Removed 3 fields (`max_cache_bytes`, `max_open_streams`, `max_inodes`)
+  - **Completed**: Removed `impl Default for ResourceLimitsConfig`
+  - **Completed**: Removed environment variable parsing for `TORRENT_FUSE_MAX_CACHE_BYTES`, `TORRENT_FUSE_MAX_OPEN_STREAMS`, `TORRENT_FUSE_MAX_INODES`
+  - **Completed**: Updated `src/fs/filesystem.rs` to use hardcoded max_inodes (100000)
+  - **Completed**: All 346+ tests passing with zero clippy warnings
+  - **See**: CHANGELOG.md SIMPLIFY-023
   
 - [ ] **Task 2.2.7**: Simplify CacheConfig
   - Keep only: `metadata_ttl`, `max_entries`
