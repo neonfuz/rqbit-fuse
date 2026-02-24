@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-042: Remove Bitfield Cache Fields (Task 7.1.2)
+  - Removed `TorrentStatusWithBitfield` struct from `src/api/client.rs` (lines 18-23)
+  - Removed `status_bitfield_cache` field from `RqbitClient` struct
+  - Removed `status_bitfield_cache_ttl` field from `RqbitClient` struct
+  - Removed initialization of bitfield cache fields from `with_config()` constructor
+  - Removed `get_torrent_status_with_bitfield()` method entirely (~60 lines)
+  - Simplified `check_range_available()` to fetch `PieceBitfield` directly without caching
+  - Removed unused `HashMap` import from `src/api/client.rs`
+  - Code reduction: ~75 lines removed from client.rs
+  - **Rationale**: 5-second TTL provided minimal value; fresh data is preferable
+  - **Benefit**: Eliminates memory leak risk from unbounded cache growth
+  - All 180+ tests passing with zero clippy warnings
+  - Phase 7 (Cache Layer Simplification) in progress - Task 7.1.2 complete
+
 - SIMPLIFY-041: Research Bitfield Cache Usage (Task 7.1.1)
   - Analyzed `status_bitfield_cache` implementation in `src/api/client.rs`
   - Documented cache usage flow: `check_range_available()` -> `get_torrent_status_with_bitfield()`

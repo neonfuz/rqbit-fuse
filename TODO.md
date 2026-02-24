@@ -424,10 +424,14 @@ Remove redundant caching and simplify cache implementation.
   - **Reference**: See `research/bitfield-cache-analysis.md`
   - **Key Finding**: Bitfield cache provides minimal value due to 5-second TTL and adds complexity/memory leak risk. Safe to remove.
   
-- [ ] **Task 7.1.2**: Remove bitfield cache fields
-  - Remove `status_bitfield_cache` field from RqbitClient
-  - Remove `status_bitfield_cache_ttl` field
-  - Remove `TorrentStatusWithBitfield` struct if unused
+- [x] **Task 7.1.2**: Remove bitfield cache fields
+  - Removed `status_bitfield_cache` field from RqbitClient
+  - Removed `status_bitfield_cache_ttl` field
+  - Removed `TorrentStatusWithBitfield` struct (no longer needed)
+  - Simplified `check_range_available()` to fetch bitfield directly without caching
+  - Removed `get_torrent_status_with_bitfield()` method
+  - Removed unused `HashMap` import
+  - All 180+ tests passing with zero clippy warnings
   
 - [ ] **Task 7.1.3**: Update get_torrent_status_with_bitfield
   - Change to fetch fresh data without caching
