@@ -9,11 +9,11 @@
 - [x] Simplify metrics in architecture diagram
   - Remove Metrics Collection box from diagram
   - Keep only minimal metrics reference
-- [ ] Update CLI section
+- [x] Update CLI section
   - Remove `--format json` from status command
   - Remove `--allow-other` and `--auto-unmount` mount options
   - Remove mount info from status output description
-- [ ] Update configuration schema
+- [x] Update configuration schema
   - Remove MonitoringConfig section
   - Remove LoggingConfig detailed options
   - Simplify to 6 essential fields

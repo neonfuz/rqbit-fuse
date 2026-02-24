@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-003: Update configuration schema in architecture.md (TODO.md Phase 1)
+  - Removed [monitoring] section from config example (MonitoringConfig already removed from code)
+  - Simplified [logging] section to only show `level` field (other options already removed from code)
+  - Removed deprecated fields from config example: torrent_list_ttl, piece_ttl, allow_other, auto_unmount, piece_check_enabled, return_eagain_for_unavailable
+  - Updated environment variables list from 20 to 9 variables (removed ones already deleted from code)
+  - Spec now matches actual simplified Config struct with 5 sections (api, cache, mount, performance, logging)
+  - All changes to spec/architecture.md only - config code already simplified in prior tasks
+  - All tests passing with zero clippy warnings
+
+- SPEC-002: Update CLI section in architecture.md (TODO.md Phase 1)
+  - Removed `--format json` option from status command documentation (line 422)
+  - Removed `--allow-other` and `--auto-unmount` mount options from CLI reference (lines 433-434)
+  - Spec only changes - these options were already removed from actual CLI in prior tasks
+  - All tests passing with zero clippy warnings
+
 - SPEC-001: Simplify metrics in architecture diagram (TODO.md Phase 1)
   - Removed "Metrics Collection" box from architecture diagram
   - Removed "Collect metrics on FUSE operations and API calls" from responsibilities

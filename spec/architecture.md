@@ -351,60 +351,37 @@ pub struct CacheEntry<T> {
 ```toml
 [api]
 url = "http://127.0.0.1:3030"  # rqbit HTTP API endpoint
+# username = "admin"             # Optional: HTTP Basic Auth username
+# password = "secret"            # Optional: HTTP Basic Auth password
 
 [cache]
 metadata_ttl = 60        # seconds
-torrent_list_ttl = 30
-piece_ttl = 5
 max_entries = 1000
 
 [mount]
 mount_point = "/mnt/torrents"
-allow_other = false
-auto_unmount = true
 
 [performance]
 read_timeout = 30              # seconds to wait for data
 max_concurrent_reads = 10      # concurrent HTTP requests
 readahead_size = 33554432      # 32MB, match rqbit's default
-piece_check_enabled = true     # Check piece availability
-return_eagain_for_unavailable = false  # Return EAGAIN for unavailable pieces
-
-[monitoring]
-status_poll_interval = 5       # seconds
-stalled_timeout = 300          # seconds
 
 [logging]
 level = "info"
-log_fuse_operations = true
-log_api_calls = true
-metrics_enabled = true
-metrics_interval_secs = 60
 ```
 
 ### Environment Variables
 
 All config options can be overridden via environment variables:
-- `TORRENT_FUSE_API_URL`
-- `TORRENT_FUSE_MOUNT_POINT`
-- `TORRENT_FUSE_METADATA_TTL`
-- `TORRENT_FUSE_TORRENT_LIST_TTL`
-- `TORRENT_FUSE_PIECE_TTL`
-- `TORRENT_FUSE_MAX_ENTRIES`
-- `TORRENT_FUSE_READ_TIMEOUT`
-- `TORRENT_FUSE_MAX_CONCURRENT_READS`
-- `TORRENT_FUSE_READAHEAD_SIZE`
-- `TORRENT_FUSE_ALLOW_OTHER`
-- `TORRENT_FUSE_AUTO_UNMOUNT`
-- `TORRENT_FUSE_STATUS_POLL_INTERVAL`
-- `TORRENT_FUSE_STALLED_TIMEOUT`
-- `TORRENT_FUSE_PIECE_CHECK_ENABLED`
-- `TORRENT_FUSE_RETURN_EAGAIN`
-- `TORRENT_FUSE_LOG_LEVEL`
-- `TORRENT_FUSE_LOG_FUSE_OPS`
-- `TORRENT_FUSE_LOG_API_CALLS`
-- `TORRENT_FUSE_METRICS_ENABLED`
-- `TORRENT_FUSE_METRICS_INTERVAL`
+- `TORRENT_FUSE_API_URL` - rqbit HTTP API endpoint
+- `TORRENT_FUSE_MOUNT_POINT` - Mount point path
+- `TORRENT_FUSE_METADATA_TTL` - Cache TTL in seconds
+- `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries
+- `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds
+- `TORRENT_FUSE_LOG_LEVEL` - Log level (error, warn, info, debug, trace)
+- `TORRENT_FUSE_AUTH_USERPASS` - HTTP Basic Auth (username:password)
+- `TORRENT_FUSE_AUTH_USERNAME` - HTTP Basic Auth username
+- `TORRENT_FUSE_AUTH_PASSWORD` - HTTP Basic Auth password
 
 ## CLI Interface
 
