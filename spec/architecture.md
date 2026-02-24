@@ -419,7 +419,6 @@ rqbit-fuse umount /mnt/torrents --force
 
 # Show status
 rqbit-fuse status
-rqbit-fuse status --format json
 ```
 
 ### Mount Options
@@ -430,8 +429,6 @@ Options:
   -c, --config <FILE>         Config file path
   -v, --verbose               Increase verbosity (repeatable)
   -q, --quiet                 Suppress output except errors
-      --allow-other           Allow other users (env: TORRENT_FUSE_ALLOW_OTHER)
-      --auto-unmount          Auto-unmount on exit (env: TORRENT_FUSE_AUTO_UNMOUNT)
 ```
 
 ## Dependencies

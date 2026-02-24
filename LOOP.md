@@ -8,4 +8,4 @@
 - After you have validated the quality of the code, check the item off the todo checklist
 - After you check an item off the checklist, append what you have done to CHANGELOG.md
 - After you have updated CHANGELOG.md, write a commit message and commit your code to git
-- If you are working on a task and it is very large or you are having a hard time completing it, break the task down into more TODO items and append them to the todo checklist
+- If you are working on a task and it is very large or you are having a hard time completing it, break the task down into more todo items and append them to the todo checklist
