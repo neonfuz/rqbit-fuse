@@ -107,9 +107,7 @@ Specifications have been updated to match the actual implementation.
 **New Modules Added:**
 - `fs/async_bridge.rs` - Async/sync bridge for FUSE callbacks
 - `fs/error.rs` - FUSE-specific error types
-- `fs/macros.rs` - Helper macros for FUSE operations
 - `mount.rs` - Mount point utilities
-- `sharded_counter.rs` - High-performance sharded counter
 
 **Notes:**
 - All specs have been reviewed and updated to reflect actual code

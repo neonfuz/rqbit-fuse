@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-011: Remove macros section from architecture.md (TODO.md Phase 1)
+  - Removed fs/macros.rs from Key Modules section in architecture.md
+  - Removed fs/macros.rs entry from file structure diagram (line 160)
+  - Removed fs/macros.rs from New Modules Added list in spec/README.md
+  - Also removed sharded_counter.rs from README (doesn't exist in codebase)
+  - All FUSE macros were already deleted from codebase in SIMPLIFY-039
+  - Spec documentation now matches actual codebase without macros module
+
 - SPEC-010: Remove file handle state section from read-ahead.md (TODO.md Phase 1)
   - Removed entire "FileHandleState" struct documentation (was already removed from code in SIMPLIFY-034)
   - Removed "Implementation Approach" section with ReadaheadManager, SequentialState, PatternDetector

@@ -43,7 +43,7 @@
 - [x] Remove file handle state section
   - Remove FileHandleState struct documentation
   - Update FileHandleManager to basic version
-- [ ] Remove macros section
+- [x] Remove macros section
   - Remove fs/macros.rs from file structure
   - Remove Fuse macros documentation
 

@@ -80,9 +80,6 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - FuseError enum for FUSE-specific errors
 - Error to FUSE errno mapping
 
-#### fs/macros.rs
-- Helper macros for FUSE operations (fuse_error, fuse_log, fuse_ok)
-
 #### api/client.rs
 - HTTP client for rqbit API with circuit breaker pattern
 - Endpoints used:
@@ -156,8 +153,7 @@ rqbit-fuse/
 │   │   ├── filesystem.rs    # FUSE callbacks
 │   │   ├── inode.rs         # Inode management
 │   │   ├── async_bridge.rs # Async/sync bridge for FUSE
-│   │   ├── error.rs        # FUSE error types
-│   │   └── macros.rs        # Helper macros
+│   │   └── error.rs        # FUSE error types
 │   ├── api/                 # HTTP API client
 │   │   ├── mod.rs
 │   │   ├── client.rs        # HTTP client with retry logic
