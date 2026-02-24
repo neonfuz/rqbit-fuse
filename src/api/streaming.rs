@@ -11,47 +11,28 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tracing::{debug, trace};
 
-/// Maximum bytes to skip in an existing stream before creating a new connection
-/// If we need to seek forward less than this, we'll read and discard bytes
-/// If we need to seek more, we'll create a new HTTP connection
 const MAX_SEEK_FORWARD: u64 = 10 * 1024 * 1024; // 10MB
-
-/// Idle timeout for persistent streams before they're closed
 const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Cleanup interval for checking idle streams
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
-
-/// Yield to runtime every N bytes during large skip operations
-/// This prevents blocking the async runtime for too long
 const SKIP_YIELD_INTERVAL: u64 = 1024 * 1024; // 1MB
 
-/// Unique identifier for a file stream
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct StreamKey {
     torrent_id: u64,
     file_idx: usize,
 }
 
-/// Type alias for the byte stream from reqwest
 type ByteStream = Pin<Box<dyn futures::Stream<Item = reqwest::Result<Bytes>> + Send>>;
 
-/// State of a persistent HTTP stream for reading torrent file data
 struct PersistentStream {
-    /// HTTP response body stream
     stream: ByteStream,
-    /// Current byte position in the stream
     current_position: u64,
-    /// Last access time for idle detection
     last_access: Instant,
-    /// Whether the stream is still valid
     is_valid: bool,
-    /// Buffer for partial chunk data
     pending_buffer: Option<Bytes>,
 }
 
 impl PersistentStream {
-    /// Create a new persistent stream starting at the given offset
     async fn new(
         client: &Client,
         base_url: &str,

@@ -17,19 +17,13 @@ use tracing::{debug, error, info, instrument, trace, warn};
 /// HTTP client for interacting with rqbit server
 pub struct RqbitClient {
     client: Client,
-    /// Base URL for the rqbit API server (validated at construction)
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
-    /// Persistent stream manager for efficient sequential reads
     stream_manager: PersistentStreamManager,
-    /// Optional authentication credentials for HTTP Basic Auth
     auth_credentials: Option<(String, String)>,
-    /// Cache for list_torrents results to avoid N+1 queries
     list_torrents_cache: Arc<RwLock<Option<(Instant, ListTorrentsResult)>>>,
-    /// TTL for list_torrents cache
     list_torrents_cache_ttl: Duration,
-    /// Metrics collection for cache hits/misses
     metrics: Option<Arc<Metrics>>,
 }
 
@@ -280,21 +274,7 @@ impl RqbitClient {
     // Torrent Management
     // =========================================================================
 
-    /// List all torrents in the session
-    ///
-    /// This fetches full details for each torrent since the /torrents endpoint
-    /// returns a simplified structure without the files field.
-    ///
-    /// # Returns
-    /// Returns a `ListTorrentsResult` containing both successfully loaded torrents
-    /// and any errors that occurred. Callers should check `is_partial()` to detect
-    /// if some torrents failed to load.
-    ///
-    /// Uses caching to avoid N+1 queries on repeated calls within the TTL window.
-    ///
-    /// # Errors
-    /// Returns an error only if the initial list request fails. Individual torrent
-    /// fetch failures are collected in the result's `errors` field.
+    /// List all torrents in the session with caching
     #[instrument(skip(self), fields(api_op = "list_torrents"))]
     pub async fn list_torrents(&self) -> Result<ListTorrentsResult> {
         // Check cache first
@@ -723,19 +703,6 @@ impl RqbitClient {
     }
 
     /// Read file data using persistent streaming for efficient sequential access
-    ///
-    /// This method maintains open HTTP connections and reuses them for sequential reads,
-    /// significantly improving performance when rqbit ignores Range headers and returns
-    /// full file responses.
-    ///
-    /// # Arguments
-    /// * `torrent_id` - ID of the torrent
-    /// * `file_idx` - Index of the file within the torrent
-    /// * `offset` - Byte offset to start reading from
-    /// * `size` - Number of bytes to read
-    ///
-    /// # Returns
-    /// * `Result<Bytes>` - The requested data
     #[instrument(
         skip(self),
         fields(api_op = "read_file_streaming", torrent_id, file_idx, offset, size)
@@ -753,10 +720,6 @@ impl RqbitClient {
     }
 
     /// Close a persistent stream for a specific file
-    ///
-    /// # Arguments
-    /// * `torrent_id` - ID of the torrent
-    /// * `file_idx` - Index of the file within the torrent
     pub async fn close_file_stream(&self, torrent_id: u64, file_idx: usize) {
         self.stream_manager.close_stream(torrent_id, file_idx).await;
     }

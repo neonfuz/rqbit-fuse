@@ -1,3 +1,5 @@
+//! Minimal performance metrics collection.
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::info;
 

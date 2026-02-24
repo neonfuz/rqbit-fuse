@@ -547,14 +547,18 @@ Remove verbose documentation that duplicates README.
 Remove dead code and consolidate.
 
 ### 10.1 Remove Dead Code
-- [ ] **Task 10.1.1**: Run cargo dead code detection
-  - Use `cargo +nightly rustc -- -Zlints` or similar
-  - Identify unused functions, structs, enums
-  - Remove all dead code
+- [x] **Task 10.1.1**: Run cargo dead code detection
+  - Found 3 instances of `#[allow(dead_code)]` attributes:
+    1. `check_pieces_available` method in `src/fs/filesystem.rs` - Removed (always returned false, never called)
+    2. `worker_handle` field in `src/fs/async_bridge.rs` - Removed (stored but never used)
+    3. `is_safe_path_component` function - Kept (used in tests only)
+  - Removed ~15 lines of dead code
+  - All tests passing (346+ tests)
+  - Zero clippy warnings
   
-- [ ] **Task 10.1.2**: Remove unused imports
-  - Run `cargo clippy` and fix warnings
-  - Remove all unused imports across codebase
+- [x] **Task 10.1.2**: Remove unused imports
+  - Ran `cargo clippy` - no unused import warnings
+  - All imports are actively used across the codebase
   
 - [ ] **Task 10.1.3**: Remove unused dependencies
   - Check `Cargo.toml` for unused crates

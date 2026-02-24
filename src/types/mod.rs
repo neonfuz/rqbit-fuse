@@ -1,3 +1,5 @@
+//! Core data types for inodes, handles, and file attributes.
+
 pub mod attr;
 pub mod handle;
 

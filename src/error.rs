@@ -1,3 +1,5 @@
+//! Unified error types for rqbit-fuse.
+
 use thiserror::Error;
 
 /// Represents a single validation error in the configuration.
@@ -13,14 +15,7 @@ impl std::fmt::Display for ValidationIssue {
     }
 }
 
-/// Unified error type for rqbit-fuse.
-///
-/// This enum consolidates all error types in the codebase:
-/// - FUSE operation errors (previously FuseError)
-/// - API errors (previously ApiError)
-/// - Configuration errors (previously ConfigError)
-///
-/// Reduced from 32 variants to 11 essential variants for simplicity.
+/// Unified error type for rqbit-fuse with 11 essential variants.
 #[derive(Error, Debug, Clone)]
 pub enum RqbitFuseError {
     /// Entity not found (ENOENT)

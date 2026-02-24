@@ -1,3 +1,5 @@
+//! Filesystem mounting and logging setup utilities.
+
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 

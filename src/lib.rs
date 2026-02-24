@@ -1,22 +1,6 @@
-//! # rqbit-fuse
+//! A read-only FUSE filesystem that mounts BitTorrent torrents as virtual directories.
 //!
-//! A read-only FUSE filesystem that mounts BitTorrent torrents as virtual directories,
-//! enabling seamless access to torrent content without waiting for full downloads.
-//!
-//! This crate integrates with [rqbit](https://github.com/ikatson/rqbit) to expose torrent
-//! files through standard filesystem operations. Files are downloaded on-demand when accessed,
-//! allowing you to stream videos or copy files while the torrent is still downloading.
-//!
-//! ## Modules
-//!
-//! - [`api`] - HTTP client for rqbit API, streaming, and torrent management
-//! - [`config`] - Configuration management via CLI, env vars, and config files
-//! - [`fs`] - FUSE filesystem implementation
-//! - [`metrics`] - Performance metrics collection
-//! - [`types`] - Core data types (inodes, handles, attributes)
-//!
-//! See the [README](https://github.com/ikatson/rqbit-fuse) for detailed usage,
-//! troubleshooting, and configuration examples.
+//! Integrates with rqbit to expose torrent files through standard filesystem operations.
 
 // Re-exports
 //

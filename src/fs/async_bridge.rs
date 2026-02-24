@@ -109,9 +109,6 @@ pub struct AsyncFuseWorker {
     /// Uses tokio's async channel because the worker runs in an async context.
     /// Std::sync::mpsc would block the tokio executor.
     request_tx: mpsc::Sender<FuseRequest>,
-    /// Handle to the worker task for cleanup
-    #[allow(dead_code)]
-    worker_handle: Option<tokio::task::JoinHandle<()>>,
     /// Shutdown signal sender
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
@@ -134,7 +131,7 @@ impl AsyncFuseWorker {
         let (request_tx, mut request_rx) = mpsc::channel::<FuseRequest>(channel_capacity);
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
 
-        let worker_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             info!("AsyncFuseWorker started");
 
             loop {
@@ -165,7 +162,6 @@ impl AsyncFuseWorker {
 
         Self {
             request_tx,
-            worker_handle: Some(worker_handle),
             shutdown_tx: Some(shutdown_tx),
         }
     }

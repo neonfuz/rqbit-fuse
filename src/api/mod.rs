@@ -1,3 +1,5 @@
+//! HTTP client for rqbit API and torrent streaming.
+
 pub mod client;
 pub mod streaming;
 pub mod types;

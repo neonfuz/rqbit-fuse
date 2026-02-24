@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 // DataUnavailableReason and ApiError have been moved to crate::error::RqbitFuseError
 // Re-export for backward compatibility: pub use crate::error::RqbitFuseError as ApiError;
 
-/// Summary of a torrent from the list endpoint
-/// This is a simplified view without file details
+/// Torrent summary from list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentSummary {
     pub id: u64,
@@ -15,13 +14,13 @@ pub struct TorrentSummary {
     pub output_folder: String,
 }
 
-/// Response from listing all torrents
+/// Response from listing torrents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentListResponse {
     pub torrents: Vec<TorrentSummary>,
 }
 
-/// Torrent information from API
+/// Full torrent information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentInfo {
     pub id: u64,
@@ -37,7 +36,7 @@ pub struct TorrentInfo {
     pub piece_length: Option<u64>,
 }
 
-/// File information from API
+/// File information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileInfo {
     pub name: String,
@@ -45,7 +44,7 @@ pub struct FileInfo {
     pub components: Vec<String>,
 }
 
-/// Speed information from stats endpoint (used for both download and upload)
+/// Speed information from stats endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Speed {
     pub mbps: f64,
@@ -53,7 +52,7 @@ pub struct Speed {
     pub human_readable: String,
 }
 
-/// Snapshot of torrent download state from stats endpoint
+/// Torrent download state snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TorrentSnapshot {
     #[serde(rename = "downloaded_and_checked_bytes")]
@@ -72,7 +71,7 @@ pub struct TorrentSnapshot {
     pub peer_stats: Option<serde_json::Value>,
 }
 
-/// Live stats for an active torrent (present when state is "live")
+/// Live stats for active torrents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveStats {
     pub snapshot: TorrentSnapshot,
@@ -86,7 +85,7 @@ pub struct LiveStats {
     pub time_remaining: Option<serde_json::Value>,
 }
 
-/// Response from getting torrent statistics (v1 endpoint)
+/// Response from torrent statistics endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentStats {
     pub state: String,
@@ -103,7 +102,7 @@ pub struct TorrentStats {
     pub live: Option<LiveStats>,
 }
 
-/// Response from adding a torrent
+/// Response from adding a torrent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddTorrentResponse {
     pub id: u64,
@@ -111,11 +110,7 @@ pub struct AddTorrentResponse {
     pub info_hash: String,
 }
 
-/// Result of listing torrents, including both successes and failures
-///
-/// This type allows callers to handle partial failures - some torrents may fail
-/// to load while others succeed. Use `is_partial()` to check if any failures
-/// occurred, and `has_successes()` to verify at least some torrents loaded.
+/// Result of listing torrents (handles partial failures).
 #[derive(Debug, Clone)]
 pub struct ListTorrentsResult {
     /// Successfully loaded torrents with full details
@@ -125,42 +120,38 @@ pub struct ListTorrentsResult {
 }
 
 impl ListTorrentsResult {
-    /// Returns true if there were any failures (partial result)
     pub fn is_partial(&self) -> bool {
         !self.errors.is_empty()
     }
 
-    /// Returns true if at least one torrent loaded successfully
     pub fn has_successes(&self) -> bool {
         !self.torrents.is_empty()
     }
 
-    /// Returns true if there are no successfully loaded torrents
     pub fn is_empty(&self) -> bool {
         self.torrents.is_empty()
     }
 
-    /// Returns the total number of torrents attempted (successes + failures)
     pub fn total_attempted(&self) -> usize {
         self.torrents.len() + self.errors.len()
     }
 }
 
-/// Request to add torrent from magnet link
+/// Request to add torrent from magnet link.
 #[derive(Debug, Clone, Serialize)]
 pub struct AddMagnetRequest {
     #[serde(rename = "magnet_link")]
     pub magnet_link: String,
 }
 
-/// Request to add torrent from URL
+/// Request to add torrent from URL.
 #[derive(Debug, Clone, Serialize)]
 pub struct AddTorrentUrlRequest {
     #[serde(rename = "torrent_link")]
     pub torrent_link: String,
 }
 
-/// Piece availability bitfield
+/// Piece availability bitfield.
 #[derive(Debug, Clone)]
 pub struct PieceBitfield {
     pub bits: Vec<u8>,
@@ -168,7 +159,6 @@ pub struct PieceBitfield {
 }
 
 impl PieceBitfield {
-    /// Check if a piece is downloaded
     pub fn has_piece(&self, piece_idx: usize) -> bool {
         if piece_idx >= self.num_pieces {
             return false;
@@ -182,25 +172,15 @@ impl PieceBitfield {
         }
     }
 
-    /// Count downloaded pieces
     pub fn downloaded_count(&self) -> usize {
         (0..self.num_pieces).filter(|&i| self.has_piece(i)).count()
     }
 
-    /// Check if all pieces are downloaded
     pub fn is_complete(&self) -> bool {
         self.downloaded_count() == self.num_pieces
     }
 
-    /// Check if all pieces in a given byte range are available
-    ///
-    /// # Arguments
-    /// * `offset` - Starting byte offset in the torrent
-    /// * `size` - Number of bytes to check
-    /// * `piece_length` - Size of each piece in bytes
-    ///
-    /// # Returns
-    /// `true` if all pieces covering the byte range are downloaded, `false` otherwise
+    /// Check if all pieces in a byte range are available.
     pub fn has_piece_range(&self, offset: u64, size: u64, piece_length: u64) -> bool {
         if size == 0 {
             return true;
@@ -225,24 +205,18 @@ impl PieceBitfield {
     }
 }
 
-/// Status of a torrent for monitoring
+/// Torrent state for monitoring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TorrentState {
-    /// Torrent is downloading
     Downloading,
-    /// Torrent is seeding (complete)
     Seeding,
-    /// Torrent is paused
     Paused,
-    /// Torrent appears stalled (no progress)
     Stalled,
-    /// Torrent has encountered an error
     Error,
-    /// Unknown state
     Unknown,
 }
 
-/// Comprehensive torrent status information
+/// Torrent status information.
 #[derive(Debug, Clone, Serialize)]
 pub struct TorrentStatus {
     pub torrent_id: u64,
@@ -364,7 +338,6 @@ mod tests {
 }
 
 impl TorrentStatus {
-    /// Create a new status from stats and bitfield
     pub fn new(torrent_id: u64, stats: &TorrentStats, bitfield: Option<&PieceBitfield>) -> Self {
         let progress_bytes = stats.progress_bytes;
         let total_bytes = stats.total_bytes;
@@ -407,12 +380,10 @@ impl TorrentStatus {
         }
     }
 
-    /// Check if the torrent is complete
     pub fn is_complete(&self) -> bool {
         self.state == TorrentState::Seeding || self.progress_pct >= 100.0
     }
 
-    /// Get status as a JSON string for xattr
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }

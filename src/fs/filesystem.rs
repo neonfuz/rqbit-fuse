@@ -676,21 +676,6 @@ impl TorrentFS {
             .with_context(|| format!("Failed to mount filesystem at: {}", mount_point.display()))
     }
 
-    /// Check if the requested data range has all pieces available.
-    /// Returns true if all pieces in the range are downloaded.
-    #[allow(dead_code)]
-    fn check_pieces_available(
-        &self,
-        _torrent_id: u64,
-        _offset: u64,
-        _size: u64,
-        _piece_length: u64,
-    ) -> bool {
-        // Status monitoring has been removed. Piece availability is checked
-        // directly via the API client's bitfield cache when needed.
-        false
-    }
-
     /// Builds FUSE mount options based on configuration.
     fn build_mount_options(&self) -> Vec<fuser::MountOption> {
         let mut options = vec![

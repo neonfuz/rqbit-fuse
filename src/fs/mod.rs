@@ -1,3 +1,5 @@
+//! FUSE filesystem implementation for torrent access.
+
 pub mod async_bridge;
 pub mod filesystem;
 pub mod inode;

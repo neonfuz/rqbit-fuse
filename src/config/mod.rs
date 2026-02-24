@@ -1,3 +1,5 @@
+//! Configuration management for CLI, environment variables, and config files.
+
 use crate::error::{RqbitFuseError, ValidationIssue};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -161,6 +163,11 @@ impl Config {
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
+            if val.is_empty() || !val.chars().all(|c| c.is_ascii_digit()) {
+                return Err(RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
+                ));
+            }
             self.performance.read_timeout = val.parse().map_err(|_| {
                 RqbitFuseError::InvalidArgument(
                     "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),

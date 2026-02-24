@@ -1,10 +1,4 @@
 //! Resource limit edge case tests
-//!
-//! Tests for resource exhaustion scenarios including:
-//! - Semaphore exhaustion (EDGE-047)
-//! - Stream/handle limits (EDGE-008)
-//! - Inode limits (EDGE-045)
-//! - Cache memory limits (EDGE-046)
 
 use std::sync::Arc;
 use std::time::Duration;
