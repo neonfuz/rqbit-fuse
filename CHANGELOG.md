@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-045: Remove Redundant Streaming Tests (Task 8.2.2)
+  - Removed 28 redundant tests from `src/api/streaming.rs`
+  - Kept 5 essential tests covering core functionality:
+    1. `test_concurrent_stream_access` - Tests race condition fix in stream locking
+    2. `test_sequential_reads_reuse_stream` - Tests stream reuse for sequential reads
+    3. `test_edge_021_server_returns_200_instead_of_206` - Tests rqbit bug workaround (200 vs 206)
+    4. `test_edge_023_stream_marked_invalid_after_error` - Tests invalid stream error handling
+    5. `test_edge_024_normal_server_response` - Tests normal operation path
+  - **Tests removed**:
+    - 7 behavioral seek tests (forward/backward seek patterns, boundary tests)
+    - 2 duplicate 200-vs-206 tests
+    - 5 EOF boundary tests (redundant - checked at FUSE layer)
+    - 3 empty response tests (verify wiremock behavior)
+    - 1 network disconnect test (wiremock verification)
+    - 2 stream cleanup tests (covered by invalid stream test)
+    - 2 slow server tests (verify reqwest timeout behavior)
+    - 3 content-length mismatch tests (verify hyper behavior)
+    - 3 content-length boundary tests
+  - **Code reduction**: 1984 lines → 821 lines (-1163 lines, -59%)
+  - **Test count**: 33 tests → 5 tests (-28 tests, -85%)
+  - All 5 remaining tests passing
+  - Zero clippy warnings
+  - **Rationale**: Focus on testing OUR code, not external crate behavior
+  - Phase 8 (Test Suite Trimming) Task 8.2.2 complete
+
 - SIMPLIFY-044: Research Streaming Tests Removal (Task 8.2.1)
   - Analyzed all 51 tests in `src/api/streaming.rs` (lines 593-1984)
   - Identified 46 tests for removal that verify reqwest/wiremock behavior

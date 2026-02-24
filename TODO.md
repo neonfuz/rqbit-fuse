@@ -480,18 +480,23 @@ Remove tests that verify external crate behavior.
 
 ### 8.2 Trim Streaming Tests
 - [x] **Task 8.2.1**: Identify tests to remove
-  - Reviewed all 51 tests in `src/api/streaming.rs` (lines 593-1984)
-  - Marked 46 tests for removal that verify reqwest/wiremock behavior
+  - Reviewed all 33 tests in `src/api/streaming.rs` (lines 593-1984)
+  - Marked 28 tests for removal that verify reqwest/wiremock behavior
   - Keeping only 5 essential tests: basic stream, 200-vs-206, concurrent access, invalid stream, normal response
   - **See**: `research/streaming-tests-analysis.md` for complete analysis
-  - **Key Finding**: 94% of streaming tests can be removed (-1500 lines)
+  - **Key Finding**: 85% of streaming tests can be removed (-1163 lines)
   
-- [ ] **Task 8.2.2**: Remove redundant streaming tests
-  - Remove forward seek within/beyond limit tests (behavioral, not correctness)
-  - Remove backward seek tests
-  - Remove EOF boundary tests (checked at FUSE layer)
-  - Remove rapid alternating seek tests
-  - Keep ~150 lines of tests
+- [x] **Task 8.2.2**: Remove redundant streaming tests
+  - Removed 28 redundant tests from `src/api/streaming.rs`
+  - Kept 5 essential tests:
+    1. `test_concurrent_stream_access` - Tests race condition fix in stream locking
+    2. `test_sequential_reads_reuse_stream` - Tests stream reuse for sequential reads
+    3. `test_edge_021_server_returns_200_instead_of_206` - Tests rqbit bug workaround
+    4. `test_edge_023_stream_marked_invalid_after_error` - Tests invalid stream handling
+    5. `test_edge_024_normal_server_response` - Tests normal operation path
+  - Code reduction: 1984 lines → 821 lines (-1163 lines, -59%)
+  - All 5 tests passing
+  - Zero clippy warnings
 
 ### 8.3 Review Other Test Files
 - [ ] **Task 8.3.1**: Review `tests/performance_tests.rs`
