@@ -37,7 +37,7 @@
 - [x] Simplify metrics section
   - Replace FuseMetrics/ApiMetrics with minimal Metrics struct
   - Remove ShardedCounter (no longer needed)
-- [ ] Update cache section
+- [x] Update cache section
   - Remove bitfield cache references
   - Simplify Cache struct (remove stats if removed)
 - [ ] Remove file handle state section

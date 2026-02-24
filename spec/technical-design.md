@@ -445,48 +445,6 @@ impl PersistentStreamManager {
 - Streaming response handling
 - Circuit breaker integration
 
-## Cache Implementation
-
-### Generic Cache (src/cache.rs)
-
-The actual implementation is a Moka-based generic LRU cache:
-
-```rust
-use moka::future::Cache;
-
-pub struct Cache<K, V> {
-    inner: Cache<K, Arc<V>>,
-    hits: AtomicU64,
-    misses: AtomicU64,
-}
-
-pub struct CacheStats {
-    pub hits: u64,
-    pub misses: u64,
-    pub evictions: u64,
-    pub expired: u64,
-    pub size: usize,
-}
-
-impl<K: Eq + std::hash::Hash + Clone, V: Clone> Cache<K, V> {
-    pub async fn get(&self, key: &K) -> Option<V>;
-    pub async fn insert(&self, key: K, value: V);
-    pub async fn remove(&self, key: &K) -> Option<V>;
-    pub async fn clear(&self);
-    pub async fn stats(&self) -> CacheStats;
-    pub fn contains_key(&self, key: &K) -> bool;
-    pub fn len(&self) -> usize;
-    pub fn is_empty(&self) -> bool;
-}
-```
-
-**Major Differences from Original Spec:**
-- Uses Moka crate instead of custom implementation
-- O(1) eviction via TinyLFU algorithm
-- Atomic capacity management (no race conditions)
-- Transparent TTL handling
-- Statistics tracking
-
 ## Error Mapping
 
 ### ApiError (src/api/types.rs)

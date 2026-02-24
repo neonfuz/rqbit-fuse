@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-009: Remove Cache Implementation section from technical-design.md (TODO.md Phase 1)
+  - Removed entire "Cache Implementation" section that documented non-existent code
+  - Deleted documentation for `Cache<K, V>` struct with stats tracking (hits, misses, evictions, expired, size)
+  - Deleted documentation for `CacheStats` struct
+  - Removed ~35 lines of outdated documentation for src/cache.rs (file doesn't exist)
+  - Cache functionality is handled directly in RqbitClient using moka crate (no separate cache module)
+  - Spec now accurately reflects actual implementation without documenting removed/never-implemented features
+
 - SPEC-008: Simplify metrics section in technical-design.md (TODO.md Phase 1)
   - Replaced FuseMetrics/ApiMetrics structs with minimal Metrics struct documentation
   - Removed ShardedCounter struct documentation (module doesn't exist)
