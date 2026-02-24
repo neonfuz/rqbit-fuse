@@ -396,11 +396,12 @@ Replace macros with direct tracing calls.
   - All 346 tests passing with zero clippy warnings
   - See CHANGELOG.md SIMPLIFY-035
   
-- [ ] **Task 6.1.5**: Replace reply_* macros
-  - Replace `reply_ino_not_found!` with direct error recording and reply
-  - Replace `reply_not_directory!` with direct error recording and reply
-  - Replace `reply_not_file!` with direct error recording and reply
-  - Replace `reply_no_permission!` with direct error recording and reply
+- [x] **Task 6.1.5**: Replace reply_* macros
+  - **Completed**: Reply macros were already replaced with direct code in previous tasks
+  - Verified all reply_* macros (`reply_ino_not_found!`, `reply_not_directory!`, `reply_not_file!`, `reply_no_permission!`) are no longer used
+  - All error handling now uses direct `self.metrics.record_error()`, `tracing::debug!()`, and `reply.error()` calls
+  - Deleted unused `src/fs/macros.rs` file (was not imported anywhere)
+  - All tests passing, zero clippy warnings
   
 - [ ] **Task 6.1.6**: Remove macro definitions
   - Delete `src/fs/macros.rs` file

@@ -5,9 +5,7 @@ use crate::config::Config;
 use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeEntry;
 use crate::fs::inode::InodeManager;
-use crate::fs::macros::{
-    fuse_error, reply_ino_not_found, reply_no_permission, reply_not_directory, reply_not_file,
-};
+
 use crate::metrics::Metrics;
 use crate::types::handle::FileHandleManager;
 use anyhow::{Context, Result};
@@ -849,12 +847,26 @@ impl Filesystem for TorrentFS {
                     ..
                 } => (torrent_id, file_index, size),
                 _ => {
-                    reply_not_file!(self.metrics, reply, "read", ino);
+                    self.metrics.record_error();
+                    tracing::debug!(
+                        fuse_op = "read",
+                        result = "error",
+                        error = "EISDIR",
+                        ino = ino
+                    );
+                    reply.error(libc::EISDIR);
                     return;
                 }
             },
             None => {
-                reply_ino_not_found!(self.metrics, reply, "read", ino);
+                self.metrics.record_error();
+                tracing::debug!(
+                    fuse_op = "read",
+                    result = "error",
+                    error = "ENOENT",
+                    ino = ino
+                );
+                reply.error(libc::ENOENT);
                 return;
             }
         };
@@ -1020,14 +1032,28 @@ impl Filesystem for TorrentFS {
         let parent_entry = match self.inode_manager.get(parent) {
             Some(entry) => entry,
             None => {
-                reply_ino_not_found!(self.metrics, reply, "lookup", parent);
+                self.metrics.record_error();
+                tracing::debug!(
+                    fuse_op = "lookup",
+                    result = "error",
+                    error = "ENOENT",
+                    ino = parent
+                );
+                reply.error(libc::ENOENT);
                 return;
             }
         };
 
         // Check if parent is a directory
         if !parent_entry.is_directory() {
-            reply_not_directory!(self.metrics, reply, "lookup", parent);
+            self.metrics.record_error();
+            tracing::debug!(
+                fuse_op = "lookup",
+                result = "error",
+                error = "ENOTDIR",
+                ino = parent
+            );
+            reply.error(libc::ENOTDIR);
             return;
         }
 
@@ -1154,7 +1180,14 @@ impl Filesystem for TorrentFS {
                 reply.attr(&ttl, &attr);
             }
             None => {
-                reply_ino_not_found!(self.metrics, reply, "getattr", ino);
+                self.metrics.record_error();
+                tracing::debug!(
+                    fuse_op = "getattr",
+                    result = "error",
+                    error = "ENOENT",
+                    ino = ino
+                );
+                reply.error(libc::ENOENT);
             }
         }
     }
@@ -1171,7 +1204,14 @@ impl Filesystem for TorrentFS {
             Some(entry) => {
                 // Check if it's a file (not a directory)
                 if entry.is_directory() {
-                    reply_not_file!(self.metrics, reply, "open", ino);
+                    self.metrics.record_error();
+                    tracing::debug!(
+                        fuse_op = "open",
+                        result = "error",
+                        error = "EISDIR",
+                        ino = ino
+                    );
+                    reply.error(libc::EISDIR);
                     return;
                 }
 
@@ -1186,13 +1226,15 @@ impl Filesystem for TorrentFS {
                 // Check write access - this is a read-only filesystem
                 let access_mode = flags & libc::O_ACCMODE;
                 if access_mode != libc::O_RDONLY {
-                    reply_no_permission!(
-                        self.metrics,
-                        reply,
-                        "open",
-                        ino,
-                        "write_access_requested"
+                    self.metrics.record_error();
+                    tracing::debug!(
+                        fuse_op = "open",
+                        result = "error",
+                        error = "EACCES",
+                        ino = ino,
+                        reason = "write_access_requested"
                     );
+                    reply.error(libc::EACCES);
                     return;
                 }
 
@@ -1219,7 +1261,14 @@ impl Filesystem for TorrentFS {
                 reply.opened(fh, 0);
             }
             None => {
-                reply_ino_not_found!(self.metrics, reply, "open", ino);
+                self.metrics.record_error();
+                tracing::debug!(
+                    fuse_op = "open",
+                    result = "error",
+                    error = "ENOENT",
+                    ino = ino
+                );
+                reply.error(libc::ENOENT);
             }
         }
     }
@@ -1240,7 +1289,14 @@ impl Filesystem for TorrentFS {
                 }
             }
             None => {
-                reply_ino_not_found!(self.metrics, reply, "readlink", ino);
+                self.metrics.record_error();
+                tracing::debug!(
+                    fuse_op = "readlink",
+                    result = "error",
+                    error = "ENOENT",
+                    ino = ino
+                );
+                reply.error(libc::ENOENT);
             }
         }
     }
@@ -1349,14 +1405,28 @@ impl Filesystem for TorrentFS {
         let entry = match self.inode_manager.get(ino) {
             Some(e) => e,
             None => {
-                reply_ino_not_found!(self.metrics, reply, "readdir", ino);
+                self.metrics.record_error();
+                tracing::debug!(
+                    fuse_op = "readdir",
+                    result = "error",
+                    error = "ENOENT",
+                    ino = ino
+                );
+                reply.error(libc::ENOENT);
                 return;
             }
         };
 
         // Check if it's a directory
         if !entry.is_directory() {
-            reply_not_directory!(self.metrics, reply, "readdir", ino);
+            self.metrics.record_error();
+            tracing::debug!(
+                fuse_op = "readdir",
+                result = "error",
+                error = "ENOTDIR",
+                ino = ino
+            );
+            reply.error(libc::ENOTDIR);
             return;
         }
 
