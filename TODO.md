@@ -29,7 +29,7 @@
 - [x] Simplify error mapping table
   - Reduce from 28 error types to 8
   - Update ApiError section to show simplified enum
-- [ ] Update configuration structures
+- [x] Update configuration structures
   - Replace Config struct with simplified version (6 fields)
   - Remove MonitoringConfig struct
   - Remove detailed LoggingConfig options

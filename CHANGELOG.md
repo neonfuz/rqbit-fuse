@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-007: Update configuration structures in technical-design.md (TODO.md Phase 1)
+  - Replaced complex Config struct documentation with simplified version (5 sub-configs)
+  - Removed MonitoringConfig struct documentation (already removed from code)
+  - Simplified CacheConfig: removed torrent_list_ttl and piece_ttl fields
+  - Simplified MountConfig: removed allow_other and auto_unmount fields
+  - Simplified PerformanceConfig: removed piece_check_enabled and return_eagain_for_unavailable
+  - Simplified LoggingConfig: removed log_fuse_operations, log_api_calls, metrics_enabled, metrics_interval_secs
+  - Updated all Default implementations to match actual code
+  - Added authentication fields (username, password) to ApiConfig documentation
+  - All changes to spec/technical-design.md only - code already simplified in prior tasks
+
 - SPEC-006: Simplify error mapping table in technical-design.md (TODO.md Phase 1)
   - Reduced ApiError enum from 13 variants to 8 essential variants
   - Simplified error types: NotFound, PermissionDenied, InvalidArgument, Timeout, NetworkError, ServiceUnavailable, IoError, InternalError

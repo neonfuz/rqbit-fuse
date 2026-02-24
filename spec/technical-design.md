@@ -564,105 +564,101 @@ impl ApiError {
 
 ### Config (src/config/mod.rs)
 
+Simplified configuration with essential fields only:
+
 ```rust
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     pub api: ApiConfig,
     pub cache: CacheConfig,
     pub mount: MountConfig,
     pub performance: PerformanceConfig,
-    pub monitoring: MonitoringConfig,    // Not in original spec
-    pub logging: LoggingConfig,          // Not in original spec
+    pub logging: LoggingConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiConfig {
     pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheConfig {
     pub metadata_ttl: u64,
-    pub torrent_list_ttl: u64,
-    pub piece_ttl: u64,
     pub max_entries: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MountConfig {
-    pub mount_point: PathBuf,    // Not in original spec
-    pub allow_other: bool,
-    pub auto_unmount: bool,
+    pub mount_point: PathBuf,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
     pub read_timeout: u64,
     pub max_concurrent_reads: usize,
     pub readahead_size: u64,
-    pub piece_check_enabled: bool,              // Not in original spec
-    pub return_eagain_for_unavailable: bool,    // Not in original spec
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct MonitoringConfig {     // Not in original spec
-    pub status_poll_interval: u64,
-    pub stalled_timeout: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LoggingConfig {        // Not in original spec
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
     pub level: String,
-    pub log_fuse_operations: bool,
-    pub log_api_calls: bool,
-    pub metrics_enabled: bool,
-    pub metrics_interval_secs: u64,
 }
 
-impl Default for Config {
+impl Default for ApiConfig {
     fn default() -> Self {
         Self {
-            api: ApiConfig {
-                url: "http://127.0.0.1:3030".to_string(),
-            },
-            cache: CacheConfig {
-                metadata_ttl: 60,
-                torrent_list_ttl: 30,
-                piece_ttl: 5,
-                max_entries: 1000,
-            },
-            mount: MountConfig {
-                mount_point: PathBuf::from("/mnt/torrents"),  // Default from code
-                allow_other: false,
-                auto_unmount: true,
-            },
-            performance: PerformanceConfig {
-                read_timeout: 30,
-                max_concurrent_reads: 10,
-                readahead_size: 33554432,
-                piece_check_enabled: true,
-                return_eagain_for_unavailable: false,
-            },
-            monitoring: MonitoringConfig {
-                status_poll_interval: 5,
-                stalled_timeout: 300,
-            },
-            logging: LoggingConfig {
-                level: "info".to_string(),
-                log_fuse_operations: true,
-                log_api_calls: true,
-                metrics_enabled: true,
-                metrics_interval_secs: 60,
-            },
+            url: "http://127.0.0.1:3030".to_string(),
+            username: None,
+            password: None,
+        }
+    }
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            metadata_ttl: 60,
+            max_entries: 1000,
+        }
+    }
+}
+
+impl Default for MountConfig {
+    fn default() -> Self {
+        Self {
+            mount_point: PathBuf::from("/mnt/torrents"),
+        }
+    }
+}
+
+impl Default for PerformanceConfig {
+    fn default() -> Self {
+        Self {
+            read_timeout: 30,
+            max_concurrent_reads: 10,
+            readahead_size: 33554432,
+        }
+    }
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
         }
     }
 }
 ```
 
-**Additions not in original spec:**
-- `monitoring` section with poll intervals
-- `logging` section with operation logging
-- Additional performance options
+**Simplified from original spec:**
+- Removed `MonitoringConfig` section
+- Removed `piece_ttl` and `torrent_list_ttl` from cache
+- Removed `allow_other` and `auto_unmount` from mount
+- Removed `piece_check_enabled` and `return_eagain_for_unavailable` from performance
+- Simplified `LoggingConfig` to only `level` field
+- Added optional authentication fields to `ApiConfig`
 
 ## API Client with Circuit Breaker
 
