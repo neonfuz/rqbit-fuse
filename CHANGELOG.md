@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-019: Simplify cache.md specification (TODO.md Phase 2)
+  - Reduced cache.md from 573 lines to ~30 lines (-95% reduction)
+  - Removed historical issues section (resolved by Moka migration)
+  - Removed detailed architecture documentation (no separate cache module exists)
+  - Removed CacheStats struct documentation (statistics tracking removed)
+  - Removed extensive API specification with 8 detailed method descriptions
+  - Removed testing strategy section (6 comprehensive test categories)
+  - Removed future enhancements section
+  - Simplified to essential configuration and interface documentation
+  - Reflects actual implementation: Moka-based caching in RqbitClient, no separate cache.rs module
+
 - SPEC-018: Simplify error-handling.md specification (TODO.md Phase 2)
   - Replaced 28+ error variants with 8 essential variants per enum:
     - ApiError: NotFound, Unavailable, Network, InvalidArgument, AccessDenied, AlreadyExists, Internal, RetryLimitExceeded

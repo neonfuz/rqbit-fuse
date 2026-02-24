@@ -78,8 +78,8 @@
 - [x] Simplify error handling flow
 
 ### cache.md
-- [ ] Simplify to reflect reduced cache implementation
-- [ ] Remove statistics tracking if removed
+- [x] Simplify to reflect reduced cache implementation
+- [x] Remove statistics tracking if removed
 
 ### testing.md
 - [ ] Remove tests for removed features
