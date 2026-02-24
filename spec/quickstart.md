@@ -153,36 +153,14 @@ fusermount -u ~/torrents
 Create config file at `~/.config/rqbit-fuse/config.toml`:
 
 ```toml
-[api]
-url = "http://127.0.0.1:3030"
+# rqbit-fuse configuration (6 essential fields)
 
-[cache]
+api_url = "http://127.0.0.1:3030"
+mount_point = "/mnt/torrents"
 metadata_ttl = 60
-torrent_list_ttl = 30
-piece_ttl = 5
 max_entries = 1000
-
-[mount]
-mount_point = "/mnt/torrents"  # Default is /mnt/torrents
-auto_unmount = true
-
-[performance]
 read_timeout = 30
-max_concurrent_reads = 10
-readahead_size = 33554432
-piece_check_enabled = true
-return_eagain_for_unavailable = false
-
-[monitoring]
-status_poll_interval = 5
-stalled_timeout = 300
-
-[logging]
-level = "info"
-log_fuse_operations = true
-log_api_calls = true
-metrics_enabled = true
-metrics_interval_secs = 60
+log_level = "info"
 ```
 
 ### Alternative Config Locations

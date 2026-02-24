@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-013: Simplify configuration examples in quickstart.md (TODO.md Phase 1)
+  - Reduced config.toml example from 32 fields across 7 sections to 6 essential fields
+  - Removed deprecated sections: [cache], [mount], [performance], [monitoring], [logging]
+  - Simplified to flat structure with: api_url, mount_point, metadata_ttl, max_entries, read_timeout, log_level
+  - Removed all environment variable overrides documentation for deleted config options
+  - Config documentation now matches actual simplified Config struct implementation
+
+### Changed
+
 - SPEC-012: Update status command output in quickstart.md (TODO.md Phase 1)
   - Removed filesystem/size/used/available from example output (lines 125-128)
   - Removed `--format json` option documentation (lines 131-134)

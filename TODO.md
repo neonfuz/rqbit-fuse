@@ -52,7 +52,7 @@
   - Remove filesystem/size/used/available from example output
   - Remove `--format json` option
   - Show simplified "MOUNTED"/"NOT MOUNTED" only
-- [ ] Simplify configuration examples
+- [x] Simplify configuration examples
   - Remove removed fields from config.toml example
   - Reduce to 6 essential fields
 - [ ] Update environment variables
