@@ -206,18 +206,12 @@
 // The primary types and functions intended for public use.
 
 pub mod api;
-pub mod cache;
 pub mod config;
 pub mod error;
 pub mod fs;
 pub mod metrics;
 pub mod mount;
 pub mod types;
-
-/// Cache module re-exports.
-///
-/// See [`cache`] module for more details.
-pub use cache::{Cache, CacheStats};
 
 /// Configuration module re-exports.
 ///

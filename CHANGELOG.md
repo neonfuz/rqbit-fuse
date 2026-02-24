@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-043: Remove Cache Module (Task 7.2.2)
+  - Deleted entire `src/cache.rs` file (~1214 lines including tests)
+  - Removed `pub mod cache;` declaration from `src/lib.rs` (line 209)
+  - Removed `pub use cache::{Cache, CacheStats};` export from `src/lib.rs` (lines 217-220)
+  - Removed cache-related tests from `tests/performance_tests.rs` (~430 lines)
+  - Kept only `test_read_operation_timeout` test (non-cache test)
+  - **Rationale**: Cache wrapper was DEAD CODE - never used in production
+  - **Research**: See `research/cache-wrapper-analysis.md` for complete analysis
+  - **Key Finding**: RqbitClient uses its own ad-hoc cache instead
+  - **Key Finding**: All 68 Cache usages were only in cache.rs tests
+  - **Code reduction**: -1214 lines (-22% of current codebase)
+  - **Compile time**: Faster (fewer dependencies analyzed)
+  - **Test time**: Faster (fewer tests to run)
+  - **Functionality**: None lost (module was completely unused)
+  - All tests passing with zero clippy warnings
+  - Phase 7 (Cache Layer Simplification) Tasks 7.1.3, 7.1.4, 7.2.1, 7.2.2 complete
+
 - SIMPLIFY-042: Remove Bitfield Cache Fields (Task 7.1.2)
   - Removed `TorrentStatusWithBitfield` struct from `src/api/client.rs` (lines 18-23)
   - Removed `status_bitfield_cache` field from `RqbitClient` struct
