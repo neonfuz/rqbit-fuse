@@ -198,12 +198,15 @@ Reduce configuration complexity and validation overhead.
 Reduce 28 error types to 8 essential types.
 
 ### 3.1 Research Error Usage Patterns
-- [ ] **Task 3.1.1**: Research - Document error type usage
+- [x] **Task 3.1.1**: Research - Document error type usage
   - Search for all usages of each RqbitFuseError variant
   - Group variants by how they're handled (mapped to errno)
   - Write findings to `research/error-usage-analysis.md`
   - Identify which variants can be merged
-  - Reference: "See research/error-usage-analysis.md"
+  - **See research/error-usage-analysis.md**
+  - **Key Finding**: 32 error variants can be consolidated to 8 essential variants (75% reduction)
+  - **Key Finding**: Only 11 distinct errno mappings needed
+  - **Categories**: NotFound, PermissionDenied, TimedOut, NetworkError, ApiError, IoError, InvalidArgument, NotReady, IsDirectory, NotDirectory
 
 ### 3.2 Consolidate Error Types
 - [ ] **Task 3.2.1**: Create simplified error enum

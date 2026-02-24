@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-026: Research Error Type Usage (Task 3.1.1)
+  - Analyzed all 32 `RqbitFuseError` variants across the codebase
+  - Documented usage patterns and errno mappings in `research/error-usage-analysis.md`
+  - Identified consolidation opportunities: 32 variants → 8 essential variants (75% reduction)
+  - Key findings:
+    - Not Found: 3 variants → 1 (NotFound with context string)
+    - Permission: 2 variants → 1 (PermissionDenied with context)
+    - Timeout: 3 variants → 1 (TimedOut with context)
+    - Network: 8 variants → 2 (NetworkError, ApiError)
+    - I/O: 2 variants → 1 (IoError)
+    - Validation: 4 variants → 2 (InvalidArgument, ValidationError)
+    - Resource: 3 variants → 1 (NotReady)
+    - State: 4 variants → 2 (RetryLimitExceeded→NotReady, SerializationError/ParseError→ParseError)
+    - Directory: 2 variants → keep both (different errno values)
+    - Filesystem: 1 variant → merge into PermissionDenied
+    - Data: 1 variant → merge into IoError
+  - errno mappings consolidated to 11 distinct groups
+  - Proposed simplified enum with 8 variants: NotFound, PermissionDenied, TimedOut, NetworkError, ApiError, IoError, InvalidArgument, NotReady, IsDirectory, NotDirectory
+  - Ready for Task 3.2.1: Create simplified error enum
+  - Location: `research/error-usage-analysis.md`
+
 - SIMPLIFY-025: Remove PerformanceConfig Env Vars (Task 2.3.2)
   - Removed environment variable parsing for performance-related fields:
     - `TORRENT_FUSE_MAX_CONCURRENT_READS` - no longer configurable via env var
