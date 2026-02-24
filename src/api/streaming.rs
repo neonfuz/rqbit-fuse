@@ -88,7 +88,7 @@ impl PersistentStream {
 
         // Check if we got a successful response
         if !status.is_success() && status != StatusCode::PARTIAL_CONTENT {
-            return Err(RqbitFuseError::HttpError(format!(
+            return Err(RqbitFuseError::IoError(format!(
                 "Failed to create stream: HTTP {}",
                 status
             ))

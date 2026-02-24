@@ -298,7 +298,7 @@ impl Config {
 
     pub fn from_file(path: &PathBuf) -> Result<Self, RqbitFuseError> {
         let content =
-            std::fs::read_to_string(path).map_err(|e| RqbitFuseError::ReadError(e.to_string()))?;
+            std::fs::read_to_string(path).map_err(|e| RqbitFuseError::IoError(e.to_string()))?;
 
         let ext = path
             .extension()
@@ -337,17 +337,23 @@ impl Config {
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_METADATA_TTL") {
             self.cache.metadata_ttl = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_METADATA_TTL has invalid format".into())
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_METADATA_TTL has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_ENTRIES") {
             self.cache.max_entries = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_MAX_ENTRIES has invalid format".into())
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_MAX_ENTRIES has invalid format".into(),
+                )
             })?;
         }
         if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
             self.performance.read_timeout = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_READ_TIMEOUT has invalid format".into())
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
+                )
             })?;
         }
 

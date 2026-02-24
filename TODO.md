@@ -209,27 +209,46 @@ Reduce 28 error types to 8 essential types.
   - **Categories**: NotFound, PermissionDenied, TimedOut, NetworkError, ApiError, IoError, InvalidArgument, NotReady, IsDirectory, NotDirectory
 
 ### 3.2 Consolidate Error Types
-- [ ] **Task 3.2.1**: Create simplified error enum
-  - Define new minimal RqbitFuseError with 8 variants
-  - Keep: NotFound, PermissionDenied, TimedOut, NetworkError(String), IoError(String), InvalidArgument, NotReady, Other(String)
-  - Remove all other 20 variants
-  
-- [ ] **Task 3.2.2**: Update error mappings
-  - Update `to_errno()` method for new variants
-  - Ensure all existing error mappings are preserved
-  - Update `is_transient()` method
-  - Update `is_server_unavailable()` method
-  
-- [ ] **Task 3.2.3**: Update error conversions
-  - Update `From<std::io::Error>` implementation
-  - Update `From<reqwest::Error>` implementation
-  - Update `From<serde_json::Error>` implementation
-  - Update `From<toml::de::Error>` implementation
-  
-- [ ] **Task 3.2.4**: Update all error usage sites
-  - Find and replace all usages of removed error variants
-  - Map old variants to appropriate new variants
-  - Update error messages to be user-friendly
+- [x] **Task 3.2.1**: Create simplified error enum in src/error.rs
+  - Define new minimal RqbitFuseError with 11 variants (see research/error-usage-analysis.md)
+  - New variants: NotFound(String), PermissionDenied(String), TimedOut(String), NetworkError(String), ApiError{status, message}, IoError(String), InvalidArgument(String), ValidationError(Vec<ValidationIssue>), NotReady(String), ParseError(String), IsDirectory, NotDirectory
+  - Update to_errno() method for new variants
+  - Update is_transient() method for new variants
+  - Update is_server_unavailable() method for new variants
+  - Update From<std::io::Error> implementation
+  - Update From<reqwest::Error> implementation
+  - Update From<serde_json::Error> implementation (merge with ParseError)
+  - Update From<toml::de::Error> implementation (merge with ParseError)
+  - Update tests to use new variants
+
+- [x] **Task 3.2.2**: Update error usage in src/config/mod.rs
+  - Replace RqbitFuseError::ReadError with IoError
+  - Replace RqbitFuseError::ParseError with ParseError
+  - Replace RqbitFuseError::InvalidValue with InvalidArgument
+
+- [x] **Task 3.2.3**: Update error usage in src/api/client.rs
+  - Replace ClientInitializationError with IoError
+  - Replace RetryLimitExceeded with NotReady
+  - Replace AuthenticationError with PermissionDenied
+  - Replace HttpError with IoError
+  - Replace TorrentNotFound with NotFound
+  - Replace FileNotFound with NotFound
+  - Replace InvalidRange with InvalidArgument
+  - Replace RequestCloneError with IoError
+  - Replace ServerDisconnected with NetworkError
+  - Replace ConnectionTimeout with TimedOut
+  - Replace ReadTimeout with TimedOut
+  - Replace CircuitBreakerOpen with NetworkError
+  - Replace ServiceUnavailable with NetworkError
+  - Update tests to use new variants
+
+- [x] **Task 3.2.4**: Update error usage in src/api/streaming.rs
+  - Replace HttpError with IoError
+
+- [x] **Task 3.2.5**: Update error usage in src/fs/async_bridge.rs
+  - Replace TimedOut (keep but use with String context if needed)
+  - Replace WorkerDisconnected with IoError
+  - Replace ChannelFull with IoError
 
 ---
 

@@ -333,21 +333,21 @@ impl AsyncFuseWorker {
                     Ok(response) => Ok(response),
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                         warn!("FUSE request timed out waiting for response");
-                        Err(RqbitFuseError::TimedOut)
+                        Err(RqbitFuseError::TimedOut("request timed out".to_string()))
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                         error!("Async worker disconnected while waiting for response");
-                        Err(RqbitFuseError::WorkerDisconnected)
+                        Err(RqbitFuseError::IoError("worker disconnected".to_string()))
                     }
                 }
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 warn!("FUSE request channel is full");
-                Err(RqbitFuseError::ChannelFull)
+                Err(RqbitFuseError::IoError("channel full".to_string()))
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 error!("Async worker channel is closed");
-                Err(RqbitFuseError::WorkerDisconnected)
+                Err(RqbitFuseError::IoError("worker disconnected".to_string()))
             }
         }
     }

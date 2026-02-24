@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-027: Simplify Error System (Tasks 3.2.1-3.2.5)
+  - Reduced `RqbitFuseError` from 32 variants to 11 essential variants (66% reduction)
+  - New simplified error enum in `src/error.rs`:
+    - `NotFound(String)` - consolidated from NotFound, TorrentNotFound, FileNotFound
+    - `PermissionDenied(String)` - consolidated from PermissionDenied, AuthenticationError
+    - `TimedOut(String)` - consolidated from TimedOut, ConnectionTimeout, ReadTimeout
+    - `NetworkError(String)` - consolidated from ServerDisconnected, NetworkError, ServiceUnavailable, CircuitBreakerOpen
+    - `ApiError { status: u16, message: String }` - kept for HTTP status mapping
+    - `IoError(String)` - consolidated from IoError, ReadError, HttpError, ClientInitializationError, RequestCloneError, ChannelFull, WorkerDisconnected, DataUnavailable
+    - `InvalidArgument(String)` - consolidated from InvalidArgument, InvalidRange, InvalidValue
+    - `ValidationError(Vec<ValidationIssue>)` - kept for config validation with multiple issues
+    - `NotReady(String)` - consolidated from NotReady, DeviceBusy, RetryLimitExceeded
+    - `ParseError(String)` - consolidated from SerializationError, ParseError
+    - `IsDirectory` and `NotDirectory` - kept separate (different errno values)
+  - Updated `to_errno()` method for simplified error mappings
+  - Updated `is_transient()` method - now only TimedOut, NetworkError, NotReady, and certain ApiError codes are transient
+  - Updated `is_server_unavailable()` method - now checks TimedOut and NetworkError
+  - Updated error conversions:
+    - `From<std::io::Error>` - maps to NotFound, PermissionDenied, TimedOut, InvalidArgument, or IoError
+    - `From<reqwest::Error>` - maps to TimedOut or NetworkError
+    - `From<serde_json::Error>` and `From<toml::de::Error>` - map to ParseError
+  - Updated all error usage sites across codebase:
+    - `src/config/mod.rs` - ReadError→IoError, ParseError→ParseError, InvalidValue→InvalidArgument
+    - `src/api/client.rs` - Updated all 20+ error usages and tests
+    - `src/api/streaming.rs` - HttpError→IoError
+    - `src/fs/async_bridge.rs` - WorkerDisconnected→IoError, ChannelFull→IoError, TimedOut with context
+  - Updated 50+ tests across the codebase to use new error variants
+  - All 346+ tests passing with zero clippy warnings
+  - Location: `src/error.rs`, `src/config/mod.rs`, `src/api/client.rs`, `src/api/streaming.rs`, `src/fs/async_bridge.rs`
+
 - SIMPLIFY-026: Research Error Type Usage (Task 3.1.1)
   - Analyzed all 32 `RqbitFuseError` variants across the codebase
   - Documented usage patterns and errno mappings in `research/error-usage-analysis.md`

@@ -76,15 +76,14 @@ impl RqbitClient {
         metrics: Arc<ApiMetrics>,
     ) -> Result<Self> {
         // Validate URL at construction time (fail fast on invalid URL)
-        let _ = reqwest::Url::parse(&base_url).map_err(|e| {
-            RqbitFuseError::ClientInitializationError(format!("Invalid URL: {}", e))
-        })?;
+        let _ = reqwest::Url::parse(&base_url)
+            .map_err(|e| RqbitFuseError::IoError(format!("Invalid URL: {}", e)))?;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(10)
             .build()
-            .map_err(|e| RqbitFuseError::ClientInitializationError(e.to_string()))?;
+            .map_err(|e| RqbitFuseError::IoError(format!("Failed to create HTTP client: {}", e)))?;
 
         let stream_manager = PersistentStreamManager::new(
             client.clone(),
@@ -224,7 +223,9 @@ impl RqbitClient {
             }
             None => {
                 // All retries exhausted with transient errors
-                let error = last_error.unwrap_or(RqbitFuseError::RetryLimitExceeded);
+                let error = last_error.unwrap_or_else(|| {
+                    RqbitFuseError::NotReady("Retry limit exceeded".to_string())
+                });
                 self.metrics.record_failure(endpoint, &error.to_string());
                 Err(error.into())
             }
@@ -239,7 +240,7 @@ impl RqbitClient {
             Ok(response)
         } else if status == StatusCode::UNAUTHORIZED {
             let message = response.text().await.unwrap_or_default();
-            Err(RqbitFuseError::AuthenticationError(format!(
+            Err(RqbitFuseError::PermissionDenied(format!(
                 "Authentication failed: {}",
                 if message.is_empty() {
                     "Invalid credentials".to_string()
@@ -377,7 +378,7 @@ impl RqbitClient {
                     let api_err = if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
                         api_err.clone()
                     } else {
-                        RqbitFuseError::HttpError(e.to_string())
+                        RqbitFuseError::IoError(e.to_string())
                     };
                     result
                         .errors
@@ -423,7 +424,7 @@ impl RqbitClient {
                 // Check if it's a 404 error from the API
                 if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
                     if matches!(api_err, RqbitFuseError::ApiError { status: 404, .. }) {
-                        return Err(RqbitFuseError::TorrentNotFound(id).into());
+                        return Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into());
                     }
                 }
                 Err(e)
@@ -495,7 +496,7 @@ impl RqbitClient {
                 // Check if it's a 404 error from the API
                 if let Some(api_err) = e.downcast_ref::<RqbitFuseError>() {
                     if matches!(api_err, RqbitFuseError::ApiError { status: 404, .. }) {
-                        return Err(RqbitFuseError::TorrentNotFound(id).into());
+                        return Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into());
                     }
                 }
                 Err(e)
@@ -523,7 +524,9 @@ impl RqbitClient {
             .await?;
 
         match response.status() {
-            StatusCode::NOT_FOUND => Err(RqbitFuseError::TorrentNotFound(id).into()),
+            StatusCode::NOT_FOUND => {
+                Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into())
+            }
             _ => {
                 let response = self.check_response(response).await?;
 
@@ -629,7 +632,7 @@ impl RqbitClient {
         }
         if piece_length == 0 {
             return Err(
-                RqbitFuseError::InvalidRange("piece_length cannot be zero".to_string()).into(),
+                RqbitFuseError::InvalidArgument("piece_length cannot be zero".to_string()).into(),
             );
         }
 
@@ -671,7 +674,7 @@ impl RqbitClient {
         // Add Range header if specified
         if let Some((start, end)) = range {
             if start > end {
-                return Err(RqbitFuseError::InvalidRange(format!(
+                return Err(RqbitFuseError::InvalidArgument(format!(
                     "Invalid range: start ({}) > end ({})",
                     start, end
                 ))
@@ -684,9 +687,9 @@ impl RqbitClient {
         // Handle request clone failure gracefully
         // First clone is validated; subsequent clones during retries are safe since
         // GET requests have no body and can always be cloned
-        let request = request.try_clone().ok_or_else(|| {
-            RqbitFuseError::RequestCloneError("Request body not cloneable".to_string())
-        })?;
+        let request = request
+            .try_clone()
+            .ok_or_else(|| RqbitFuseError::IoError("Request body not cloneable".to_string()))?;
 
         let response = self
             .execute_with_retry(&endpoint, move || {
@@ -697,10 +700,10 @@ impl RqbitClient {
             .await?;
 
         match response.status() {
-            StatusCode::NOT_FOUND => Err(RqbitFuseError::FileNotFound {
-                torrent_id,
-                file_idx,
-            }
+            StatusCode::NOT_FOUND => Err(RqbitFuseError::NotFound(format!(
+                "file {} in torrent {}",
+                file_idx, torrent_id
+            ))
             .into()),
             StatusCode::RANGE_NOT_SATISFIABLE => {
                 let message = match response.text().await {
@@ -713,7 +716,7 @@ impl RqbitClient {
                         .into());
                     }
                 };
-                Err(RqbitFuseError::InvalidRange(message).into())
+                Err(RqbitFuseError::InvalidArgument(message).into())
             }
             _ => {
                 let status = response.status();
@@ -864,7 +867,9 @@ impl RqbitClient {
             .await?;
 
         match response.status() {
-            StatusCode::NOT_FOUND => Err(RqbitFuseError::TorrentNotFound(id).into()),
+            StatusCode::NOT_FOUND => {
+                Err(RqbitFuseError::NotFound(format!("torrent {}", id)).into())
+            }
             _ => {
                 self.check_response(response).await?;
                 debug!(
@@ -963,7 +968,7 @@ impl RqbitClient {
             }
         }
 
-        Err(RqbitFuseError::ServerDisconnected.into())
+        Err(RqbitFuseError::NetworkError("Server disconnected".to_string()).into())
     }
 
     /// Clear the list_torrents cache (for integration tests).
@@ -1041,35 +1046,35 @@ mod tests {
     fn test_api_error_mapping() {
         use libc;
 
-        assert_eq!(RqbitFuseError::TorrentNotFound(1).to_errno(), libc::ENOENT);
-
+        // Test simplified NotFound error
         assert_eq!(
-            RqbitFuseError::FileNotFound {
-                torrent_id: 1,
-                file_idx: 0
-            }
-            .to_errno(),
+            RqbitFuseError::NotFound("torrent 1".to_string()).to_errno(),
             libc::ENOENT
         );
 
+        // Test simplified InvalidArgument error
         assert_eq!(
-            RqbitFuseError::InvalidRange("test".to_string()).to_errno(),
+            RqbitFuseError::InvalidArgument("test".to_string()).to_errno(),
             libc::EINVAL
         );
 
-        // Test new error mappings
-        assert_eq!(RqbitFuseError::ConnectionTimeout.to_errno(), libc::EAGAIN);
-        assert_eq!(RqbitFuseError::ReadTimeout.to_errno(), libc::EAGAIN);
+        // Test simplified TimedOut error
         assert_eq!(
-            RqbitFuseError::ServerDisconnected.to_errno(),
-            libc::ENOTCONN
+            RqbitFuseError::TimedOut("connection".to_string()).to_errno(),
+            libc::ETIMEDOUT
         );
+
+        // Test NetworkError mapping
         assert_eq!(
             RqbitFuseError::NetworkError("test".to_string()).to_errno(),
             libc::ENETUNREACH
         );
-        assert_eq!(RqbitFuseError::CircuitBreakerOpen.to_errno(), libc::EAGAIN);
-        assert_eq!(RqbitFuseError::RetryLimitExceeded.to_errno(), libc::EAGAIN);
+
+        // Test NotReady error (replaces CircuitBreakerOpen, RetryLimitExceeded)
+        assert_eq!(
+            RqbitFuseError::NotReady("retry limit".to_string()).to_errno(),
+            libc::EAGAIN
+        );
 
         // Test HTTP status code mappings
         assert_eq!(
@@ -1100,20 +1105,19 @@ mod tests {
 
     #[test]
     fn test_api_error_is_transient() {
-        assert!(RqbitFuseError::ConnectionTimeout.is_transient());
-        assert!(RqbitFuseError::ReadTimeout.is_transient());
-        assert!(RqbitFuseError::ServerDisconnected.is_transient());
+        // Test simplified transient errors
+        assert!(RqbitFuseError::TimedOut("connection".to_string()).is_transient());
         assert!(RqbitFuseError::NetworkError("test".to_string()).is_transient());
-        assert!(RqbitFuseError::CircuitBreakerOpen.is_transient());
-        assert!(RqbitFuseError::RetryLimitExceeded.is_transient());
+        assert!(RqbitFuseError::NotReady("retry limit".to_string()).is_transient());
         assert!(RqbitFuseError::ApiError {
             status: 503,
             message: "unavailable".to_string()
         }
         .is_transient());
 
-        assert!(!RqbitFuseError::TorrentNotFound(1).is_transient());
-        assert!(!RqbitFuseError::InvalidRange("test".to_string()).is_transient());
+        // Test non-transient errors
+        assert!(!RqbitFuseError::NotFound("test".to_string()).is_transient());
+        assert!(!RqbitFuseError::InvalidArgument("test".to_string()).is_transient());
         assert!(!RqbitFuseError::ApiError {
             status: 404,
             message: "not found".to_string()
@@ -1324,7 +1328,7 @@ mod tests {
         let result = client.get_torrent(999).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
-        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
+        assert!(matches!(err, RqbitFuseError::NotFound(ref msg) if msg.contains("999")));
     }
 
     #[tokio::test]
@@ -1554,10 +1558,7 @@ mod tests {
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
         assert!(matches!(
             err,
-            RqbitFuseError::FileNotFound {
-                torrent_id: 1,
-                file_idx: 99
-            }
+            RqbitFuseError::NotFound(ref msg) if msg.contains("99") && msg.contains("1")
         ));
     }
 
@@ -1577,7 +1578,7 @@ mod tests {
         let result = client.read_file(1, 0, Some((100, 200))).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
-        assert!(matches!(err, RqbitFuseError::InvalidRange(_)));
+        assert!(matches!(err, RqbitFuseError::InvalidArgument(_)));
     }
 
     #[tokio::test]
@@ -1610,7 +1611,7 @@ mod tests {
         let result = client.pause_torrent(999).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
-        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
+        assert!(matches!(err, RqbitFuseError::NotFound(ref msg) if msg.contains("999")));
     }
 
     #[tokio::test]
@@ -1643,7 +1644,7 @@ mod tests {
         let result = client.start_torrent(999).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
-        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
+        assert!(matches!(err, RqbitFuseError::NotFound(ref msg) if msg.contains("999")));
     }
 
     #[tokio::test]
@@ -1676,7 +1677,7 @@ mod tests {
         let result = client.forget_torrent(999).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
-        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
+        assert!(matches!(err, RqbitFuseError::NotFound(ref msg) if msg.contains("999")));
     }
 
     #[tokio::test]
@@ -1709,7 +1710,7 @@ mod tests {
         let result = client.delete_torrent(999).await;
         assert!(result.is_err());
         let err = result.unwrap_err().downcast::<RqbitFuseError>().unwrap();
-        assert!(matches!(err, RqbitFuseError::TorrentNotFound(999)));
+        assert!(matches!(err, RqbitFuseError::NotFound(ref msg) if msg.contains("999")));
     }
 
     #[tokio::test]
@@ -2203,9 +2204,8 @@ mod tests {
             matches!(
                 err,
                 RqbitFuseError::NetworkError(_)
-                    | RqbitFuseError::ServerDisconnected
-                    | RqbitFuseError::ConnectionTimeout
-                    | RqbitFuseError::HttpError(_)
+                    | RqbitFuseError::TimedOut(_)
+                    | RqbitFuseError::IoError(_)
             ),
             "Should get network/DNS error, got: {:?}",
             err
@@ -2222,49 +2222,23 @@ mod tests {
     /// Test that different timeout stages return appropriate error types
     #[tokio::test]
     async fn test_edge_038_timeout_error_types() {
-        // Test ConnectionTimeout error mapping
-        let conn_timeout_err = RqbitFuseError::ConnectionTimeout;
-        assert_eq!(conn_timeout_err.to_errno(), libc::EAGAIN);
-        assert!(conn_timeout_err.is_transient());
-        assert!(conn_timeout_err.is_server_unavailable());
-
-        // Test ReadTimeout error mapping
-        let read_timeout_err = RqbitFuseError::ReadTimeout;
-        assert_eq!(read_timeout_err.to_errno(), libc::EAGAIN);
-        assert!(read_timeout_err.is_transient());
-        assert!(!read_timeout_err.is_server_unavailable()); // Read timeout doesn't mean server unavailable
-
-        // Test TimedOut error mapping
-        let timed_out_err = RqbitFuseError::TimedOut;
+        // Test simplified TimedOut error mapping (replaces ConnectionTimeout and ReadTimeout)
+        let timed_out_err = RqbitFuseError::TimedOut("connection".to_string());
         assert_eq!(timed_out_err.to_errno(), libc::ETIMEDOUT);
-        assert!(!timed_out_err.is_transient()); // Generic timeout is not transient
+        assert!(timed_out_err.is_transient());
+        assert!(timed_out_err.is_server_unavailable());
     }
 
     // =========================================================================
     // EDGE-039: Connection Reset Tests
     // =========================================================================
 
-    /// Test that connection reset errors are converted to ServerDisconnected
+    /// Test that connection reset errors are converted to NetworkError
     /// and marked as transient for retry
     #[tokio::test]
     async fn test_edge_039_connection_reset_error_conversion() {
-        // Test that ServerDisconnected is transient and indicates server unavailable
-        let disconnected_err = RqbitFuseError::ServerDisconnected;
-        assert!(
-            disconnected_err.is_transient(),
-            "ServerDisconnected should be transient"
-        );
-        assert!(
-            disconnected_err.is_server_unavailable(),
-            "ServerDisconnected should indicate server unavailable"
-        );
-        assert_eq!(
-            disconnected_err.to_errno(),
-            libc::ENOTCONN,
-            "ServerDisconnected should map to ENOTCONN"
-        );
-
-        // Test NetworkError is also transient (for connection reset type errors)
+        // Test that NetworkError is transient and indicates server unavailable
+        // (replaces ServerDisconnected)
         let network_err = RqbitFuseError::NetworkError("connection reset by peer".to_string());
         assert!(
             network_err.is_transient(),
@@ -2369,8 +2343,8 @@ mod tests {
             matches!(
                 err,
                 RqbitFuseError::ApiError { status: 503, .. }
-                    | RqbitFuseError::ServiceUnavailable(_)
-                    | RqbitFuseError::RetryLimitExceeded
+                    | RqbitFuseError::NetworkError(_)
+                    | RqbitFuseError::NotReady(_)
             ),
             "Should get appropriate error after retries, got: {:?}",
             err
