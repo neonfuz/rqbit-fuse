@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-031: Remove Periodic Logging (Task 4.2.3)
+  - Removed `spawn_periodic_logging()` method (was never called)
+  - Removed `log_periodic()` method (was never called)
+  - Removed `log_full_summary()` method (was never called)
+  - Kept only simple `log_summary()` method called on shutdown
+  - Metrics system now has zero background tasks (reduced from 1 periodic logging task)
+  - No code changes required - methods were already removed in previous simplification
+  - All tests passing with zero clippy warnings
+
 - SIMPLIFY-030: Remove Metrics Recording Calls (Task 4.2.2)
   - Verified metrics system already uses only 4 essential counters
   - Fixed test compilation errors in src/api/client.rs (removed obsolete retry_count verification)

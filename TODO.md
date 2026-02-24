@@ -285,11 +285,13 @@ Replace 520 lines of metrics with 3 essential metrics.
   - **Note**: The simplified Metrics struct already only has record_read, record_error, record_cache_hit, record_cache_miss
   - **Note**: No calls to record_getattr, record_setattr, record_lookup, etc. exist in the codebase
   
-- [ ] **Task 4.2.3**: Remove periodic logging
-  - Remove `spawn_periodic_logging()` method
-  - Remove `log_periodic()` method
-  - Remove `log_full_summary()` method
-  - Keep only simple logging on shutdown if needed
+- [x] **Task 4.2.3**: Remove periodic logging
+  - Removed `spawn_periodic_logging()` method (was never called)
+  - Removed `log_periodic()` method (was never called)
+  - Removed `log_full_summary()` method (was never called)
+  - Kept only simple `log_summary()` method called on shutdown
+  - No code changes required - methods were already removed in previous simplification
+  - See CHANGELOG.md SIMPLIFY-031
   
 - [ ] **Task 4.2.4**: Update all metrics usages
   - Update `src/lib.rs` to use simplified metrics
