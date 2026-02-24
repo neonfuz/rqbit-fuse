@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-014: Update environment variables in quickstart.md (TODO.md Phase 1)
+  - Removed environment variables for deleted config options (13 removed)
+  - Kept only 6 essential environment variables: API_URL, MOUNT_POINT, METADATA_TTL, MAX_ENTRIES, READ_TIMEOUT, LOG_LEVEL
+  - Also kept AUTH_USERNAME and AUTH_PASSWORD for HTTP Basic Auth
+  - Removed: TORRENT_FUSE_TORRENT_LIST_TTL, TORRENT_FUSE_PIECE_TTL, TORRENT_FUSE_MAX_CONCURRENT_READS, TORRENT_FUSE_READAHEAD_SIZE, TORRENT_FUSE_ALLOW_OTHER, TORRENT_FUSE_AUTO_UNMOUNT, TORRENT_FUSE_STATUS_POLL_INTERVAL, TORRENT_FUSE_STALLED_TIMEOUT, TORRENT_FUSE_PIECE_CHECK_ENABLED, TORRENT_FUSE_RETURN_EAGAIN, TORRENT_FUSE_LOG_FUSE_OPS, TORRENT_FUSE_LOG_API_CALLS, TORRENT_FUSE_METRICS_ENABLED, TORRENT_FUSE_METRICS_INTERVAL
+  - Environment variables reduced from 22 to 8 (64% reduction)
+  - Documentation now matches simplified Config struct with 6 essential fields
+
 - SPEC-013: Simplify configuration examples in quickstart.md (TODO.md Phase 1)
   - Reduced config.toml example from 32 fields across 7 sections to 6 essential fields
   - Removed deprecated sections: [cache], [mount], [performance], [monitoring], [logging]

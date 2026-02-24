@@ -55,7 +55,7 @@
 - [x] Simplify configuration examples
   - Remove removed fields from config.toml example
   - Reduce to 6 essential fields
-- [ ] Update environment variables
+- [x] Update environment variables
   - Remove variables for deleted config options
   - Keep only: API_URL, MOUNT_POINT, METADATA_TTL, MAX_ENTRIES, READ_TIMEOUT, LOG_LEVEL
 - [ ] Update CLI reference
