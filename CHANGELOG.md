@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-015: Update CLI reference in quickstart.md (TODO.md Phase 1)
+  - Removed `--allow-other` and `--auto-unmount` mount options from documentation (lines 197-198)
+  - Removed `--format <FORMAT>` option from status command documentation (lines 232-234)
+  - Removed environment variables for deleted mount options: TORRENT_FUSE_ALLOW_OTHER, TORRENT_FUSE_AUTO_UNMOUNT
+  - Removed `--format json` usage example from troubleshooting section (lines 359-360)
+  - Updated status command examples to show simplified text-only output
+  - Spec documentation now matches simplified CLI implementation
+
 - SPEC-014: Update environment variables in quickstart.md (TODO.md Phase 1)
   - Removed environment variables for deleted config options (13 removed)
   - Kept only 6 essential environment variables: API_URL, MOUNT_POINT, METADATA_TTL, MAX_ENTRIES, READ_TIMEOUT, LOG_LEVEL

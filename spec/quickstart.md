@@ -179,8 +179,6 @@ All config options can be overridden via environment variables:
 - `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries
 - `TORRENT_FUSE_READ_TIMEOUT` - HTTP read timeout in seconds
 - `TORRENT_FUSE_LOG_LEVEL` - Log level (error, warn, info, debug, trace)
-- `TORRENT_FUSE_AUTH_USERNAME` - HTTP Basic Auth username
-- `TORRENT_FUSE_AUTH_PASSWORD` - HTTP Basic Auth password
 
 ## Command Reference
 
@@ -194,8 +192,6 @@ Options:
   -c, --config <FILE>        Config file path
   -v, --verbose              Increase verbosity (repeatable: INFO -> DEBUG -> TRACE)
   -q, --quiet                Suppress output except errors
-      --allow-other          Allow other users to access the mount [env: TORRENT_FUSE_ALLOW_OTHER]
-      --auto-unmount         Auto-unmount on process exit [env: TORRENT_FUSE_AUTO_UNMOUNT]
       --username <USER>      rqbit API username for HTTP Basic Auth [env: TORRENT_FUSE_AUTH_USERNAME]
       --password <PASS>      rqbit API password for HTTP Basic Auth [env: TORRENT_FUSE_AUTH_PASSWORD]
 ```
@@ -230,7 +226,9 @@ Options:
 rqbit-fuse status [OPTIONS]
 
 Options:
-      --format <FORMAT>  Output format [default: text] [possible values: text, json]
+  -c, --config <FILE>    Config file path
+  -v, --verbose          Increase verbosity
+  -q, --quiet            Suppress output except errors
 ```
 
 **Not Implemented (documented but not available):**
@@ -354,9 +352,6 @@ rqbit-fuse mount -m ~/torrents -q
 ```bash
 # View current configuration
 rqbit-fuse status
-
-# View with all settings
-rqbit-fuse status --format json | jq
 ```
 
 ## Performance Tips
