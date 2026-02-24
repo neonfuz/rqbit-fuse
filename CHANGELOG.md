@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-028: Research Metrics Usage (Task 4.1.1)
+  - Analyzed 520 lines of metrics code in `src/metrics.rs`
+  - Documented all metrics recording calls across the codebase
+  - Key findings:
+    - Only 4 out of 25 metrics provide actual value
+    - Essential metrics: bytes_read, error_count, cache_hits, cache_misses
+    - 21 metrics are either never recorded or provide redundant information
+    - CacheMetrics is created but never populated (Cache has internal stats)
+    - Operation counters (getattr, lookup, etc.) only used for trace logging
+    - API metrics add overhead without operational value
+    - Circuit breaker metrics never recorded despite methods existing
+  - Recording call sites analyzed:
+    - FuseMetrics: 24 calls across filesystem.rs, async_bridge.rs
+    - ApiMetrics: 7 calls in client.rs
+    - CacheMetrics: 0 calls (never used)
+  - Proposed reduction: 520 lines → ~50 lines (-90%)
+  - Location: `research/metrics-usage-analysis.md`
+
 - SIMPLIFY-027: Simplify Error System (Tasks 3.2.1-3.2.5)
   - Reduced `RqbitFuseError` from 32 variants to 11 essential variants (66% reduction)
   - New simplified error enum in `src/error.rs`:

@@ -257,12 +257,15 @@ Reduce 28 error types to 8 essential types.
 Replace 520 lines of metrics with 3 essential metrics.
 
 ### 4.1 Research Metrics Usage
-- [ ] **Task 4.1.1**: Research - Document metrics usage
+- [x] **Task 4.1.1**: Research - Document metrics usage
   - Search for all calls to metrics recording methods
   - Identify which metrics are actually logged/displayed
   - Write findings to `research/metrics-usage-analysis.md`
   - Determine which 3 metrics are most valuable
-  - Reference: "See research/metrics-usage-analysis.md"
+  - **Reference**: `research/metrics-usage-analysis.md`
+  - **Key Finding**: Only 4 metrics provide value: bytes_read, error_count, cache_hits, cache_misses
+  - **Key Finding**: 520 lines of metrics code can be reduced to ~50 lines (-90%)
+  - **Key Finding**: CacheMetrics is never populated - Cache has its own internal stats
 
 ### 4.2 Simplify Metrics System
 - [ ] **Task 4.2.1**: Create minimal metrics struct
