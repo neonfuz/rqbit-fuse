@@ -195,9 +195,7 @@ impl InodeManager {
 fn init(&mut self, _req: &Request, _config: &mut KernelConfig) -> Result<(), c_int> {
     // 1. Validates mount point
     // 2. Checks root inode exists
-    // 3. Starts background status monitoring task
-    // 4. Starts background torrent discovery task
-    // 5. Does NOT load torrents immediately (done lazily by discovery task)
+    // 3. Does NOT load torrents immediately (done lazily on first readdir)
 }
 ```
 
@@ -352,15 +350,6 @@ fn read(
             let result = self.runtime.block_on(async {
                 let timeout = Duration::from_secs(self.config.performance.read_timeout);
                 match tokio::time::timeout(timeout, async {
-                    // Check piece availability if enabled
-                    if self.config.performance.piece_check_enabled {
-                        if let Err(e) = self.check_piece_availability(torrent_id, file_index, offset, read_size).await {
-                            if self.config.performance.return_eagain_for_unavailable {
-                                return Err(libc::EAGAIN);
-                            }
-                        }
-                    }
-                    
                     // Read with persistent streaming
                     self.api_client.read_file_streaming(
                         torrent_id,
@@ -377,8 +366,6 @@ fn read(
             
             match result {
                 Ok(data) => {
-                    // Track read for prefetching
-                    self.track_and_prefetch(torrent_id, file_index, offset, read_size);
                     reply.data(&data);
                 }
                 Err(err) => {
@@ -395,10 +382,8 @@ fn read(
 
 **Major Differences from Spec:**
 1. Uses `read_file_streaming()` with persistent connections (not simple retry)
-2. Implements read-ahead/prefetching with `track_and_prefetch()`
-3. Piece availability checking with EAGAIN option
-4. Clamps read size to 64KB (FUSE_MAX_READ)
-5. Uses `tokio::time::timeout` for timeout handling
+2. Clamps read size to 64KB (FUSE_MAX_READ)
+3. Uses `tokio::time::timeout` for timeout handling
 
 ## HTTP Read Implementation
 

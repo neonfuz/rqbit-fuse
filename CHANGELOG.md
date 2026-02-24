@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SPEC-005: Update FUSE callbacks section in technical-design.md (TODO.md Phase 1)
+  - Removed `track_and_prefetch()` call from read() function description (line 381)
+  - Removed piece availability checking with EAGAIN option from read() (lines 355-362)
+  - Updated init() to remove background monitoring task mentions (line 198)
+  - Simplified "Major Differences from Spec" section to remove references to removed features
+  - All changes to spec/technical-design.md only - code already simplified in prior tasks
+  - Keeps spec documentation aligned with actual simplified implementation
+
 - SPEC-004: Remove background tasks section from architecture.md (TODO.md Phase 1)
   - Removed "5. **Background tasks**:" section from Performance Considerations
   - Removed "Torrent discovery" bullet point from background tasks section

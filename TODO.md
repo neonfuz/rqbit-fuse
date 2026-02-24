@@ -22,7 +22,7 @@
   - Keep only torrent discovery
 
 ### technical-design.md
-- [ ] Update FUSE callbacks section
+- [x] Update FUSE callbacks section
   - Remove `track_and_prefetch()` from read() description
   - Remove piece availability checking with EAGAIN option
   - Update init() to remove background monitoring task
