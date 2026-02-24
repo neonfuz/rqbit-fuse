@@ -873,12 +873,12 @@ impl Filesystem for TorrentFS {
         // Clamp read size to FUSE maximum to prevent "Too much data" panic
         let size = std::cmp::min(size, Self::FUSE_MAX_READ);
 
-        fuse_log!(self, "read", fh = fh, offset = offset, size = size);
+        fuse_log!("read", fh = fh, offset = offset, size = size);
 
         // Validate offset is non-negative
         if offset < 0 {
             self.metrics.fuse.record_error();
-            fuse_error!(self, "read", "EINVAL", reason = "negative_offset");
+            fuse_error!("read", "EINVAL", reason = "negative_offset");
             reply.error(libc::EINVAL);
             return;
         }
@@ -890,13 +890,7 @@ impl Filesystem for TorrentFS {
             Some(inode) => inode,
             None => {
                 self.metrics.fuse.record_error();
-                fuse_error!(
-                    self,
-                    "read",
-                    "EBADF",
-                    fh = fh,
-                    reason = "invalid_file_handle"
-                );
+                fuse_error!("read", "EBADF", fh = fh, reason = "invalid_file_handle");
                 reply.error(libc::EBADF);
                 return;
             }
@@ -912,12 +906,12 @@ impl Filesystem for TorrentFS {
                     ..
                 } => (torrent_id, file_index, size),
                 _ => {
-                    reply_not_file!(self, reply, "read", ino);
+                    reply_not_file!(self.metrics, reply, "read", ino);
                     return;
                 }
             },
             None => {
-                reply_ino_not_found!(self, reply, "read", ino);
+                reply_ino_not_found!(self.metrics, reply, "read", ino);
                 return;
             }
         };
@@ -925,7 +919,6 @@ impl Filesystem for TorrentFS {
         // Handle zero-byte reads
         if size == 0 || offset >= file_size {
             fuse_ok!(
-                self,
                 "read",
                 fh = fh,
                 ino = ino,
@@ -941,7 +934,6 @@ impl Filesystem for TorrentFS {
         let end = std::cmp::min(offset + size as u64, file_size).saturating_sub(1);
 
         fuse_log!(
-            self,
             "read",
             fh = fh,
             ino = ino,
@@ -981,19 +973,7 @@ impl Filesystem for TorrentFS {
                     );
                 }
 
-                if self.config.logging.log_fuse_operations {
-                    debug!(
-                        fuse_op = "read",
-                        fh = fh,
-                        ino = ino,
-                        torrent_id = torrent_id,
-                        latency_ms = latency.as_millis() as u64,
-                        "Slow read detected"
-                    );
-                }
-
                 fuse_ok!(
-                    self,
                     "read",
                     fh = fh,
                     ino = ino,
@@ -1057,7 +1037,7 @@ impl Filesystem for TorrentFS {
 
         // Clean up the file handle
         if let Some(handle) = self.file_handles.remove(fh) {
-            fuse_ok!(self, "release", fh = fh, ino = handle.inode);
+            fuse_ok!("release", fh = fh, ino = handle.inode);
         } else {
             warn!(
                 fuse_op = "release",
@@ -1084,20 +1064,20 @@ impl Filesystem for TorrentFS {
 
         let name_str = name.to_string_lossy();
 
-        fuse_log!(self, "lookup", parent = parent, name = name_str.to_string());
+        fuse_log!("lookup", parent = parent, name = name_str.to_string());
 
         // Get the parent directory entry
         let parent_entry = match self.inode_manager.get(parent) {
             Some(entry) => entry,
             None => {
-                reply_ino_not_found!(self, reply, "lookup", parent);
+                reply_ino_not_found!(self.metrics, reply, "lookup", parent);
                 return;
             }
         };
 
         // Check if parent is a directory
         if !parent_entry.is_directory() {
-            reply_not_directory!(self, reply, "lookup", parent);
+            reply_not_directory!(self.metrics, reply, "lookup", parent);
             return;
         }
 
@@ -1120,7 +1100,6 @@ impl Filesystem for TorrentFS {
                 let attr = self.build_file_attr(&entry);
                 reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
                 fuse_ok!(
-                    self,
                     "lookup",
                     parent = parent,
                     name = name_str.to_string(),
@@ -1167,7 +1146,6 @@ impl Filesystem for TorrentFS {
                         let attr = self.build_file_attr(&entry);
                         reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
                         fuse_ok!(
-                            self,
                             "lookup",
                             parent = parent,
                             name = name_str.to_string(),
@@ -1191,7 +1169,6 @@ impl Filesystem for TorrentFS {
             }
             None => {
                 fuse_log!(
-                    self,
                     "lookup",
                     parent = parent,
                     name = name_str.to_string(),
@@ -1209,7 +1186,7 @@ impl Filesystem for TorrentFS {
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         self.metrics.fuse.record_getattr();
 
-        fuse_log!(self, "getattr", ino = ino);
+        fuse_log!("getattr", ino = ino);
 
         // Get the inode entry
         match self.inode_manager.get(ino) {
@@ -1218,7 +1195,6 @@ impl Filesystem for TorrentFS {
                 let ttl = std::time::Duration::from_secs(1);
 
                 fuse_ok!(
-                    self,
                     "getattr",
                     ino = ino,
                     kind = format!("{:?}", attr.kind),
@@ -1227,7 +1203,7 @@ impl Filesystem for TorrentFS {
                 reply.attr(&ttl, &attr);
             }
             None => {
-                reply_ino_not_found!(self, reply, "getattr", ino);
+                reply_ino_not_found!(self.metrics, reply, "getattr", ino);
             }
         }
     }
@@ -1239,21 +1215,21 @@ impl Filesystem for TorrentFS {
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         self.metrics.fuse.record_open();
 
-        fuse_log!(self, "open", ino = ino, flags = flags);
+        fuse_log!("open", ino = ino, flags = flags);
 
         // Check if the inode exists
         match self.inode_manager.get(ino) {
             Some(entry) => {
                 // Check if it's a file (not a directory)
                 if entry.is_directory() {
-                    reply_not_file!(self, reply, "open", ino);
+                    reply_not_file!(self.metrics, reply, "open", ino);
                     return;
                 }
 
                 // Check if it's a symlink (symlinks should be resolved before open)
                 if entry.is_symlink() {
                     self.metrics.fuse.record_error();
-                    fuse_error!(self, "open", "ELOOP");
+                    fuse_error!("open", "ELOOP");
                     reply.error(libc::ELOOP);
                     return;
                 }
@@ -1261,7 +1237,13 @@ impl Filesystem for TorrentFS {
                 // Check write access - this is a read-only filesystem
                 let access_mode = flags & libc::O_ACCMODE;
                 if access_mode != libc::O_RDONLY {
-                    reply_no_permission!(self, reply, "open", ino, "write_access_requested");
+                    reply_no_permission!(
+                        self.metrics,
+                        reply,
+                        "open",
+                        ino,
+                        "write_access_requested"
+                    );
                     return;
                 }
 
@@ -1274,16 +1256,16 @@ impl Filesystem for TorrentFS {
                 // Check if handle allocation failed (limit reached)
                 if fh == 0 {
                     self.metrics.fuse.record_error();
-                    fuse_error!(self, "open", "EMFILE", reason = "handle_limit_reached");
+                    fuse_error!("open", "EMFILE", reason = "handle_limit_reached");
                     reply.error(libc::EMFILE);
                     return;
                 }
 
-                fuse_ok!(self, "open", ino = ino, fh = fh);
+                fuse_ok!("open", ino = ino, fh = fh);
                 reply.opened(fh, 0);
             }
             None => {
-                reply_ino_not_found!(self, reply, "open", ino);
+                reply_ino_not_found!(self.metrics, reply, "open", ino);
             }
         }
     }
@@ -1304,7 +1286,7 @@ impl Filesystem for TorrentFS {
                 }
             }
             None => {
-                reply_ino_not_found!(self, reply, "readlink", ino);
+                reply_ino_not_found!(self.metrics, reply, "readlink", ino);
             }
         }
     }
@@ -1323,7 +1305,7 @@ impl Filesystem for TorrentFS {
     ) {
         self.metrics.fuse.record_readdir();
 
-        fuse_log!(self, "readdir", ino = ino, offset = offset);
+        fuse_log!("readdir", ino = ino, offset = offset);
 
         // Trigger torrent discovery when listing root directory (with cooldown)
         if ino == 1 {
@@ -1417,14 +1399,14 @@ impl Filesystem for TorrentFS {
         let entry = match self.inode_manager.get(ino) {
             Some(e) => e,
             None => {
-                reply_ino_not_found!(self, reply, "readdir", ino);
+                reply_ino_not_found!(self.metrics, reply, "readdir", ino);
                 return;
             }
         };
 
         // Check if it's a directory
         if !entry.is_directory() {
-            reply_not_directory!(self, reply, "readdir", ino);
+            reply_not_directory!(self.metrics, reply, "readdir", ino);
             return;
         }
 

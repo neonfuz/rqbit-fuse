@@ -69,14 +69,6 @@ use std::path::PathBuf;
 /// [logging]
 /// # Log level: error, warn, info, debug, trace
 /// level = "info"
-/// # Log all FUSE operations
-/// log_fuse_operations = true
-/// # Log all API calls to rqbit
-/// log_api_calls = true
-/// # Enable metrics collection and logging
-/// metrics_enabled = true
-/// # Interval between metrics logs (seconds)
-/// metrics_interval_secs = 60
 /// ```
 ///
 /// ## Complete JSON Configuration Example
@@ -103,11 +95,7 @@ use std::path::PathBuf;
 ///     "readahead_size": 33554432
 ///   },
 ///   "logging": {
-///     "level": "info",
-///     "log_fuse_operations": true,
-///     "log_api_calls": true,
-///     "metrics_enabled": true,
-///     "metrics_interval_secs": 60
+///     "level": "info"
 ///   }
 /// }
 /// ```
@@ -255,33 +243,21 @@ pub struct PerformanceConfig {
     pub readahead_size: u64,
 }
 
-/// Configuration for logging and metrics output.
+/// Configuration for logging output.
 ///
-/// Controls log verbosity, operation logging, and metrics collection.
+/// Controls log verbosity.
 ///
 /// # Fields
 ///
 /// * `level` - Log level: error, warn, info, debug, or trace (default: "info")
-/// * `log_fuse_operations` - Log all FUSE operations (default: true)
-/// * `log_api_calls` - Log all API calls to rqbit (default: true)
-/// * `metrics_enabled` - Enable metrics collection and logging (default: true)
-/// * `metrics_interval_secs` - Interval between metrics logs in seconds (default: 60)
 ///
 /// # Environment Variables
 ///
 /// - `TORRENT_FUSE_LOG_LEVEL` - Log level (error|warn|info|debug|trace)
-/// - `TORRENT_FUSE_LOG_FUSE_OPS` - Boolean to enable FUSE operation logging
-/// - `TORRENT_FUSE_LOG_API_CALLS` - Boolean to enable API call logging
-/// - `TORRENT_FUSE_METRICS_ENABLED` - Boolean to enable metrics
-/// - `TORRENT_FUSE_METRICS_INTERVAL` - Metrics log interval in seconds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
     pub level: String,
-    pub log_fuse_operations: bool,
-    pub log_api_calls: bool,
-    pub metrics_enabled: bool,
-    pub metrics_interval_secs: u64,
 }
 
 /// Configuration for resource limits.
@@ -350,10 +326,6 @@ impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             level: "info".to_string(),
-            log_fuse_operations: true,
-            log_api_calls: true,
-            metrics_enabled: true,
-            metrics_interval_secs: 60,
         }
     }
 }
@@ -456,30 +428,6 @@ impl Config {
 
         if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
             self.logging.level = val;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_FUSE_OPS") {
-            self.logging.log_fuse_operations = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_LOG_FUSE_OPS has invalid format".into())
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_API_CALLS") {
-            self.logging.log_api_calls = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue("TORRENT_FUSE_LOG_API_CALLS has invalid format".into())
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_METRICS_ENABLED") {
-            self.logging.metrics_enabled = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_METRICS_ENABLED has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_METRICS_INTERVAL") {
-            self.logging.metrics_interval_secs = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidValue(
-                    "TORRENT_FUSE_METRICS_INTERVAL has invalid format".into(),
-                )
-            })?;
         }
 
         // Resource limits
@@ -857,13 +805,5 @@ url = "http://localhost:8083"
             config.logging.level = level.to_string();
             assert!(config.validate().is_ok(), "Level {} should be valid", level);
         }
-    }
-
-    #[test]
-    fn test_validate_metrics_disabled_no_interval_required() {
-        let mut config = Config::default();
-        config.logging.metrics_enabled = false;
-        config.logging.metrics_interval_secs = 0;
-        assert!(config.validate().is_ok());
     }
 }

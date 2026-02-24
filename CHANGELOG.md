@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-022: Remove LoggingConfig Options (Task 2.2.5)
+  - Removed 4 fields from `LoggingConfig` struct in `src/config/mod.rs`:
+    - `log_fuse_operations` - now always logs FUSE operations at debug level
+    - `log_api_calls` - now always logs API calls at debug level (field was unused)
+    - `metrics_enabled` - metrics system being removed in Phase 4
+    - `metrics_interval_secs` - metrics system being removed in Phase 4
+  - Simplified `LoggingConfig` to single field: `level`
+  - Removed environment variable parsing for:
+    - `TORRENT_FUSE_LOG_FUSE_OPS`
+    - `TORRENT_FUSE_LOG_API_CALLS`
+    - `TORRENT_FUSE_METRICS_ENABLED`
+    - `TORRENT_FUSE_METRICS_INTERVAL`
+  - Updated `src/fs/macros.rs`:
+    - Removed `log_fuse_operations` check from `fuse_log!`, `fuse_error!`, `fuse_ok!` macros
+    - Macros now always log at debug level (tracing handles filtering)
+    - Updated `reply_*` macros to take `metrics` parameter explicitly instead of `self`
+  - Updated `src/fs/filesystem.rs`:
+    - Removed all `self` parameters from macro calls
+    - Removed manual `log_fuse_operations` check for slow read logging
+    - Updated all `reply_*` macro calls to pass `self.metrics`
+  - Updated documentation and examples in `src/config/mod.rs`:
+    - Removed 4 fields from TOML configuration example
+    - Removed 4 fields from JSON configuration example
+    - Removed environment variable documentation for removed fields
+    - Simplified LoggingConfig struct documentation
+  - Removed obsolete test `test_validate_metrics_disabled_no_interval_required`
+  - Reduced LoggingConfig from 5 fields to 1 field (80% reduction)
+  - Environment variables reduced from 18 to 14 (22% reduction in this step)
+  - All 346+ tests passing with zero clippy warnings
+  - Location: `src/config/mod.rs`, `src/fs/macros.rs`, `src/fs/filesystem.rs`
+
 - SIMPLIFY-021: Remove MonitoringConfig (Task 2.2.4)
   - Removed entire `MonitoringConfig` struct from `src/config/mod.rs`
   - Removed 2 fields: `status_poll_interval` and `stalled_timeout`
