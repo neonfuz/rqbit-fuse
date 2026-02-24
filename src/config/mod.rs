@@ -2,167 +2,22 @@ use crate::error::{RqbitFuseError, ValidationIssue};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Main configuration container for rqbit-fuse.
-///
-/// Combines all configuration sections (API, cache, mount, performance, logging)
-/// into a single struct that can be loaded from files, environment variables, or CLI arguments.
-///
-/// # Loading Configuration
-///
-/// Configuration is loaded in the following order (later sources override earlier):
-/// 1. Default values
-/// 2. Config file (TOML or JSON)
-/// 3. Environment variables
-/// 4. CLI arguments
-///
-/// # Fields
-///
-/// * `api` - API connection settings for rqbit
-/// * `cache` - Cache TTL and capacity settings
-/// * `mount` - FUSE mount point and options
-/// * `performance` - Read timeouts and concurrency limits
-/// * `logging` - Log verbosity and metrics settings
-///
-/// # Example
-///
-/// ```rust
-/// use rqbit_fuse::config::Config;
-///
-/// let config = Config::load().expect("Failed to load config");
-/// config.validate().expect("Invalid configuration");
-/// ```
-///
-/// ## Complete TOML Configuration Example
-///
-/// ```toml
-/// # Basic configuration for rqbit-fuse
-/// # Copy this to ~/.config/rqbit-fuse/config.toml or /etc/rqbit-fuse/config.toml
-///
-/// [api]
-/// url = "http://127.0.0.1:3030"
-/// # Optional: HTTP Basic authentication
-/// # username = "admin"
-/// # password = "secret"
-///
-/// [cache]
-/// # How long to cache data (seconds)
-/// metadata_ttl = 60
-/// # Maximum number of cache entries
-/// max_entries = 1000
-///
-/// [mount]
-/// # Where to mount the FUSE filesystem
-/// mount_point = "/mnt/torrents"
-///
-/// [performance]
-/// # Timeout for read operations (seconds)
-/// read_timeout = 30
-/// # Maximum concurrent read operations
-/// max_concurrent_reads = 10
-/// # Read-ahead buffer size (bytes)
-/// readahead_size = 33554432
-///
-/// [logging]
-/// # Log level: error, warn, info, debug, trace
-/// level = "info"
-/// ```
-///
-/// ## Complete JSON Configuration Example
-///
-/// ```json
-/// {
-///   "api": {
-///     "url": "http://127.0.0.1:3030",
-///     "username": "admin",
-///     "password": "secret"
-///   },
-///   "cache": {
-///     "metadata_ttl": 60,
-///     "max_entries": 1000
-///   },
-///   "mount": {
-///     "mount_point": "/mnt/torrents"
-///   },
-///   "performance": {
-///     "read_timeout": 30,
-///     "max_concurrent_reads": 10,
-///     "readahead_size": 33554432
-///   },
-///   "logging": {
-///     "level": "info"
-///   }
-/// }
-/// ```
-///
-/// ## Minimal Configuration
-///
-/// For most users, only the API URL and mount point are required:
-///
-/// ```toml
-/// [api]
-/// url = "http://127.0.0.1:3030"
-///
-/// [mount]
-/// mount_point = "/tmp/torrents"
-/// ```
-///
-/// ## Environment Variable Overrides
-///
-/// Any config value can be overridden with environment variables:
-///
-/// ```bash
-/// # Set API URL
-/// export TORRENT_FUSE_API_URL="http://localhost:8080"
-///
-/// # Set mount point
-/// export TORRENT_FUSE_MOUNT_POINT="/my/torrents"
-///
-/// # Adjust cache settings
-/// export TORRENT_FUSE_METADATA_TTL=120
-/// export TORRENT_FUSE_MAX_ENTRIES=5000
-///
-/// # Set read timeout
-/// export TORRENT_FUSE_READ_TIMEOUT=30
-///
-/// # Enable debug logging
-/// export TORRENT_FUSE_LOG_LEVEL=debug
-///
-/// # Authentication
-/// export TORRENT_FUSE_AUTH_USERPASS="username:password"
-/// ```
+/// Main configuration for rqbit-fuse.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
-    /// API connection settings for rqbit daemon.
     #[serde(default)]
     pub api: ApiConfig,
-    /// Cache TTL and capacity settings.
     #[serde(default)]
     pub cache: CacheConfig,
-    /// FUSE mount point and options.
     #[serde(default)]
     pub mount: MountConfig,
-    /// Read timeouts and concurrency limits.
     #[serde(default)]
     pub performance: PerformanceConfig,
-    /// Log verbosity and metrics settings.
     #[serde(default)]
     pub logging: LoggingConfig,
 }
 
 /// Configuration for the rqbit API connection.
-///
-/// # Fields
-///
-/// * `url` - Base URL of the rqbit HTTP API (default: `http://127.0.0.1:3030`)
-/// * `username` - Optional username for HTTP Basic authentication
-/// * `password` - Optional password for HTTP Basic authentication
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_API_URL` - Override the API URL
-/// - `TORRENT_FUSE_AUTH_USERPASS` - Combined credentials as "username:password"
-/// - `TORRENT_FUSE_AUTH_USERNAME` - Username for authentication
-/// - `TORRENT_FUSE_AUTH_PASSWORD` - Password for authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ApiConfig {
@@ -172,18 +27,6 @@ pub struct ApiConfig {
 }
 
 /// Configuration for caching behavior.
-///
-/// Controls TTL (time-to-live) and capacity limits for cached data.
-///
-/// # Fields
-///
-/// * `metadata_ttl` - How long to cache data in seconds (default: 60)
-/// * `max_entries` - Maximum number of entries in the cache (default: 1000)
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_METADATA_TTL` - Cache TTL in seconds
-/// - `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CacheConfig {
@@ -192,16 +35,6 @@ pub struct CacheConfig {
 }
 
 /// Configuration for FUSE mount options.
-///
-/// Controls where the filesystem is mounted.
-///
-/// # Fields
-///
-/// * `mount_point` - Directory to mount the FUSE filesystem (default: `/mnt/torrents`)
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_MOUNT_POINT` - Mount point directory path
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MountConfig {
@@ -209,18 +42,6 @@ pub struct MountConfig {
 }
 
 /// Configuration for performance-related settings.
-///
-/// Controls read timeouts, concurrency limits, and read-ahead behavior.
-///
-/// # Fields
-///
-/// * `read_timeout` - Timeout for read operations in seconds (default: 30)
-/// * `max_concurrent_reads` - Maximum concurrent read operations (default: 10)
-/// * `readahead_size` - Size of read-ahead buffer in bytes (default: 32 MiB)
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PerformanceConfig {
@@ -230,16 +51,6 @@ pub struct PerformanceConfig {
 }
 
 /// Configuration for logging output.
-///
-/// Controls log verbosity.
-///
-/// # Fields
-///
-/// * `level` - Log level: error, warn, info, debug, or trace (default: "info")
-///
-/// # Environment Variables
-///
-/// - `TORRENT_FUSE_LOG_LEVEL` - Log level (error|warn|info|debug|trace)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
@@ -454,27 +265,12 @@ impl Config {
 }
 
 /// Command-line arguments that override configuration values.
-///
-/// These values take precedence over config files and environment variables.
-///
-/// # Fields
-///
-/// * `api_url` - Override the rqbit API URL
-/// * `mount_point` - Override the FUSE mount point
-/// * `config_file` - Path to a config file to load
-/// * `username` - Username for HTTP Basic authentication
-/// * `password` - Password for HTTP Basic authentication
 #[derive(Debug, Clone, Default)]
 pub struct CliArgs {
-    /// Override the rqbit API URL (e.g., "http://localhost:3030")
     pub api_url: Option<String>,
-    /// Override the FUSE mount point (must be absolute path)
     pub mount_point: Option<PathBuf>,
-    /// Path to a config file to load (TOML or JSON)
     pub config_file: Option<PathBuf>,
-    /// Username for HTTP Basic authentication
     pub username: Option<String>,
-    /// Password for HTTP Basic authentication
     pub password: Option<String>,
 }
 

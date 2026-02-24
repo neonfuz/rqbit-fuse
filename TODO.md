@@ -466,17 +466,13 @@ Remove redundant caching and simplify cache implementation.
 Remove tests that verify external crate behavior.
 
 ### 8.1 Trim Cache Tests
-- [ ] **Task 8.1.1**: Identify tests to remove
-  - Review all tests in `src/cache.rs` lines 221-1214
-  - Mark tests that verify moka behavior vs our code
-  - Keep only: basic operations, one TTL test, one concurrent test
+- [x] **Task 8.1.1**: Identify tests to remove
+  - **Obsolete**: Cache module was removed in Task 7.2.2
+  - No cache tests remain in the codebase
   
-- [ ] **Task 8.1.2**: Remove redundant cache tests
-  - Remove LRU eviction tests (moka's responsibility)
-  - Remove edge case tests (expiration during access, race conditions)
-  - Remove performance tests (hardware dependent)
-  - Remove memory limit tests
-  - Keep ~200 lines of tests
+- [x] **Task 8.1.2**: Remove redundant cache tests
+  - **Obsolete**: Cache module was removed in Task 7.2.2
+  - No cache tests to remove
 
 ### 8.2 Trim Streaming Tests
 - [x] **Task 8.2.1**: Identify tests to remove
@@ -530,13 +526,13 @@ Remove verbose documentation that duplicates README.
   - **Completed**: All tests passing, zero clippy warnings
   - See CHANGELOG.md SIMPLIFY-047
   
-- [ ] **Task 9.1.2**: Simplify `src/config/mod.rs` documentation
-  - Remove 174 lines of doc comments before Config struct
-  - Keep one-sentence description per config section
-  - Remove TOML example (keep in README)
-  - Remove JSON example (keep in README)
-  - Remove minimal configuration example
-  - Remove environment variable examples
+- [x] **Task 9.1.2**: Simplify `src/config/mod.rs` documentation
+  - Removed ~174 lines of verbose doc comments
+  - Simplified Config struct to one-line description
+  - Simplified ApiConfig, CacheConfig, MountConfig, PerformanceConfig, LoggingConfig to one-line descriptions
+  - Simplified CliArgs to one-line description and removed field-level docs
+  - Removed TOML, JSON, minimal configuration, and environment variable examples
+  - All tests passing, zero clippy warnings
   
 - [ ] **Task 9.1.3**: Review other module docs
   - Ensure all modules have <= 5 lines of documentation
