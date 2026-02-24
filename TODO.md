@@ -368,16 +368,19 @@ Remove prefetching code and state tracking.
 Replace macros with direct tracing calls.
 
 ### 6.1 Replace FUSE Macros
-- [ ] **Task 6.1.1**: Research - Document macro usage
-  - Find all usages of fuse_log!, fuse_error!, fuse_ok! macros
-  - Find all usages of reply_* macros
-  - Write findings to `research/fuse-macro-usage.md`
-  - Reference: "See research/fuse-macro-usage.md"
+- [x] **Task 6.1.1**: Research - Document macro usage
+  - **Completed**: Found 33 macro call sites across 4 macro types
+  - **Summary**: 7 fuse_log!, 8 fuse_error!, 7 fuse_ok!, 11 reply_* macros
+  - **See**: `research/fuse-macro-usage.md` for complete analysis
+  - **Key Finding**: All macros are simple wrappers around tracing::debug! - safe to replace
+  - **Key Finding**: 98 lines in macros.rs can be removed entirely
+  - **Estimated replacement effort**: ~45 minutes for all call sites
   
-- [ ] **Task 6.1.2**: Replace fuse_log! macro
-  - Replace all `fuse_log!` calls with `tracing::debug!`
-  - Remove conditional check (tracing handles filtering)
-  - Update `src/fs/filesystem.rs`
+- [x] **Task 6.1.2**: Replace fuse_log! macro
+  - Replaced all 7 `fuse_log!` calls with direct `tracing::debug!` calls in filesystem.rs
+  - All operation start logging now uses direct tracing calls (e.g., `tracing::debug!(fuse_op = "read", ...)`)
+  - Tracing handles filtering automatically, no conditional check needed
+  - Macro definition remains in macros.rs for other macros (will be removed in Task 6.1.6)
   
 - [ ] **Task 6.1.3**: Replace fuse_error! macro
   - Replace all `fuse_error!` calls with `tracing::debug!` or `tracing::error!`

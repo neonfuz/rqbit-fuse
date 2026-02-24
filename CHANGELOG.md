@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-036: Replace fuse_log! Macro with Direct Tracing Calls (Task 6.1.2)
+  - Replaced all 7 `fuse_log!` macro calls with direct `tracing::debug!` calls in filesystem.rs
+  - Updated read operation logging at lines 809 and 880 to use `tracing::debug!(fuse_op = "read", ...)`
+  - Updated lookup operation logging at lines 1007 and 1100-1101 to use direct tracing calls
+  - Updated getattr operation logging at line 1131 to use `tracing::debug!(fuse_op = "getattr", ...)`
+  - Updated open operation logging at line 1158 to use `tracing::debug!(fuse_op = "open", ...)`
+  - Updated readdir operation logging at line 1246 to use `tracing::debug!(fuse_op = "readdir", ...)`
+  - Tracing automatically handles log level filtering, eliminating need for conditional checks
+  - No functional changes - same log output with simpler code structure
+  - Macro definition still exists in macros.rs (will be removed in Task 6.1.6)
+  - All 175+ tests passing with zero clippy warnings
+
 - SIMPLIFY-035: Complete File Handle Cleanup Tasks 5.2.2-5.2.3
   - Task 5.2.2: Remove memory tracking (already completed in SIMPLIFY-034)
     - Verified `memory_usage()` method was removed from FileHandleManager

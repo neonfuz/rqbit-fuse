@@ -6,7 +6,7 @@ use crate::fs::async_bridge::AsyncFuseWorker;
 use crate::fs::inode::InodeEntry;
 use crate::fs::inode::InodeManager;
 use crate::fs::macros::{
-    fuse_error, fuse_log, fuse_ok, reply_ino_not_found, reply_no_permission, reply_not_directory,
+    fuse_error, fuse_ok, reply_ino_not_found, reply_no_permission, reply_not_directory,
     reply_not_file,
 };
 use crate::metrics::Metrics;
@@ -806,12 +806,17 @@ impl Filesystem for TorrentFS {
         // Clamp read size to FUSE maximum to prevent "Too much data" panic
         let size = std::cmp::min(size, Self::FUSE_MAX_READ);
 
-        fuse_log!("read", fh = fh, offset = offset, size = size);
+        tracing::debug!(fuse_op = "read", fh = fh, offset = offset, size = size);
 
         // Validate offset is non-negative
         if offset < 0 {
             self.metrics.record_error();
-            fuse_error!("read", "EINVAL", reason = "negative_offset");
+            tracing::debug!(
+                fuse_op = "read",
+                result = "error",
+                error = "EINVAL",
+                reason = "negative_offset"
+            );
             reply.error(libc::EINVAL);
             return;
         }
@@ -823,7 +828,13 @@ impl Filesystem for TorrentFS {
             Some(inode) => inode,
             None => {
                 self.metrics.record_error();
-                fuse_error!("read", "EBADF", fh = fh, reason = "invalid_file_handle");
+                tracing::debug!(
+                    fuse_op = "read",
+                    result = "error",
+                    error = "EBADF",
+                    fh = fh,
+                    reason = "invalid_file_handle"
+                );
                 reply.error(libc::EBADF);
                 return;
             }
@@ -866,8 +877,8 @@ impl Filesystem for TorrentFS {
         // Use saturating_sub to prevent underflow when offset == file_size
         let end = std::cmp::min(offset + size as u64, file_size).saturating_sub(1);
 
-        fuse_log!(
-            "read",
+        tracing::debug!(
+            fuse_op = "read",
             fh = fh,
             ino = ino,
             torrent_id = torrent_id,
@@ -993,7 +1004,11 @@ impl Filesystem for TorrentFS {
     ) {
         let name_str = name.to_string_lossy();
 
-        fuse_log!("lookup", parent = parent, name = name_str.to_string());
+        tracing::debug!(
+            fuse_op = "lookup",
+            parent = parent,
+            name = name_str.to_string()
+        );
 
         // Get the parent directory entry
         let parent_entry = match self.inode_manager.get(parent) {
@@ -1097,8 +1112,8 @@ impl Filesystem for TorrentFS {
                 }
             }
             None => {
-                fuse_log!(
-                    "lookup",
+                tracing::debug!(
+                    fuse_op = "lookup",
                     parent = parent,
                     name = name_str.to_string(),
                     result = "not_found"
@@ -1113,7 +1128,7 @@ impl Filesystem for TorrentFS {
     /// This is a fundamental operation used by ls, stat, and most file operations.
     #[instrument(skip(self, reply), fields(ino))]
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
-        fuse_log!("getattr", ino = ino);
+        tracing::debug!(fuse_op = "getattr", ino = ino);
 
         // Get the inode entry
         match self.inode_manager.get(ino) {
@@ -1140,7 +1155,7 @@ impl Filesystem for TorrentFS {
     /// Returns a file handle that will be used in subsequent read operations.
     #[instrument(skip(self, reply), fields(ino))]
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
-        fuse_log!("open", ino = ino, flags = flags);
+        tracing::debug!(fuse_op = "open", ino = ino, flags = flags);
 
         // Check if the inode exists
         match self.inode_manager.get(ino) {
@@ -1228,7 +1243,7 @@ impl Filesystem for TorrentFS {
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        fuse_log!("readdir", ino = ino, offset = offset);
+        tracing::debug!(fuse_op = "readdir", ino = ino, offset = offset);
 
         // Trigger torrent discovery when listing root directory (with cooldown)
         if ino == 1 {
