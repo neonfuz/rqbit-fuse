@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-041: Research Bitfield Cache Usage (Task 7.1.1)
+  - Analyzed `status_bitfield_cache` implementation in `src/api/client.rs`
+  - Documented cache usage flow: `check_range_available()` -> `get_torrent_status_with_bitfield()`
+  - Cache stores `TorrentStats` + `PieceBitfield` with 5-second TTL
+  - **Key Finding**: Cache provides minimal value due to very short TTL (5 seconds)
+  - **Key Finding**: No eviction mechanism - potential unbounded memory growth
+  - **Key Finding**: Fresh data is preferable for piece availability checks
+  - **Recommendation**: Remove cache entirely (aligns with 70% code reduction goal)
+  - Created `research/bitfield-cache-analysis.md` with complete analysis
+  - Research unblocks Tasks 7.1.2-7.1.4 for implementation
+  - No code changes - research task only
+
 - SIMPLIFY-040: Complete Macro Removal Cleanup (Task 6.1.6)
   - Verified `src/fs/macros.rs` file already deleted (from SIMPLIFY-039)
   - Verified no `mod macros;` declaration exists in `src/fs/mod.rs`

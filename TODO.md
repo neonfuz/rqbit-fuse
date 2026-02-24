@@ -417,11 +417,12 @@ Replace macros with direct tracing calls.
 Remove redundant caching and simplify cache implementation.
 
 ### 7.1 Remove Bitfield Cache
-- [ ] **Task 7.1.1**: Research - Document bitfield cache usage
+- [x] **Task 7.1.1**: Research - Document bitfield cache usage
   - Analyze `status_bitfield_cache` in `src/api/client.rs`
   - Check if it's actually providing value vs fetching fresh
   - Write findings to `research/bitfield-cache-analysis.md`
-  - Reference: "See research/bitfield-cache-analysis.md"
+  - **Reference**: See `research/bitfield-cache-analysis.md`
+  - **Key Finding**: Bitfield cache provides minimal value due to 5-second TTL and adds complexity/memory leak risk. Safe to remove.
   
 - [ ] **Task 7.1.2**: Remove bitfield cache fields
   - Remove `status_bitfield_cache` field from RqbitClient
