@@ -499,13 +499,16 @@ Remove tests that verify external crate behavior.
   - Zero clippy warnings
 
 ### 8.3 Review Other Test Files
-- [ ] **Task 8.3.1**: Review `tests/performance_tests.rs`
-  - Keep if valuable for CI
-  - Consider moving to benchmarks only
+- [x] **Task 8.3.1**: Review `tests/performance_tests.rs`
+  - **Completed**: Removed entire file
+  - File contained only one test (`test_read_operation_timeout`) that tested tokio::time::timeout, not our code
+  - No value for CI - was testing external crate behavior
   
-- [ ] **Task 8.3.2**: Review `benches/performance.rs`
-  - Keep benchmarks for performance tracking
-  - Remove if not used in CI
+- [x] **Task 8.3.2**: Review `benches/performance.rs`**
+  - **Completed**: Removed entire file
+  - Benchmarks referenced `rqbit_fuse::cache::Cache` which was removed in Task 7.2.2
+  - File would not compile after cache module removal
+  - Code reduction: -367 lines
 
 ---
 

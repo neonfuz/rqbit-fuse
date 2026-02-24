@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- SIMPLIFY-046: Remove Performance Tests and Benchmarks (Tasks 8.3.1, 8.3.2)
+  - Removed `tests/performance_tests.rs` (35 lines)
+    - Contained only `test_read_operation_timeout` which tested tokio::time::timeout
+    - No value for CI - was testing external crate behavior, not our code
+  - Removed `benches/performance.rs` (367 lines)
+    - Referenced `rqbit_fuse::cache::Cache` which was removed in Task 7.2.2
+    - Would not compile after cache module removal
+  - **Code reduction**: -402 lines total
+  - Phase 8 (Test Suite Trimming) Tasks 8.3.1 and 8.3.2 complete
+
 - SIMPLIFY-045: Remove Redundant Streaming Tests (Task 8.2.2)
   - Removed 28 redundant tests from `src/api/streaming.rs`
   - Kept 5 essential tests covering core functionality:
