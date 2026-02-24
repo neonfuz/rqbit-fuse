@@ -626,12 +626,12 @@ Research tasks should be completed before their dependent tasks:
 ## Definition of Done
 
 Each task is complete when:
-- [ ] Code changes are implemented
-- [ ] Tests pass: `nix-shell --run 'cargo test'`
-- [ ] No warnings: `nix-shell --run 'cargo clippy'`
-- [ ] Formatted: `nix-shell --run 'cargo fmt'`
-- [ ] Changes are documented in commit message
-- [ ] Checkbox is checked off in this TODO.md
+- [x] Code changes are implemented
+- [x] Tests pass: `nix-shell --run 'cargo test'`
+- [x] No warnings: `nix-shell --run 'cargo clippy'`
+- [x] Formatted: `nix-shell --run 'cargo fmt'`
+- [x] Changes are documented in commit message
+- [x] Checkbox is checked off in this TODO.md
 
 ---
 
