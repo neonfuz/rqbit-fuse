@@ -13,11 +13,10 @@ Access your torrents through standard filesystem operations—stream videos whil
 - **⬇️ On-demand downloading** - Files and pieces are downloaded only when accessed
 - **📺 Video streaming** - Watch videos while they download with full seeking support
 - **🚀 Read-ahead optimization** - Detects sequential reads and prefetches upcoming pieces (32MB default)
-- **💾 Smart caching** - LRU cache with TTL for metadata and pieces, configurable size limits
-- **🛡️ Resilient API client** - Circuit breaker pattern, exponential backoff, automatic retry logic
-- **📊 Extended attributes** - Check torrent status via `user.torrent.status` xattr as JSON
+- **💾 Smart caching** - LRU cache with TTL for metadata, configurable size limits
+- **🛡️ Resilient API client** - Exponential backoff, automatic retry logic
 - **🔒 Read-only filesystem** - Safe, secure access that cannot modify torrents (mode 0444/0555)
-- **🔄 Torrent management** - Add via magnet/URL, monitor status, remove torrents
+- **🔄 Torrent management** - Add via magnet/URL, remove torrents
 - **🔗 Symlink support** - Full symbolic link handling within torrents
 - **🌍 Unicode support** - Handles filenames in any language (Chinese, Japanese, Russian, emoji)
 - **📁 Large file support** - Full 64-bit file sizes (>4GB supported)
@@ -183,18 +182,13 @@ Create a configuration file at `~/.config/rqbit-fuse/config.toml`:
 ```toml
 [api]
 url = "http://127.0.0.1:3030"
-timeout = 30
-retry_attempts = 3
 
 [cache]
 metadata_ttl = 60
-torrent_list_ttl = 30
-piece_ttl = 300
-max_size = 1073741824  # 1GB
+max_entries = 1000
 
 [mount]
-auto_unmount = true
-allow_other = false
+mount_point = "/mnt/torrents"
 
 [performance]
 read_timeout = 30
@@ -203,26 +197,30 @@ readahead_size = 33554432  # 32MB
 
 [logging]
 level = "info"
-fuse_operations = false
-api_calls = false
-metrics_enabled = true
-metrics_interval = 60
+```
+
+### Minimal Configuration
+
+Only the settings you want to change from defaults are needed:
+
+```toml
+[api]
+url = "http://192.168.1.100:3030"
+
+[mount]
+mount_point = "~/torrents"
 ```
 
 ### Environment Variables
 
-All configuration options can be set via environment variables:
+Essential configuration options can be set via environment variables:
 
-- `TORRENT_FUSE_API_URL` - rqbit API URL
-- `TORRENT_FUSE_CACHE_MAX_SIZE` - Maximum cache size in bytes
-- `TORRENT_FUSE_LOG_LEVEL` - Log level (error, warn, info, debug, trace)
-- `TORRENT_FUSE_LOG_FUSE_OPS` - Enable FUSE operation logging (true/false)
-- `TORRENT_FUSE_LOG_API_CALLS` - Enable API call logging (true/false)
-- `TORRENT_FUSE_METRICS_ENABLED` - Enable metrics collection (true/false)
-- `TORRENT_FUSE_STATUS_POLL_INTERVAL` - Torrent status poll interval in seconds
-- `TORRENT_FUSE_STALLED_TIMEOUT` - Stalled torrent detection timeout in seconds
-- `TORRENT_FUSE_PIECE_CHECK_ENABLED` - Enable piece availability checking (true/false)
-- `TORRENT_FUSE_RETURN_EAGAIN` - Return EAGAIN for unavailable pieces (true/false)
+- `TORRENT_FUSE_API_URL` - rqbit API URL (default: http://127.0.0.1:3030)
+- `TORRENT_FUSE_MOUNT_POINT` - Mount point path (default: /mnt/torrents)
+- `TORRENT_FUSE_METADATA_TTL` - Cache TTL in seconds (default: 60)
+- `TORRENT_FUSE_MAX_ENTRIES` - Maximum cache entries (default: 1000)
+- `TORRENT_FUSE_READ_TIMEOUT` - Read timeout in seconds (default: 30)
+- `TORRENT_FUSE_LOG_LEVEL` - Log level (default: info)
 
 ## Performance Tips
 
