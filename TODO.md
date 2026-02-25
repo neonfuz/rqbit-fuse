@@ -72,10 +72,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-2-testing.md` - Section 3
 
 ### Task 2.4: Check Code Formatting
-- [ ] **Time:** 5 minutes
-- [ ] Run `nix-shell --run 'cargo fmt --check'`
-- [ ] If issues found, run `nix-shell --run 'cargo fmt'`
-- [ ] Verify no formatting issues remain
+- [x] **Time:** 5 minutes
+- [x] Run `nix-shell --run 'cargo fmt --check'`
+- [x] If issues found, run `nix-shell --run 'cargo fmt'`
+- [x] Verify no formatting issues remain
 - **References:**
   - `migration/phase-2-testing.md` - Section 4
 
