@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MIGRATION-006: CLI Help Verification (TODO.md Phase 2, Task 2.5)
+  - Ran `nix-shell --run 'cargo run -- --help'`
+  - Verified "status" does NOT appear in command list
+  - Confirmed only "mount", "umount", and "help" commands are shown
+  - CLI help output correctly reflects removed status command
+
 - MIGRATION-005: Check Code Formatting (TODO.md Phase 2, Task 2.4)
   - Ran `nix-shell --run 'cargo fmt --check'` - no formatting issues found
   - Code is properly formatted according to rustfmt standards

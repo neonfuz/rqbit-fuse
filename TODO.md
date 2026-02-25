@@ -80,10 +80,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-2-testing.md` - Section 4
 
 ### Task 2.5: CLI Help Verification
-- [ ] **Time:** 5 minutes
-- [ ] Run `nix-shell --run 'cargo run -- --help'`
-- [ ] Verify "status" does NOT appear in command list
-- [ ] Confirm only "mount", "umount", and "help" are shown
+- [x] **Time:** 5 minutes
+- [x] Run `nix-shell --run 'cargo run -- --help'`
+- [x] Verify "status" does NOT appear in command list
+- [x] Confirm only "mount", "umount", and "help" are shown
 - **References:**
   - `migration/phase-2-testing.md` - Section 5.1
 
