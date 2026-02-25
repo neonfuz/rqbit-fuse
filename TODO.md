@@ -88,10 +88,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-2-testing.md` - Section 5.1
 
 ### Task 2.6: CLI Status Command Rejection
-- [ ] **Time:** 5 minutes
-- [ ] Run `nix-shell --run 'cargo run -- status'`
-- [ ] Verify error message: "unrecognized subcommand 'status'"
-- [ ] Confirm helpful suggestion to use --help
+- [x] **Time:** 5 minutes
+- [x] Run `nix-shell --run 'cargo run -- status'`
+- [x] Verify error message: "unrecognized subcommand 'status'"
+- [x] Confirm helpful suggestion to use --help
 - **References:**
   - `migration/phase-2-testing.md` - Section 5.2
 

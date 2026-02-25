@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MIGRATION-007: CLI Status Command Rejection (TODO.md Phase 2, Task 2.6)
+  - Ran `nix-shell --run 'cargo run -- status'`
+  - Verified error message: "unrecognized subcommand 'status'"
+  - Confirmed helpful suggestion to use '--help' is displayed
+  - Status command properly rejected by CLI argument parser
+  - No `status` subcommand in available commands list
+
+### Changed
+
 - MIGRATION-006: CLI Help Verification (TODO.md Phase 2, Task 2.5)
   - Ran `nix-shell --run 'cargo run -- --help'`
   - Verified "status" does NOT appear in command list
