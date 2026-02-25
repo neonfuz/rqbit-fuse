@@ -1,6 +1,6 @@
 # LLM Loop Rules
 
-- Only do a single checkbox from the todo checklist.
+- Only do a single task from the todo checklist.
 - If all todo items are done in the entire todo checklist, then just create an empty `.done` file
 - Never ask for confirmation from the user, this is non interactive. Just do a single item, no more no less
 - If you do research for a future item, write your research to the ./research directory, then edit the todo checklist with a reference to that research file
