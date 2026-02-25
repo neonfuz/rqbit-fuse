@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- BREAKING: Remove `status` command from CLI (TODO.md Phase 3, Task 3.4)
+  - Reference commit: 4ff33398b08c7ed4fe01ca4475d4cd2278fa5650
+  - The `status` subcommand has been completely removed from the CLI
+  - Users should use standard Unix commands instead:
+    - `mount | grep torrents` - Check if mounted
+    - `df -h | grep torrents` - Check mount status  
+    - `findmnt ~/torrents` - Check specific mount point
+  - This completes the migration to align implementation with updated spec documentation
+
 ### Changed
 
 - MIGRATION-008: Verify Mount/Umount Commands Still Work (TODO.md Phase 2, Task 2.7)

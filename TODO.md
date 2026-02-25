@@ -112,19 +112,19 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
 **Estimated Time:** 30 minutes
 
 ### Task 3.1: Code Review Checklist
-- [ ] **Time:** 10 minutes
-- [ ] Verify no `Commands::Status` references in `src/main.rs`
-- [ ] Verify no `run_status` function references
-- [ ] Confirm match statement only has Mount and Umount arms
-- [ ] Check for any remaining status-related comments
+- [x] **Time:** 10 minutes
+- [x] Verify no `Commands::Status` references in `src/main.rs`
+- [x] Verify no `run_status` function references
+- [x] Confirm match statement only has Mount and Umount arms
+- [x] Check for any remaining status-related comments
 - **References:**
   - `migration/phase-3-verification.md` - Section 1
 
 ### Task 3.2: Spec Documentation Review
-- [ ] **Time:** 5 minutes
-- [ ] Verify `spec/architecture.md` has no status command references
-- [ ] Verify `spec/quickstart.md` has no status command references
-- [ ] Verify `spec/roadmap.md` shows status as removed
+- [x] **Time:** 5 minutes
+- [x] Verify `spec/architecture.md` has no status command references
+- [x] Verify `spec/quickstart.md` has no status command references
+- [x] Verify `spec/roadmap.md` shows status as removed
 - **References:**
   - `migration/phase-3-verification.md` - Section 2
   - `spec/architecture.md`
@@ -132,19 +132,19 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `spec/roadmap.md`
 
 ### Task 3.3: Final Build Quality Check
-- [ ] **Time:** 10 minutes
-- [ ] Run `nix-shell --run 'cargo build --release'`
-- [ ] Run `nix-shell --run 'cargo test --all-targets'`
-- [ ] Run `nix-shell --run 'cargo clippy --all-targets -- -D warnings'`
-- [ ] Confirm zero warnings, zero errors
+- [x] **Time:** 10 minutes
+- [x] Run `nix-shell --run 'cargo build --release'`
+- [x] Run `nix-shell --run 'cargo test --all-targets'`
+- [x] Run `nix-shell --run 'cargo clippy --all-targets -- -D warnings'`
+- [x] Confirm zero warnings, zero errors
 - **References:**
   - `migration/phase-3-verification.md` - Section 4
 
 ### Task 3.4: Update CHANGELOG.md
-- [ ] **Time:** 5 minutes
-- [ ] Add entry for breaking change (status command removal)
-- [ ] Reference commit 4ff33398b08c7ed4fe01ca4475d4cd2278fa5650
-- [ ] Document alternative commands for users
+- [x] **Time:** 5 minutes
+- [x] Add entry for breaking change (status command removal)
+- [x] Reference commit 4ff33398b08c7ed4fe01ca4475d4cd2278fa5650
+- [x] Document alternative commands for users
 - **References:**
   - `migration/phase-3-verification.md` - Section 5.2
 
