@@ -33,10 +33,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-1-code-removal.md` - Step 3
 
 ### Task 1.4: Verify No Import Cleanup Needed
-- [ ] **Time:** 5 minutes
-- [ ] Review imports at top of `src/main.rs`
-- [ ] Confirm `is_mount_point` is still used in `run_umount()`
-- [ ] Run `nix-shell --run 'cargo clippy'` to check for unused imports
+- [x] **Time:** 5 minutes
+- [x] Review imports at top of `src/main.rs`
+- [x] Confirm `is_mount_point` is still used in `run_umount()`
+- [x] Run `nix-shell --run 'cargo clippy'` to check for unused imports
 - **References:**
   - `migration/phase-1-code-removal.md` - Step 4
 

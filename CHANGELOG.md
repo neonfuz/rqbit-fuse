@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed `Status` variant from `Commands` enum in src/main.rs
   - Removed `Commands::Status` match arm from main() function
   - Removed `run_status()` function entirely
+  - Verified no import cleanup needed - `is_mount_point` still used in `run_umount()`
+  - All imports verified with `cargo clippy` - no unused imports
   - Code compiles cleanly with no warnings
   - Users should use standard Unix commands instead:
     - `mount | grep torrents` - Check if mounted
