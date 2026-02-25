@@ -17,27 +17,18 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
 **Estimated Time:** 30 minutes
 
 ### Task 1.1: Remove Status Enum Variant
-- [ ] **Time:** 10 minutes
-- [ ] Open `src/main.rs` at line 64
-- [ ] Remove the `Status` variant from the `Commands` enum (lines 64-69)
-- [ ] Verify with `nix-shell --run 'cargo check'`
-- **References:** 
-  - `migration/phase-1-code-removal.md` - Step 1
-  - `spec/architecture.md` - CLI section (lines 122-126)
-
-### Task 1.2: Remove Status Match Arm
-- [ ] **Time:** 5 minutes
-- [ ] Open `src/main.rs` at line 94
-- [ ] Remove the `Commands::Status` match arm
-- [ ] Verify with `nix-shell --run 'cargo check'`
+- [x] **Time:** 10 minutes
+- [x] Open `src/main.rs` at line 64
+- [x] Remove the `Status` variant from the `Commands` enum (lines 64-69)
+- [x] Verify with `nix-shell --run 'cargo check'`
 - **References:**
   - `migration/phase-1-code-removal.md` - Step 2
 
 ### Task 1.3: Remove run_status() Function
-- [ ] **Time:** 10 minutes
-- [ ] Open `src/main.rs` at line 173
-- [ ] Remove the entire `run_status()` function (lines 173-201)
-- [ ] Verify with `nix-shell --run 'cargo build'`
+- [x] **Time:** 10 minutes
+- [x] Open `src/main.rs` at line 173
+- [x] Remove the entire `run_status()` function (lines 173-201)
+- [x] Verify with `nix-shell --run 'cargo build'`
 - **References:**
   - `migration/phase-1-code-removal.md` - Step 3
 

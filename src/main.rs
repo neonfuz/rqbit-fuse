@@ -60,13 +60,6 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
-
-    /// Show status of mounted filesystems
-    Status {
-        /// Path to config file
-        #[arg(short, long, value_name = "FILE")]
-        config: Option<PathBuf>,
-    },
 }
 
 #[tokio::main]
@@ -91,7 +84,6 @@ async fn main() -> Result<()> {
             config,
             force,
         } => run_umount(mount_point, config, force).await,
-        Commands::Status { config } => run_status(config).await,
     }
 }
 
@@ -167,36 +159,6 @@ async fn run_umount(
     unmount_filesystem(&mount_point, force)?;
 
     tracing::info!("Successfully unmounted {}", mount_point.display());
-    Ok(())
-}
-
-async fn run_status(config_file: Option<PathBuf>) -> Result<()> {
-    let config = load_config(config_file.clone(), None, None, None, None)?;
-
-    let mount_point = &config.mount.mount_point;
-    let is_mounted = is_mount_point(mount_point).unwrap_or(false);
-
-    println!("rqbit-fuse Status");
-    println!("===================");
-    println!();
-    println!("Configuration:");
-    println!(
-        "  Config file:    {}",
-        config_file
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "(default)".to_string())
-    );
-    println!("  API URL:        {}", config.api.url);
-    println!("  Mount point:    {}", mount_point.display());
-    println!();
-    println!("Mount Status:");
-    if is_mounted {
-        println!("  Status:         MOUNTED");
-    } else {
-        println!("  Status:         NOT MOUNTED");
-    }
-
     Ok(())
 }
 

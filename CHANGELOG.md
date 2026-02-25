@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- BREAKING: Remove `status` command from CLI (TODO.md Phase 1)
+  - Removed `Status` variant from `Commands` enum in src/main.rs
+  - Removed `Commands::Status` match arm from main() function
+  - Removed `run_status()` function entirely
+  - Code compiles cleanly with no warnings
+  - Users should use standard Unix commands instead:
+    - `mount | grep torrents` - Check if mounted
+    - `df -h | grep torrents` - Check mount status
+    - `findmnt ~/torrents` - Check specific mount point
+
 ### Changed
 
 - SPEC-021: Simplify testing.md specification (TODO.md Phase 2)
