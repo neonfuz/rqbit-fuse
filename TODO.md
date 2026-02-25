@@ -48,10 +48,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
 **Estimated Time:** 45 minutes
 
 ### Task 2.1: Build Verification
-- [ ] **Time:** 5 minutes
-- [ ] Run `nix-shell --run 'cargo build'`
-- [ ] Confirm clean build with no errors
-- [ ] Check for any warnings
+- [x] **Time:** 5 minutes
+- [x] Run `nix-shell --run 'cargo build'`
+- [x] Confirm clean build with no errors
+- [x] Check for any warnings
 - **References:**
   - `migration/phase-2-testing.md` - Section 1
 

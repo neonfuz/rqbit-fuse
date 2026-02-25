@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- MIGRATION-002: Build Verification (TODO.md Phase 2, Task 2.1)
+  - Verified clean build with `nix-shell --run 'cargo build'`
+  - Build completed successfully with no errors or warnings
+  - Confirmed project compiles cleanly after status command removal
+
 ### Removed
 
 - BREAKING: Remove `status` command from CLI (TODO.md Phase 1)
