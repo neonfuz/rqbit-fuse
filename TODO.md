@@ -56,10 +56,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-2-testing.md` - Section 1
 
 ### Task 2.2: Run Full Test Suite
-- [ ] **Time:** 15 minutes
-- [ ] Run `nix-shell --run 'cargo test'`
-- [ ] Verify all tests pass (0 failures)
-- [ ] Note any test failures related to CLI changes
+- [x] **Time:** 15 minutes
+- [x] Run `nix-shell --run 'cargo test'`
+- [x] Verify all tests pass (0 failures)
+- [x] Note any test failures related to CLI changes
 - **References:**
   - `migration/phase-2-testing.md` - Section 2
 
