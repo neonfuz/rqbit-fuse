@@ -96,11 +96,11 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-2-testing.md` - Section 5.2
 
 ### Task 2.7: Verify Mount/Umount Still Work
-- [ ] **Time:** 5 minutes
-- [ ] Run `nix-shell --run 'cargo run -- mount --help'`
-- [ ] Verify mount help displays correctly
-- [ ] Run `nix-shell --run 'cargo run -- umount --help'`
-- [ ] Verify umount help displays correctly
+- [x] **Time:** 5 minutes
+- [x] Run `nix-shell --run 'cargo run -- mount --help'`
+- [x] Verify mount help displays correctly
+- [x] Run `nix-shell --run 'cargo run -- umount --help'`
+- [x] Verify umount help displays correctly
 - **References:**
   - `migration/phase-2-testing.md` - Sections 5.3, 5.4
 

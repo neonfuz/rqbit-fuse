@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MIGRATION-008: Verify Mount/Umount Commands Still Work (TODO.md Phase 2, Task 2.7)
+  - Ran `nix-shell --run 'cargo run -- mount --help'`
+  - Verified mount help displays correctly with all options:
+    - `-m, --mount-point`: Path to mount point
+    - `-a, --api-url`: rqbit API URL
+    - `-c, --config`: Path to config file
+    - `--username`/`--password`: HTTP Basic Auth credentials
+    - `-v, --verbose`: Increase verbosity
+    - `-q, --quiet`: Suppress all output except errors
+  - Ran `nix-shell --run 'cargo run -- umount --help'`
+  - Verified umount help displays correctly with all options:
+    - `-m, --mount-point`: Path to mount point
+    - `-c, --config`: Path to config file
+    - `-f, --force`: Force unmount even if filesystem is busy
+  - Both mount and umount commands functional after status command removal
+  - No regressions in CLI functionality
+
 - MIGRATION-007: CLI Status Command Rejection (TODO.md Phase 2, Task 2.6)
   - Ran `nix-shell --run 'cargo run -- status'`
   - Verified error message: "unrecognized subcommand 'status'"
