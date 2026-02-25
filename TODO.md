@@ -64,10 +64,10 @@ This checklist tracks the migration to remove the `status` command from rqbit-fu
   - `migration/phase-2-testing.md` - Section 2
 
 ### Task 2.3: Run Clippy Lints
-- [ ] **Time:** 5 minutes
-- [ ] Run `nix-shell --run 'cargo clippy'`
-- [ ] Fix any warnings about unused code or imports
-- [ ] Run `nix-shell --run 'cargo clippy -- -D warnings'` for strict check
+- [x] **Time:** 5 minutes
+- [x] Run `nix-shell --run 'cargo clippy'`
+- [x] Fix any warnings about unused code or imports
+- [x] Run `nix-shell --run 'cargo clippy -- -D warnings'` for strict check
 - **References:**
   - `migration/phase-2-testing.md` - Section 3
 
