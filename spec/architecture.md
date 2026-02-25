@@ -123,7 +123,6 @@ Torrent-Fuse is a read-only FUSE filesystem that mounts BitTorrent torrents as v
 - Commands:
   - `mount -m <mount-point>` - Start FUSE filesystem
   - `umount <mount-point>` - Unmount filesystem
-  - `status` - Show mount status and configuration
 
 ### 2. rqbit Server (External Dependency)
 
@@ -422,9 +421,6 @@ rqbit-fuse mount -m /mnt/torrents --api-url http://localhost:3030
 # Unmount
 rqbit-fuse umount /mnt/torrents
 rqbit-fuse umount /mnt/torrents --force
-
-# Show status
-rqbit-fuse status
 ```
 
 ### Mount Options
@@ -507,7 +503,7 @@ Options:
 - Persistent HTTP streaming
 - Comprehensive error handling
 - Configuration file support
-- CLI with status command
+- CLI with mount and umount commands
 - AsyncFuseWorker for safe async/sync bridging
 - RqbitFuseError types for proper error mapping
 - Mount utilities module

@@ -49,7 +49,7 @@
 - ✅ CLI commands:
   - ✅ mount -m <path> [--options]
   - ✅ umount <path> [--force]
-  - ✅ status [--format text|json]
+  - ❌ status [--format text|json] (removed from docs - no way to attach to running instance)
 - ❌ list (documented but not implemented)
 - ❌ cache clear (documented but not implemented)
 - ❌ daemon (documented but not implemented)
@@ -228,7 +228,7 @@ The following commands are documented but not implemented:
 ## Release Checklist
 
 - [x] All core features implemented
-- [x] Basic CLI (mount, umount, status)
+- [x] Basic CLI (mount, umount)
 - [x] Configuration file support
 - [x] Error handling with retry logic
 - [x] Background tasks (discovery, monitoring)

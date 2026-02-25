@@ -104,35 +104,7 @@ Play a video (will stream as needed):
 mpv ~/torrents/"Movie Name"/movie.mkv
 ```
 
-### 5. Check Status
-
-```bash
-rqbit-fuse status
-```
-
-Output:
-```
-rqbit-fuse Status
-===================
-
-Configuration:
-  Config file:    ~/.config/rqbit-fuse/config.toml
-  API URL:        http://127.0.0.1:3030
-  Mount point:    ~/torrents
-
-Mount Status:
-  Status:         MOUNTED
-```
-
-Or if not mounted:
-```
-Mount Status:
-  Status:         NOT MOUNTED
-```
-
-**Note:** The status output shows only mount status, not detailed filesystem information.
-
-### 6. Unmount
+### 5. Unmount
 
 ```bash
 rqbit-fuse umount -m ~/torrents
@@ -220,16 +192,6 @@ Options:
 ```
 
 **Note:** The command is `umount` (not `unmount` as in some earlier documentation).
-
-### Status
-```bash
-rqbit-fuse status [OPTIONS]
-
-Options:
-  -c, --config <FILE>    Config file path
-  -v, --verbose          Increase verbosity
-  -q, --quiet            Suppress output except errors
-```
 
 **Not Implemented (documented but not available):**
 - `rqbit-fuse list` - Not implemented
@@ -346,13 +308,6 @@ rqbit-fuse mount -m ~/torrents -q
 ```
 
 **Note:** There are no `-f/--foreground` or `-d/--debug` flags. Use `-v/--verbose` for logging control.
-
-### Check Config
-
-```bash
-# View current configuration
-rqbit-fuse status
-```
 
 ## Performance Tips
 
