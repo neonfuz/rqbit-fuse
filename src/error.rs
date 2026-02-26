@@ -105,73 +105,52 @@ impl RqbitFuseError {
 
 // === Conversion Implementations ===
 
-impl From<std::io::Error> for RqbitFuseError {
-    fn from(err: std::io::Error) -> Self {
-        match err.kind() {
-            std::io::ErrorKind::NotFound => RqbitFuseError::NotFound(err.to_string()),
-            std::io::ErrorKind::PermissionDenied => {
-                RqbitFuseError::PermissionDenied(err.to_string())
+macro_rules! impl_from_error {
+    ($err_type:ty, $arm:pat => $body:expr) => {
+        impl From<$err_type> for RqbitFuseError {
+            fn from(err: $err_type) -> Self {
+                match err {
+                    $arm => $body,
+                }
             }
-            std::io::ErrorKind::TimedOut => RqbitFuseError::TimedOut(err.to_string()),
-            std::io::ErrorKind::InvalidInput => RqbitFuseError::InvalidArgument(err.to_string()),
-            _ => RqbitFuseError::IoError(err.to_string()),
         }
-    }
+    };
 }
 
-impl From<reqwest::Error> for RqbitFuseError {
-    fn from(err: reqwest::Error) -> Self {
-        if err.is_timeout() {
-            RqbitFuseError::TimedOut(err.to_string())
-        } else if err.is_connect() {
-            RqbitFuseError::NetworkError(format!("Server disconnected: {}", err))
-        } else if err.is_request() {
-            RqbitFuseError::NetworkError(err.to_string())
-        } else {
-            RqbitFuseError::IoError(format!("HTTP error: {}", err))
+impl_from_error!(std::io::Error, e => match e.kind() {
+    std::io::ErrorKind::NotFound => RqbitFuseError::NotFound(e.to_string()),
+    std::io::ErrorKind::PermissionDenied => RqbitFuseError::PermissionDenied(e.to_string()),
+    std::io::ErrorKind::TimedOut => RqbitFuseError::TimedOut(e.to_string()),
+    std::io::ErrorKind::InvalidInput => RqbitFuseError::InvalidArgument(e.to_string()),
+    _ => RqbitFuseError::IoError(e.to_string()),
+});
+
+impl_from_error!(reqwest::Error, e => if e.is_timeout() {
+    RqbitFuseError::TimedOut(e.to_string())
+} else if e.is_connect() {
+    RqbitFuseError::NetworkError(format!("Server disconnected: {}", e))
+} else if e.is_request() {
+    RqbitFuseError::NetworkError(e.to_string())
+} else {
+    RqbitFuseError::IoError(format!("HTTP error: {}", e))
+});
+
+impl_from_error!(serde_json::Error, e => RqbitFuseError::ParseError(e.to_string()));
+impl_from_error!(toml::de::Error, e => RqbitFuseError::ParseError(e.to_string()));
+
+/// Convert an anyhow error to a FUSE error code.
+pub fn anyhow_to_errno(err: &anyhow::Error) -> i32 {
+    if let Some(rqbit_err) = err.downcast_ref::<RqbitFuseError>() {
+        rqbit_err.to_errno()
+    } else if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+        match io_err.kind() {
+            std::io::ErrorKind::NotFound => libc::ENOENT,
+            std::io::ErrorKind::PermissionDenied => libc::EACCES,
+            std::io::ErrorKind::TimedOut => libc::ETIMEDOUT,
+            std::io::ErrorKind::InvalidInput => libc::EINVAL,
+            _ => libc::EIO,
         }
-    }
-}
-
-impl From<serde_json::Error> for RqbitFuseError {
-    fn from(err: serde_json::Error) -> Self {
-        RqbitFuseError::ParseError(err.to_string())
-    }
-}
-
-impl From<toml::de::Error> for RqbitFuseError {
-    fn from(err: toml::de::Error) -> Self {
-        RqbitFuseError::ParseError(err.to_string())
-    }
-}
-
-// === Legacy Error Type Conversions (for backward compatibility during migration) ===
-
-/// Trait for converting errors to FUSE error codes.
-pub trait ToFuseError {
-    /// Convert the error to a FUSE error code.
-    fn to_fuse_error(&self) -> i32;
-}
-
-impl ToFuseError for anyhow::Error {
-    fn to_fuse_error(&self) -> i32 {
-        // Check for specific error types through downcasting
-        if let Some(rqbit_err) = self.downcast_ref::<RqbitFuseError>() {
-            return rqbit_err.to_errno();
-        }
-
-        // Check for std::io::Error
-        if let Some(io_err) = self.downcast_ref::<std::io::Error>() {
-            return match io_err.kind() {
-                std::io::ErrorKind::NotFound => libc::ENOENT,
-                std::io::ErrorKind::PermissionDenied => libc::EACCES,
-                std::io::ErrorKind::TimedOut => libc::ETIMEDOUT,
-                std::io::ErrorKind::InvalidInput => libc::EINVAL,
-                _ => libc::EIO,
-            };
-        }
-
-        // Default to EIO for unknown errors
+    } else {
         libc::EIO
     }
 }

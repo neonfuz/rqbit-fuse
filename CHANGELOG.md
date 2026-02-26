@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated error conversion implementations (TODO.md Phase 2, Task 5.2)
+  - Created `impl_from_error!` macro in `src/error.rs` to consolidate 4 repetitive From impl blocks
+  - Replaced ~40 lines of separate impl blocks for std::io::Error, reqwest::Error, serde_json::Error, toml::de::Error
+  - Removed `ToFuseError` trait and replaced with standalone `anyhow_to_errno()` function
+  - Updated `src/fs/async_bridge.rs` to use new function instead of trait method
+  - Eliminated 20+ lines of trait boilerplate while maintaining same functionality
+  - All tests passing with one unrelated clippy warning (len_without_is_empty)
+  - Code reduction: ~31 lines (net, with significantly cleaner code structure)
+
+### Changed
+
 - Simplified validation error pattern (TODO.md Phase 2, Task 5.1)
   - Replaced complex `ValidationIssue` struct with simple `Vec<String>` in `src/error.rs`
   - Removed 15-line struct definition with field/message and Display impl

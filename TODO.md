@@ -306,15 +306,16 @@
 #### 5.2 Consolidate Error Conversion Implementations
 **File:** `src/error.rs`
 
-- [ ] Merge From implementations using macros
-  - Current: Separate impl blocks for each error type
-  - Action: Use `impl_from!` macro or consolidate
-  - **Lines:** -40
+- [x] Merge From implementations using macros
+  - Created `impl_from_error!` macro to consolidate 4 separate From impl blocks
+  - Replaced ~40 lines of repetitive impl blocks with 8-line macro + 4 one-line invocations
+  - **Lines:** -21 (net, but significantly cleaner)
 
-- [ ] Remove ToFuseError trait
-  - Current: 20 lines for trait definition + 20 lines impl for anyhow::Error
-  - Action: Use direct conversion
-  - **Lines:** -40
+- [x] Remove ToFuseError trait
+  - Removed trait definition (5 lines) and impl for anyhow::Error (~20 lines)
+  - Replaced with standalone `anyhow_to_errno()` function (~15 lines)
+  - Updated `async_bridge.rs` to use the new function instead of trait method
+  - **Lines:** -10 (net, removed abstraction)
 
 #### 5.3 Simplify Retry Logic
 **File:** `src/api/client.rs`

@@ -1,5 +1,5 @@
 use crate::api::client::RqbitClient;
-use crate::error::{RqbitFuseError, RqbitFuseResult, ToFuseError};
+use crate::error::{anyhow_to_errno, RqbitFuseError, RqbitFuseResult};
 use crate::metrics::Metrics;
 use std::sync::Arc;
 use std::time::Duration;
@@ -134,7 +134,7 @@ impl AsyncFuseWorker {
                     }
                     Ok(Err(e)) => {
                         metrics.record_error();
-                        let error_code = e.to_fuse_error();
+                        let error_code = anyhow_to_errno(&e);
                         FuseResponse::ReadError {
                             error_code,
                             message: e.to_string(),
@@ -185,7 +185,7 @@ impl AsyncFuseWorker {
                         reason: "Some pieces in the requested range are not available".to_string(),
                     },
                     Ok(Err(e)) => {
-                        let error_code = e.to_fuse_error();
+                        let error_code = anyhow_to_errno(&e);
                         FuseResponse::ReadError {
                             error_code,
                             message: e.to_string(),
@@ -211,7 +211,7 @@ impl AsyncFuseWorker {
                 let response = match result {
                     Ok(_) => FuseResponse::ForgetSuccess,
                     Err(e) => {
-                        let error_code = e.to_fuse_error();
+                        let error_code = anyhow_to_errno(&e);
                         FuseResponse::ForgetError {
                             error_code,
                             message: e.to_string(),
