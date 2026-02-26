@@ -43,19 +43,11 @@ impl PersistentStream {
     ) -> Result<Self> {
         let url = format!("{}/torrents/{}/stream/{}", base_url, torrent_id, file_idx);
 
-        trace!(
-            stream_op = "create",
-            torrent_id = torrent_id,
-            file_idx = file_idx,
-            start_offset = start_offset,
-            "Creating new persistent stream"
-        );
+        trace!("Creating stream for {}/{}", torrent_id, file_idx);
 
-        // Request from the start offset to get a stream we can read sequentially
         let range_header = format!("bytes={}-", start_offset);
         let mut request = client.get(&url).header("Range", range_header);
 
-        // Add Authorization header if credentials are provided
         if let Some(auth) = auth_header {
             request = request.header("Authorization", auth);
         }
@@ -67,7 +59,6 @@ impl PersistentStream {
 
         let status = response.status();
 
-        // Check if we got a successful response
         if !status.is_success() && status != StatusCode::PARTIAL_CONTENT {
             return Err(RqbitFuseError::IoError(format!(
                 "Failed to create stream: HTTP {}",
@@ -76,7 +67,6 @@ impl PersistentStream {
             .into());
         }
 
-        // Check if server returned 200 OK for a range request (rqbit bug workaround)
         let is_full_response = status == StatusCode::OK && start_offset > 0;
 
         if is_full_response {
@@ -99,18 +89,16 @@ impl PersistentStream {
             );
         }
 
-        // Convert response to byte stream
         let stream: ByteStream = Box::pin(response.bytes_stream());
 
         let mut persistent_stream = Self {
             stream,
-            current_position: 0, // Will be updated after potential skip
+            current_position: 0,
             last_access: Instant::now(),
             is_valid: true,
             pending_buffer: None,
         };
 
-        // If server returned full file, skip to the requested offset
         if is_full_response {
             persistent_stream.skip(start_offset).await?;
         }
@@ -126,8 +114,6 @@ impl PersistentStream {
 
         let mut bytes_read = 0;
 
-        // First, use any pending buffered data
-        // IMPORTANT: Copy data BEFORE consuming from pending buffer
         if let Some(ref pending) = self.pending_buffer {
             let pending_len = pending.len();
             if pending_len > 0 {
@@ -136,7 +122,6 @@ impl PersistentStream {
                 bytes_read += to_copy;
                 self.current_position += to_copy as u64;
 
-                // Now consume the bytes we just used
                 if to_copy < pending_len {
                     self.pending_buffer = Some(pending.slice(to_copy..));
                 } else {
@@ -145,7 +130,6 @@ impl PersistentStream {
             }
         }
 
-        // Read more data from the stream if needed
         while bytes_read < buf.len() {
             match self.stream.next().await {
                 Some(Ok(chunk)) => {
@@ -172,7 +156,6 @@ impl PersistentStream {
         Ok(bytes_read)
     }
 
-    /// Skip forward in the stream by reading and discarding bytes
     async fn skip(&mut self, bytes_to_skip: u64) -> Result<u64> {
         if !self.is_valid {
             return Err(anyhow::anyhow!("Stream is no longer valid"));
@@ -180,7 +163,6 @@ impl PersistentStream {
 
         let mut skipped = self.consume_pending(bytes_to_skip as usize) as u64;
 
-        // Skip more data from the stream if needed
         let mut bytes_since_yield = 0u64;
         while skipped < bytes_to_skip {
             match self.stream.next().await {

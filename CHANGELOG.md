@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed redundant operation comments from `src/api/streaming.rs` (TODO.md Phase 1, Task 2.1.4)
+  - Removed obvious buffer operation comments from stream creation and read methods
+  - Removed comments: "Request from the start offset...", "Add Authorization header...", "Check if we got a successful response", "Convert response to byte stream", "If server returned full file...", "First, use any pending buffered data", "IMPORTANT: Copy data BEFORE consuming...", "Now consume the bytes we just used", "Read more data from the stream if needed"
+  - Simplified trace! macro call from verbose structured logging to simple format string
+  - All 151 tests passing with zero clippy warnings
+  - Code reduction: 14 lines removed
+
 - Removed redundant implementation detail comments from `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 2.1)
   - Removed DashMap usage explanations from `allocate_entry()` method (lines 82-86)
   - Removed detailed removal order explanation from `remove_inode()` method (lines 327-334)

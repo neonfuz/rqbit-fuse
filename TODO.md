@@ -150,9 +150,11 @@
   - Simplified doc comments to essential information only
   - **Lines:** -11
 
-- [ ] streaming.rs: Remove redundant operation comments
-  - Remove obvious buffer operation comments (lines 36-52, 121-173)
-  - **Lines:** -70
+- [x] streaming.rs: Remove redundant operation comments
+  - Removed obvious buffer operation comments and simplified trace! calls
+  - Removed comments: "Request from the start offset...", "Add Authorization header...", "Check if we got a successful response", "Convert response to byte stream", "If server returned full file...", "First, use any pending buffered data", "IMPORTANT: Copy data BEFORE consuming...", "Now consume the bytes we just used", "Read more data from the stream if needed"
+  - Simplified trace! macro call from verbose structured logging to simple format
+  - **Lines:** -14
 
 - [ ] client.rs: Remove retry logic explanation
   - Simplify verbose retry pattern comments (lines 103-115)
