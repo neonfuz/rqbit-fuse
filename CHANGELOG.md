@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated log level validation tests in `src/config/mod.rs` (TODO.md Phase 1, Task 1.1.4)
+  - Merged `test_validate_invalid_log_level` and `test_validate_valid_log_levels` into single parameterized test
+  - New `test_validate_log_level` uses rstest with 7 test cases covering all valid levels plus invalid cases
+  - Added case-insensitive test ("ERROR" should be invalid) for completeness
+  - All 7 parameterized tests passing with zero clippy warnings
+  - Code reduction: 24 lines → 10 lines (-14 lines, -58% of log level validation test code)
+
 - Consolidated file extension tests in `src/config/mod.rs` (TODO.md Phase 1, Task 1.4)
   - Merged 3 separate test functions into single parameterized test using rstest
   - Tests json/JSON/toml/TOML/Toml extensions with 5 test cases

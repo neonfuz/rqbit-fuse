@@ -93,9 +93,10 @@
   - Tests json, JSON, toml, TOML, and Toml extensions
   - **Lines:** -54
 
-- [ ] Remove redundant validation tests
-  - Test all log levels in single loop instead of individually
-  - **Lines:** -40
+- [x] Remove redundant validation tests
+  - Consolidated `test_validate_invalid_log_level` and `test_validate_valid_log_levels` into single parameterized test using rstest
+  - Added case-insensitive log level test case
+  - **Lines:** -14 (from 24 lines to 10 lines)
 
 - [ ] Simplify config parsing tests
   - Use shared config strings, extract common assertions

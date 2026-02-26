@@ -471,21 +471,22 @@ max_concurrent_reads = 20
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_validate_invalid_log_level() {
+    #[rstest::rstest]
+    #[case("error", true)]
+    #[case("warn", true)]
+    #[case("info", true)]
+    #[case("debug", true)]
+    #[case("trace", true)]
+    #[case("invalid", false)]
+    #[case("ERROR", false)]
+    fn test_validate_log_level(#[case] level: &str, #[case] should_pass: bool) {
         let mut config = Config::default();
-        config.logging.level = "invalid".to_string();
+        config.logging.level = level.to_string();
         let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_valid_log_levels() {
-        let valid_levels = ["error", "warn", "info", "debug", "trace"];
-        for level in valid_levels {
-            let mut config = Config::default();
-            config.logging.level = level.to_string();
-            assert!(config.validate().is_ok(), "Level {} should be valid", level);
+        if should_pass {
+            assert!(result.is_ok(), "Level {} should be valid", level);
+        } else {
+            assert!(result.is_err(), "Level {} should be invalid", level);
         }
     }
 }
