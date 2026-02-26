@@ -156,9 +156,13 @@
   - Simplified trace! macro call from verbose structured logging to simple format
   - **Lines:** -14
 
-- [ ] client.rs: Remove retry logic explanation
-  - Simplify verbose retry pattern comments (lines 103-115)
-  - **Lines:** -50
+- [x] client.rs: Remove retry logic explanation
+  - Simplified doc comment from "Helper method to execute a request with retry logic" to "Execute request with automatic retry for transient failures"
+  - Removed unused `_start_time` variable
+  - Removed inline comments explaining obvious retry behavior
+  - Condensed verbose warn! macro calls to single lines
+  - Simplified final result matching with inline error creation
+  - **Lines:** -48
 
 #### 2.2 Simplify Module-Level Documentation
 

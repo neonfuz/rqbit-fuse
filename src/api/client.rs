@@ -100,7 +100,7 @@ impl RqbitClient {
         }
     }
 
-    /// Helper method to execute a request with retry logic
+    /// Execute request with automatic retry for transient failures
     async fn execute_with_retry<F, Fut>(
         &self,
         endpoint: &str,
@@ -110,31 +110,25 @@ impl RqbitClient {
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = reqwest::Result<reqwest::Response>>,
     {
-        let _start_time = Instant::now();
-
         let mut last_error = None;
         let mut final_result = None;
 
         for attempt in 0..=self.max_retries {
             match operation().await {
                 Ok(response) => {
-                    // Check if we got a server error that might be transient
                     let status = response.status();
                     if status.is_server_error() && attempt < self.max_retries {
                         warn!(
-                            endpoint = endpoint,
+                            endpoint,
                             status = status.as_u16(),
                             attempt = attempt + 1,
-                            max_attempts = self.max_retries + 1,
-                            "Server error, retrying..."
+                            "Server error, retrying"
                         );
                         sleep(self.retry_delay * (attempt + 1)).await;
                         continue;
                     }
 
-                    // Handle 429 Too Many Requests with Retry-After header
                     if status == StatusCode::TOO_MANY_REQUESTS && attempt < self.max_retries {
-                        // Extract Retry-After header value
                         let retry_after = response
                             .headers()
                             .get("retry-after")
@@ -144,12 +138,11 @@ impl RqbitClient {
                             .unwrap_or_else(|| self.retry_delay * (attempt + 1));
 
                         warn!(
-                            endpoint = endpoint,
+                            endpoint,
                             status = status.as_u16(),
                             retry_after_secs = retry_after.as_secs(),
                             attempt = attempt + 1,
-                            max_attempts = self.max_retries + 1,
-                            "Rate limited, retrying after delay..."
+                            "Rate limited"
                         );
                         sleep(retry_after).await;
                         continue;
@@ -162,18 +155,10 @@ impl RqbitClient {
                     let api_error: RqbitFuseError = e.into();
                     last_error = Some(api_error.clone());
 
-                    // Check if error is transient and we should retry
                     if api_error.is_transient() && attempt < self.max_retries {
-                        warn!(
-                            endpoint = endpoint,
-                            attempt = attempt + 1,
-                            max_attempts = self.max_retries + 1,
-                            error = %api_error,
-                            "Transient error, retrying"
-                        );
+                        warn!(endpoint, attempt = attempt + 1, error = %api_error, "Retrying");
                         sleep(self.retry_delay * (attempt + 1)).await;
                     } else {
-                        // Non-transient error or retries exhausted
                         final_result = Some(Err(api_error));
                         break;
                     }
@@ -181,17 +166,12 @@ impl RqbitClient {
             }
         }
 
-        // Record result in metrics
         match final_result {
             Some(Ok(response)) => Ok(response),
             Some(Err(api_error)) => Err(api_error.into()),
-            None => {
-                // All retries exhausted with transient errors
-                let error = last_error.unwrap_or_else(|| {
-                    RqbitFuseError::NotReady("Retry limit exceeded".to_string())
-                });
-                Err(error.into())
-            }
+            None => Err(last_error
+                .unwrap_or_else(|| RqbitFuseError::NotReady("Retry limit exceeded".to_string()))
+                .into()),
         }
     }
 

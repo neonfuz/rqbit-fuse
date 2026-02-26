@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified retry logic in `src/api/client.rs` (TODO.md Phase 1, Task 2.1.5)
+  - Simplified doc comment from "Helper method to execute a request with retry logic" to "Execute request with automatic retry for transient failures"
+  - Removed unused `_start_time` variable
+  - Removed inline comments explaining obvious retry behavior ("Check if we got a server error", "Handle 429", etc.)
+  - Condensed verbose warn! macro calls to single lines with structured fields
+  - Simplified final result matching with inline error creation
+  - All tests passing with zero clippy warnings
+  - Code reduction: 48 lines removed
+
 - Removed redundant operation comments from `src/api/streaming.rs` (TODO.md Phase 1, Task 2.1.4)
   - Removed obvious buffer operation comments from stream creation and read methods
   - Removed comments: "Request from the start offset...", "Add Authorization header...", "Check if we got a successful response", "Convert response to byte stream", "If server returned full file...", "First, use any pending buffered data", "IMPORTANT: Copy data BEFORE consuming...", "Now consume the bytes we just used", "Read more data from the stream if needed"
