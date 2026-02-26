@@ -7,87 +7,48 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, trace, warn};
 
 /// Request sent from FUSE callback to async worker.
-/// Contains all necessary information to execute an async operation
-/// and a channel to send the response back.
 #[derive(Debug)]
 pub enum FuseRequest {
-    /// Read file data from a torrent
     ReadFile {
-        /// Torrent ID
         torrent_id: u64,
-        /// File index within the torrent
         file_index: u64,
-        /// Offset to start reading from
         offset: u64,
-        /// Number of bytes to read
         size: usize,
-        /// Timeout for the operation
         timeout: Duration,
-        /// Channel to send the response
         response_tx: std::sync::mpsc::Sender<FuseResponse>,
     },
-    /// Check if pieces are available for a byte range
     CheckPiecesAvailable {
-        /// Torrent ID
         torrent_id: u64,
-        /// Starting byte offset
         offset: u64,
-        /// Number of bytes to check
         size: u64,
-        /// Timeout for the operation
         timeout: Duration,
-        /// Channel to send the response
         response_tx: std::sync::mpsc::Sender<FuseResponse>,
     },
-    /// Remove/forget a torrent from rqbit
     ForgetTorrent {
-        /// Torrent ID to remove
         torrent_id: u64,
-        /// Channel to send the response
         response_tx: std::sync::mpsc::Sender<FuseResponse>,
     },
 }
 
 /// Response from async worker to FUSE callback.
-/// Represents the result of an async operation.
 #[derive(Debug, Clone)]
 pub enum FuseResponse {
-    /// File read was successful
     ReadSuccess { data: Vec<u8> },
-    /// File read failed
     ReadError { error_code: i32, message: String },
-    /// Pieces are available for the requested range
     PiecesAvailable,
-    /// Pieces are not available for the requested range
     PiecesNotAvailable { reason: String },
-    /// Torrent was successfully forgotten
     ForgetSuccess,
-    /// Failed to forget torrent
     ForgetError { error_code: i32, message: String },
 }
 
 /// Async worker that handles FUSE requests in an async context.
-/// Provides a bridge between synchronous FUSE callbacks and async I/O operations.
 pub struct AsyncFuseWorker {
-    /// Channel sender for submitting requests (tokio::sync::mpsc)
-    ///
-    /// Uses tokio's async channel because the worker runs in an async context.
-    /// Std::sync::mpsc would block the tokio executor.
     request_tx: mpsc::Sender<FuseRequest>,
-    /// Shutdown signal sender
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl AsyncFuseWorker {
     /// Create a new async worker with the given API client and metrics.
-    ///
-    /// # Arguments
-    /// * `api_client` - The HTTP client for rqbit API calls
-    /// * `metrics` - Metrics collection for monitoring
-    /// * `channel_capacity` - Maximum number of pending requests
-    ///
-    /// # Returns
-    /// A new AsyncFuseWorker instance
     pub fn new(
         api_client: Arc<RqbitClient>,
         metrics: Arc<Metrics>,

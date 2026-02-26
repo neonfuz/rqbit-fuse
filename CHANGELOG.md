@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated multi-line function docs (TODO.md Phase 1, Task 2.2)
+  - Simplified verbose enum field documentation in `src/fs/async_bridge.rs` (39 lines)
+    - Removed detailed comments from FuseRequest enum variants
+    - Removed detailed comments from FuseResponse enum variants
+    - Removed verbose struct field comments from AsyncFuseWorker
+  - Simplified method documentation in `src/fs/filesystem.rs` (36 lines)
+    - Consolidated TorrentFS struct doc comment
+    - Simplified new() method documentation
+    - Removed doc comments from getter methods and test helpers
+    - Simplified discover_torrents() documentation
+  - Simplified struct and method documentation in `src/fs/inode_manager.rs` (23 lines)
+    - Removed verbose struct field comments
+    - Simplified method doc comments
+  - Simplified method documentation in `src/api/client.rs` (43 lines)
+    - Removed redundant two-line doc comments
+    - Simplified verbose check_range_available() documentation
+  - Total code reduction: 135 lines (exceeded target of -50)
+  - All 151 tests passing with zero clippy warnings
+
 - Removed verbose `//!` module headers (TODO.md Phase 1, Task 2.2)
   - Removed `//! Unified error types for rqbit-fuse.` from src/error.rs
   - Removed `//! Configuration management for CLI, environment variables, and config files.` from src/config/mod.rs

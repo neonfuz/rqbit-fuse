@@ -28,12 +28,10 @@ pub struct RqbitClient {
 }
 
 impl RqbitClient {
-    /// Create a new RqbitClient with default configuration
     pub fn new(base_url: String) -> Result<Self> {
         Self::with_config(base_url, 3, Duration::from_millis(500), None, None)
     }
 
-    /// Create a new RqbitClient with authentication
     pub fn with_auth(base_url: String, username: String, password: String) -> Result<Self> {
         Self::with_config(
             base_url,
@@ -44,7 +42,6 @@ impl RqbitClient {
         )
     }
 
-    /// Create a new RqbitClient with custom retry configuration
     pub fn with_config(
         base_url: String,
         max_retries: u32,
@@ -81,7 +78,6 @@ impl RqbitClient {
         })
     }
 
-    /// Create Authorization header for HTTP Basic Auth
     fn create_auth_header(&self) -> Option<String> {
         self.auth_credentials.as_ref().map(|(username, password)| {
             let credentials = format!("{}:{}", username, password);
@@ -90,8 +86,6 @@ impl RqbitClient {
         })
     }
 
-    /// Invalidate the list_torrents cache
-    /// Should be called when torrents are added or removed
     async fn invalidate_list_torrents_cache(&self) {
         let mut cache = self.list_torrents_cache.write().await;
         if cache.is_some() {
@@ -100,7 +94,6 @@ impl RqbitClient {
         }
     }
 
-    /// Execute request with automatic retry for transient failures
     async fn execute_with_retry<F, Fut>(
         &self,
         endpoint: &str,
@@ -175,7 +168,6 @@ impl RqbitClient {
         }
     }
 
-    /// Helper to check response status and convert errors
     async fn check_response(&self, response: reqwest::Response) -> Result<reqwest::Response> {
         let status = response.status();
 
@@ -211,7 +203,6 @@ impl RqbitClient {
         }
     }
 
-    /// Generic GET request that returns JSON
     async fn get_json<T: serde::de::DeserializeOwned>(
         &self,
         endpoint: &str,
@@ -230,7 +221,6 @@ impl RqbitClient {
         Ok(response.json().await?)
     }
 
-    /// Generic POST request with JSON body that returns JSON
     async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
         &self,
         endpoint: &str,
@@ -250,11 +240,6 @@ impl RqbitClient {
         Ok(response.json().await?)
     }
 
-    // =========================================================================
-    // Torrent Management
-    // =========================================================================
-
-    /// List all torrents in the session with caching
     #[instrument(skip(self), fields(api_op = "list_torrents"))]
     pub async fn list_torrents(&self) -> Result<ListTorrentsResult> {
         // Check cache first
@@ -342,7 +327,6 @@ impl RqbitClient {
         Ok(result)
     }
 
-    /// Get detailed information about a specific torrent
     #[instrument(skip(self), fields(api_op = "get_torrent", id))]
     pub async fn get_torrent(&self, id: u64) -> Result<TorrentInfo> {
         let url = format!("{}/torrents/{}", self.base_url, id);
@@ -367,7 +351,6 @@ impl RqbitClient {
         }
     }
 
-    /// Add a torrent from a magnet link
     #[instrument(skip(self), fields(api_op = "add_torrent_magnet"))]
     pub async fn add_torrent_magnet(&self, magnet_link: &str) -> Result<AddTorrentResponse> {
         let url = format!("{}/torrents", self.base_url);
@@ -385,7 +368,6 @@ impl RqbitClient {
         Ok(result)
     }
 
-    /// Add a torrent from a torrent file URL
     #[instrument(skip(self), fields(api_op = "add_torrent_url", url = %torrent_url))]
     pub async fn add_torrent_url(&self, torrent_url: &str) -> Result<AddTorrentResponse> {
         let url = format!("{}/torrents", self.base_url);
@@ -403,7 +385,6 @@ impl RqbitClient {
         Ok(result)
     }
 
-    /// Get statistics for a torrent
     #[instrument(skip(self), fields(api_op = "get_torrent_stats", id))]
     pub async fn get_torrent_stats(&self, id: u64) -> Result<TorrentStats> {
         let url = format!("{}/torrents/{}/stats/v1", self.base_url, id);
@@ -439,7 +420,6 @@ impl RqbitClient {
         }
     }
 
-    /// Get piece availability bitfield for a torrent
     #[instrument(skip(self), fields(api_op = "get_piece_bitfield", id))]
     pub async fn get_piece_bitfield(&self, id: u64) -> Result<PieceBitfield> {
         let url = format!("{}/torrents/{}/haves", self.base_url, id);
@@ -480,24 +460,7 @@ impl RqbitClient {
         }
     }
 
-    /// Get both torrent stats and piece bitfield in a single call with caching
-    ///
-    /// Check if a byte range is fully available (all pieces downloaded)
-    ///
-    /// This method checks whether all pieces covering the specified byte range
-    /// have been downloaded. It's useful for determining if a read operation
-    /// can succeed on a paused torrent without blocking.
-    ///
-    /// # Arguments
-    /// * `torrent_id` - The torrent ID
-    /// * `offset` - Starting byte offset in the file
-    /// * `size` - Number of bytes to check
-    /// * `piece_length` - Size of each piece in bytes (from torrent info)
-    ///
-    /// # Returns
-    /// * `Ok(true)` - All pieces in the range are available
-    /// * `Ok(false)` - At least one piece in the range is not available
-    /// * `Err(RqbitFuseError)` - Failed to fetch torrent status
+    /// Check if a byte range is fully available (all pieces downloaded).
     #[instrument(
         skip(self),
         fields(api_op = "check_range_available", torrent_id, offset, size)
@@ -530,10 +493,6 @@ impl RqbitClient {
     // File Operations
     // =========================================================================
 
-    /// Read file data from a torrent
-    ///
-    /// If `range` is None, reads the entire file.
-    /// If `range` is Some((start, end)), reads bytes from start to end (inclusive).
     #[instrument(skip(self), fields(api_op = "read_file", torrent_id, file_idx, range = ?range))]
     pub async fn read_file(
         &self,

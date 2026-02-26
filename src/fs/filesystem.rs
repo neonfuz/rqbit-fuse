@@ -34,11 +34,7 @@ pub struct ConcurrencyStats {
     pub available_permits: usize,
 }
 
-/// The main FUSE filesystem implementation for rqbit-fuse.
-/// Implements the fuser::Filesystem trait to provide a FUSE interface
-/// over the rqbit HTTP API.
-///
-/// Clone is cheap as it only increments Arc reference counts.
+/// Main FUSE filesystem implementation for rqbit-fuse. Clone is cheap (Arc-based).
 #[derive(Clone)]
 pub struct TorrentFS {
     config: Config,
@@ -70,16 +66,7 @@ impl TorrentFS {
         &self.config
     }
 
-    /// Creates a new TorrentFS instance with the given configuration.
-    /// Note: This does not initialize the filesystem - call mount() to do so.
-    ///
-    /// # Arguments
-    /// * `config` - Configuration for the filesystem
-    /// * `metrics` - Metrics collection instance
-    /// * `async_worker` - Async worker for handling async operations in FUSE callbacks
-    ///
-    /// # Returns
-    /// * `Result<Self>` - A new TorrentFS instance or an error
+    /// Create new TorrentFS instance. Does not initialize - call mount() after.
     pub fn new(
         config: Config,
         metrics: Arc<Metrics>,
@@ -107,12 +94,10 @@ impl TorrentFS {
         })
     }
 
-    /// Get the read semaphore for limiting concurrent read operations.
     pub fn read_semaphore(&self) -> &Arc<Semaphore> {
         &self.read_semaphore
     }
 
-    /// Get current concurrency statistics.
     pub fn concurrency_stats(&self) -> ConcurrencyStats {
         ConcurrencyStats {
             max_concurrent_reads: self.config.performance.max_concurrent_reads,
@@ -120,25 +105,21 @@ impl TorrentFS {
         }
     }
 
-    /// Get access to the known_torrents set (for testing).
     #[cfg(test)]
     pub fn known_torrents(&self) -> &Arc<DashSet<u64>> {
         &self.known_torrents
     }
 
-    /// Get access to the known_torrents set (for integration tests).
     #[doc(hidden)]
     pub fn __test_known_torrents(&self) -> &Arc<DashSet<u64>> {
         &self.known_torrents
     }
 
-    /// Clear the list_torrents cache (for integration tests).
     #[doc(hidden)]
     pub async fn __test_clear_list_torrents_cache(&self) {
         self.api_client.__test_clear_cache().await;
     }
 
-    /// Start the background torrent discovery task
     fn start_torrent_discovery(&self) {
         let api_client = Arc::clone(&self.api_client);
         let inode_manager = Arc::clone(&self.inode_manager);
@@ -227,7 +208,6 @@ impl TorrentFS {
         info!("Started background torrent discovery with 30 second interval");
     }
 
-    /// Stop the torrent discovery task
     fn stop_torrent_discovery(&self) {
         if let Ok(handle) = self.discovery_handle.try_lock() {
             if let Some(h) = handle.as_ref() {
@@ -238,18 +218,6 @@ impl TorrentFS {
     }
 
     /// Discover new torrents from rqbit and create filesystem structures.
-    ///
-    /// This is the core discovery logic used by:
-    /// - `start_torrent_discovery()` - background polling
-    /// - `refresh_torrents()` - explicit refresh
-    /// - `readdir()` - on-demand discovery when listing root
-    ///
-    /// # Arguments
-    /// * `api_client` - Reference to the API client for listing torrents
-    /// * `inode_manager` - Reference to the inode manager for structure creation
-    ///
-    /// # Returns
-    /// * `Result<Vec<u64>, anyhow::Error>` - List of current torrent IDs, or error
     async fn discover_torrents(
         api_client: &Arc<RqbitClient>,
         inode_manager: &Arc<InodeManager>,

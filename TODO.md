@@ -171,9 +171,13 @@
   - Removed `//! Configuration management for CLI, environment variables, and config files.` from src/config/mod.rs line 1
   - **Lines:** -2
 
-- [ ] Consolidate multi-line function docs
-  - Convert verbose `///` multi-line docs to single-line where sufficient
-  - **Lines:** -50
+- [x] Consolidate multi-line function docs
+  - Converted verbose `///` multi-line docs to single-line where sufficient
+  - Simplified verbose struct/enum field documentation in async_bridge.rs (39 lines)
+  - Simplified method documentation in filesystem.rs (36 lines)
+  - Simplified struct field docs and method documentation in inode_manager.rs (23 lines)
+  - Simplified method documentation in client.rs (43 lines)
+  - **Total Lines:** -135 (exceeded target of -50)
 
 ---
 

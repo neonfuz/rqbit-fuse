@@ -5,21 +5,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use super::inode_entry::InodeEntry;
 
 /// Manages inode allocation and mapping between inodes and filesystem entries.
-/// Uses DashMap for concurrent access and AtomicU64 for thread-safe inode generation.
 pub struct InodeManager {
-    /// Next available inode number (starts at 2, root is 1)
     next_inode: AtomicU64,
-    /// Maps inode numbers to their entries
     entries: DashMap<u64, InodeEntry>,
-    /// Maps paths to inode numbers for reverse lookup
     path_to_inode: DashMap<String, u64>,
-    /// Maps torrent IDs to their directory inode
     torrent_to_inode: DashMap<u64, u64>,
-    /// Maximum number of inodes allowed (0 = unlimited)
     max_inodes: usize,
 }
 
-/// A view into an entry in the inode manager
 #[derive(Debug)]
 pub struct InodeEntryRef {
     pub inode: u64,
@@ -27,16 +20,12 @@ pub struct InodeEntryRef {
 }
 
 impl InodeManager {
-    /// Creates a new InodeManager with root inode (inode 1) pre-allocated.
-    /// Default max_inodes is 0 (unlimited).
+    /// Create new InodeManager with root inode pre-allocated.
     pub fn new() -> Self {
         Self::with_max_inodes(0)
     }
 
-    /// Creates a new InodeManager with a maximum inode limit.
-    ///
-    /// # Arguments
-    /// * `max_inodes` - Maximum number of inodes allowed (0 = unlimited)
+    /// Create new InodeManager with maximum inode limit (0 = unlimited).
     pub fn with_max_inodes(max_inodes: usize) -> Self {
         let entries = DashMap::new();
         let path_to_inode = DashMap::new();
@@ -64,7 +53,6 @@ impl InodeManager {
     }
 
     /// Check if a new inode can be allocated.
-    /// Returns true if allocation is allowed (or if limit is 0/unlimited).
     pub fn can_allocate(&self) -> bool {
         if self.max_inodes > 0 {
             self.entries.len() < self.max_inodes
@@ -73,13 +61,11 @@ impl InodeManager {
         }
     }
 
-    /// Get the current inode count limit (0 = unlimited).
     pub fn max_inodes(&self) -> usize {
         self.max_inodes
     }
 
-    /// Allocates an inode for the given entry and registers it atomically.
-    /// Returns 0 if the maximum inode limit has been reached.
+    /// Allocate an inode for the given entry. Returns 0 if limit reached.
     fn allocate_entry(&self, entry: InodeEntry, torrent_id: Option<u64>) -> u64 {
         // Check max_inodes limit (0 means unlimited)
         if self.max_inodes > 0 && self.entries.len() >= self.max_inodes {
@@ -122,7 +108,6 @@ impl InodeManager {
         self.allocate_entry(entry, None)
     }
 
-    /// Allocates a directory inode for a torrent.
     pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
         // Build canonical path from parent
         let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
@@ -146,7 +131,6 @@ impl InodeManager {
         self.allocate_entry(entry, Some(torrent_id))
     }
 
-    /// Allocates a file inode within a torrent.
     pub fn allocate_file(
         &self,
         name: String,
@@ -179,7 +163,6 @@ impl InodeManager {
         self.allocate_entry(entry, None)
     }
 
-    /// Allocates a symbolic link inode.
     pub fn allocate_symlink(&self, name: String, parent: u64, target: String) -> u64 {
         // Build canonical path from parent
         let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
