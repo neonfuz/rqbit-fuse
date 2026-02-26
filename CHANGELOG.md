@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified tracing calls in `add_child()` in `src/fs/inode_manager.rs` (TODO.md 3.4)
+  - Removed redundant "add_child called" entry log
+  - Converted verbose structured field logging to compact format with inline variables
+  - Reduced 27 lines to 11 lines (-16 lines)
+  - All tests passing with zero clippy warnings
+
 - Simplified `build_path()` implementation in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 3.2)
   - Converted 20-line while loop to 9-line iterator-based approach
   - Used `filter(|_| current != 1)` pattern to combine condition and lookup

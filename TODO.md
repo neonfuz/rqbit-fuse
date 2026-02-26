@@ -209,16 +209,19 @@
 #### 3.3 Remove Unused FileHandleManager Methods
 **File:** `src/types/handle.rs`
 
-- [ ] Remove unused methods
-  - Identify and remove: `get_inode()`, `contains()`, `is_empty()`, `get_handles_for_inode()`, `get_all_handles()`
-  - **Lines:** -80
+- [x] Remove unused methods
+  - Identified and removed: `contains()`, `is_empty()`, `get_all_handles()` (3 methods, 26 lines total)
+  - Kept: `get_inode()` - used in filesystem.rs:765, `get_handles_for_inode()` - used in filesystem.rs:1529
+  - **Lines:** -26
 
 #### 3.4 Simplify Logging Patterns
 
-- [ ] Simplify tracing calls
-  - Current: Verbose `tracing::info!` with many fields in `add_child()` (lines 445-467)
-  - Action: Use compact format, remove redundant fields
-  - **Lines:** -60
+- [x] Simplify tracing calls
+  - Simplified `add_child()` verbose `tracing::info!` calls in `src/fs/inode_manager.rs`
+  - Removed redundant "add_child called" entry log
+  - Converted structured field logging to compact format with inline variables
+  - Simplified 3 verbose log calls (info + 2 warns) into compact single-line format
+  - **Lines:** -16 (27 lines → 11 lines)
 
 ---
 

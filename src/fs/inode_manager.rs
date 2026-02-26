@@ -387,28 +387,23 @@ impl InodeManager {
 
     /// Adds a child to a directory's children list.
     pub fn add_child(&self, parent: u64, child: u64) {
-        tracing::info!(parent = parent, child = child, "add_child called");
         if let Some(mut entry) = self.entries.get_mut(&parent) {
             if let InodeEntry::Directory { children, .. } = &mut *entry {
                 if children.insert(child) {
                     tracing::info!(
-                        parent = parent,
-                        child = child,
-                        children_count = children.len(),
-                        "Added child to directory"
+                        "Added child {} to directory {} (total: {})",
+                        child,
+                        parent,
+                        children.len()
                     );
                 } else {
-                    tracing::warn!(
-                        parent = parent,
-                        child = child,
-                        "Child already exists in directory"
-                    );
+                    tracing::warn!("Child {} already exists in directory {}", child, parent);
                 }
             } else {
-                tracing::warn!(parent = parent, "Parent is not a directory");
+                tracing::warn!("Parent {} is not a directory", parent);
             }
         } else {
-            tracing::warn!(parent = parent, "Parent inode not found");
+            tracing::warn!("Parent inode {} not found", parent);
         }
     }
 
