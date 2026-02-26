@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed redundant doc comments from `src/fs/filesystem.rs` (TODO.md Phase 1, Task 2.1.1)
+  - Removed obvious struct field documentation comments from TorrentFS struct (lines 44-67)
+  - Removed comments like "/// Configuration for the filesystem", "/// HTTP client for rqbit API", etc.
+  - Field names are self-documenting, making these comments unnecessary
+  - Code reduction: 23 lines removed (-40 lines target for this task)
+
 - Consolidated has_piece_range tests in `src/api/types.rs` (TODO.md Phase 1, Task 1.6)
   - Merged 5 separate test functions into 3 focused tests using rstest:
     - `test_has_piece_range`: 23 parameterized cases covering complete, partial, and multi-byte bitfield scenarios

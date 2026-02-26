@@ -134,8 +134,8 @@
 
 #### 2.1 Remove Redundant Doc Comments
 
-- [ ] filesystem.rs: Remove obvious struct field docs (lines 44-67)
-  - Remove `/// Configuration for the filesystem` for `config: Config`
+- [x] filesystem.rs: Remove obvious struct field docs (lines 44-67)
+  - Removed redundant doc comments from all TorrentFS struct fields
   - **Lines:** -40
 
 - [ ] async_bridge.rs: Remove architecture explanation comments (lines 72-100)

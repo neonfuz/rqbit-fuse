@@ -41,28 +41,16 @@ pub struct ConcurrencyStats {
 /// Clone is cheap as it only increments Arc reference counts.
 #[derive(Clone)]
 pub struct TorrentFS {
-    /// Configuration for the filesystem
     config: Config,
-    /// HTTP client for rqbit API
     api_client: Arc<RqbitClient>,
-    /// Inode manager for filesystem entries
     inode_manager: Arc<InodeManager>,
-    /// Tracks whether the filesystem has been initialized
     initialized: bool,
-    /// File handle manager for tracking open files
     file_handles: Arc<FileHandleManager>,
-    /// Set of known torrent IDs for detecting removals
     known_torrents: Arc<DashSet<u64>>,
-    /// Handle to the torrent discovery task
     discovery_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    /// Metrics collection
     metrics: Arc<Metrics>,
-    /// Timestamp of last discovery (ms since Unix epoch) to prevent too frequent scans
-    /// Uses atomic operations for lock-free check-and-set
     last_discovery: Arc<AtomicU64>,
-    /// Async worker for handling async operations in FUSE callbacks
     async_worker: Arc<AsyncFuseWorker>,
-    /// Semaphore for limiting concurrent read operations
     read_semaphore: Arc<Semaphore>,
 }
 
