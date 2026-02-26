@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated file extension tests in `src/config/mod.rs` (TODO.md Phase 1, Task 1.4)
+  - Merged 3 separate test functions into single parameterized test using rstest
+  - Tests json/JSON/toml/TOML/Toml extensions with 5 test cases
+  - All 5 parameterized tests passing with zero clippy warnings
+  - Code reduction: 54 lines → 20 lines (-34 lines, -63% of file extension test code)
+
 - Extracted mock server helper in `src/api/streaming.rs` (TODO.md Phase 1, Task 1.3)
   - Created `setup_mock_server()` helper function to eliminate duplicate wiremock setup
   - Updated `test_sequential_reads_reuse_stream()` to use helper (-6 lines)

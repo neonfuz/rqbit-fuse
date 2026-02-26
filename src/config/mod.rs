@@ -354,59 +354,28 @@ max_concurrent_reads = 20
         assert_eq!(config.cache.max_entries, 500);
     }
 
-    #[test]
-    fn test_json_uppercase_extension() {
-        let json_content = r#"{
-            "api": {
-                "url": "http://localhost:9091"
-            }
-        }"#;
+    #[rstest::rstest]
+    #[case("json", "http://localhost:9091")]
+    #[case("JSON", "http://localhost:9091")]
+    #[case("toml", "http://localhost:8082")]
+    #[case("TOML", "http://localhost:8082")]
+    #[case("Toml", "http://localhost:8083")]
+    fn test_file_extension_case_handling(#[case] ext: &str, #[case] expected_url: &str) {
+        let content = if ext.eq_ignore_ascii_case("json") {
+            format!(r#"{{"api": {{"url": "{}"}}}}"#, expected_url)
+        } else {
+            format!("[api]\nurl = \"{}\"", expected_url)
+        };
 
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(json_content.as_bytes()).unwrap();
+        temp_file.write_all(content.as_bytes()).unwrap();
 
-        let mut json_path = temp_file.path().to_path_buf();
-        json_path.set_extension("JSON");
-        std::fs::rename(temp_file.path(), &json_path).unwrap();
+        let mut path = temp_file.path().to_path_buf();
+        path.set_extension(ext);
+        std::fs::rename(temp_file.path(), &path).unwrap();
 
-        let config = Config::from_file(&json_path).unwrap();
-        assert_eq!(config.api.url, "http://localhost:9091");
-    }
-
-    #[test]
-    fn test_toml_uppercase_extension() {
-        let toml_content = r#"
-[api]
-url = "http://localhost:8082"
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(toml_content.as_bytes()).unwrap();
-
-        let mut toml_path = temp_file.path().to_path_buf();
-        toml_path.set_extension("TOML");
-        std::fs::rename(temp_file.path(), &toml_path).unwrap();
-
-        let config = Config::from_file(&toml_path).unwrap();
-        assert_eq!(config.api.url, "http://localhost:8082");
-    }
-
-    #[test]
-    fn test_toml_mixed_case_extension() {
-        let toml_content = r#"
-[api]
-url = "http://localhost:8083"
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(toml_content.as_bytes()).unwrap();
-
-        let mut toml_path = temp_file.path().to_path_buf();
-        toml_path.set_extension("Toml");
-        std::fs::rename(temp_file.path(), &toml_path).unwrap();
-
-        let config = Config::from_file(&toml_path).unwrap();
-        assert_eq!(config.api.url, "http://localhost:8083");
+        let config = Config::from_file(&path).unwrap();
+        assert_eq!(config.api.url, expected_url);
     }
 
     #[test]

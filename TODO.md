@@ -88,9 +88,10 @@
 #### 1.4 config/mod.rs Tests (-120 lines)
 **File:** `src/config/mod.rs` (~238 test lines out of 523 total)
 
-- [ ] Merge file extension tests
-  - Combine .json/.JSON/.toml/.TOML/.Toml tests into single parameterized test
-  - **Lines:** -60
+- [x] Merge file extension tests
+  - Consolidated 3 separate tests into single parameterized test using rstest
+  - Tests json, JSON, toml, TOML, and Toml extensions
+  - **Lines:** -54
 
 - [ ] Remove redundant validation tests
   - Test all log levels in single loop instead of individually
