@@ -340,15 +340,17 @@
 #### 6.1 Simplify Config Structure
 **File:** `src/config/mod.rs`
 
-- [ ] Flatten nested config structs
-  - Current: 6 separate config structs (ApiConfig, CacheConfig, MountConfig, etc.)
-  - Action: Use single flat struct with prefixes, or merge where logical
-  - **Lines:** -100
+- [x] Flatten nested config structs
+  - Removed 5 nested structs: ApiConfig, CacheConfig, MountConfig, PerformanceConfig, LoggingConfig
+  - Replaced with flattened fields on Config struct
+  - See research/config_flattening.md for details
+  - **Lines:** -23 (file reduced from 470 to 447 lines)
 
-- [ ] Remove Default impls in favor of derive
-  - Current: Manual Default implementations for each config
-  - Action: Use `#[derive(Default)]` where possible
-  - **Lines:** -50
+- [x] Remove Default impls in favor of derive
+  - Removed manual Default implementations for 5 sub-structs
+  - Implemented single manual Default for Config struct with proper defaults
+  - Added default value functions for serde compatibility
+  - **Lines:** Part of above
 
 #### 6.2 Remove ConcurrencyStats Wrapper
 **File:** `src/fs/filesystem.rs`

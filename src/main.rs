@@ -120,22 +120,22 @@ async fn run_mount(
 ) -> Result<()> {
     let config = load_config(config_file, mount_point, api_url, username, password)?;
 
-    if !config.mount.mount_point.exists() {
+    if !config.mount_point.exists() {
         tracing::info!(
             "Creating mount point: {}",
-            config.mount.mount_point.display()
+            config.mount_point.display()
         );
-        std::fs::create_dir_all(&config.mount.mount_point).with_context(|| {
+        std::fs::create_dir_all(&config.mount_point).with_context(|| {
             format!(
                 "Failed to create mount point: {}",
-                config.mount.mount_point.display()
+                config.mount_point.display()
             )
         })?;
     }
 
     tracing::info!("rqbit-fuse starting");
-    tracing::info!("Using rqbit API at: {}", config.api.url);
-    tracing::info!("Mount point: {}", config.mount.mount_point.display());
+    tracing::info!("Using rqbit API at: {}", config.api_url);
+    tracing::info!("Mount point: {}", config.mount_point.display());
 
     rqbit_fuse::run(config).await
 }
@@ -147,7 +147,7 @@ async fn run_umount(
 ) -> Result<()> {
     let config = load_config(config_file, mount_point.clone(), None, None, None)?;
 
-    let mount_point = mount_point.unwrap_or_else(|| config.mount.mount_point.clone());
+    let mount_point = mount_point.unwrap_or_else(|| config.mount_point.clone());
 
     tracing::info!("Unmounting: {}", mount_point.display());
 

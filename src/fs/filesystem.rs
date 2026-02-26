@@ -53,7 +53,7 @@ pub struct TorrentFS {
 impl TorrentFS {
     /// Get the mount point path.
     pub fn mount_point(&self) -> &std::path::Path {
-        &self.config.mount.mount_point
+        &self.config.mount_point
     }
 
     /// Get a reference to the async worker.
@@ -73,11 +73,16 @@ impl TorrentFS {
         async_worker: Arc<AsyncFuseWorker>,
     ) -> Result<Self> {
         let api_client = Arc::new(
-            create_api_client(&config.api, Some(Arc::clone(&metrics)))
-                .context("API client creation failed")?,
+            create_api_client(
+                &config.api_url,
+                config.api_username.as_deref(),
+                config.api_password.as_deref(),
+                Some(Arc::clone(&metrics)),
+            )
+            .context("API client creation failed")?,
         );
         let inode_manager = Arc::new(InodeManager::with_max_inodes(100000));
-        let read_semaphore = Arc::new(Semaphore::new(config.performance.max_concurrent_reads));
+        let read_semaphore = Arc::new(Semaphore::new(config.max_concurrent_reads));
 
         Ok(Self {
             config,
@@ -100,7 +105,7 @@ impl TorrentFS {
 
     pub fn concurrency_stats(&self) -> ConcurrencyStats {
         ConcurrencyStats {
-            max_concurrent_reads: self.config.performance.max_concurrent_reads,
+            max_concurrent_reads: self.config.max_concurrent_reads,
             available_permits: self.read_semaphore.available_permits(),
         }
     }
@@ -551,7 +556,7 @@ impl TorrentFS {
     /// - It's a directory
     /// - We have read/write permissions
     fn validate_mount_point(&self) -> Result<()> {
-        let mount_point = &self.config.mount.mount_point;
+        let mount_point = &self.config.mount_point;
 
         if !mount_point.exists() {
             return Err(anyhow::anyhow!(
@@ -581,7 +586,7 @@ impl TorrentFS {
 
     /// Establishes connection to the rqbit server and validates it's accessible.
     async fn connect_to_rqbit(&self) -> Result<()> {
-        info!("Connecting to rqbit server at: {}", self.config.api.url);
+        info!("Connecting to rqbit server at: {}", self.config.api_url);
 
         match self.api_client.health_check().await {
             Ok(true) => {
@@ -590,11 +595,11 @@ impl TorrentFS {
             }
             Ok(false) => Err(anyhow::anyhow!(
                 "rqbit server at {} is not responding or returned an error",
-                self.config.api.url
+                self.config.api_url
             )),
             Err(e) => Err(anyhow::anyhow!(
                 "Failed to connect to rqbit server at {}: {}",
-                self.config.api.url,
+                self.config.api_url,
                 e
             )),
         }
@@ -606,7 +611,7 @@ impl TorrentFS {
     where
         Self: Sized,
     {
-        let mount_point = self.config.mount.mount_point.clone();
+        let mount_point = self.config.mount_point.clone();
         let options = self.build_mount_options();
 
         info!("Mounting rqbit-fuse at: {}", mount_point.display());
@@ -806,7 +811,7 @@ impl Filesystem for TorrentFS {
 
         // Perform the read using the async worker to avoid blocking async in sync callbacks
         // This eliminates the deadlock risk from block_in_place + block_on pattern
-        let timeout_duration = Duration::from_secs(self.config.performance.read_timeout);
+        let timeout_duration = Duration::from_secs(self.config.read_timeout);
         let result = self.async_worker.read_file(
             torrent_id,
             file_index,
@@ -2124,9 +2129,16 @@ mod tests {
 
     /// Helper function to create a test AsyncFuseWorker
     fn create_test_async_worker() -> Arc<AsyncFuseWorker> {
-        let api_config = crate::config::ApiConfig::default();
-        let api_client =
-            Arc::new(create_api_client(&api_config, None).expect("Failed to create API client"));
+        let config = Config::default();
+        let api_client = Arc::new(
+            create_api_client(
+                &config.api_url,
+                config.api_username.as_deref(),
+                config.api_password.as_deref(),
+                None,
+            )
+            .expect("Failed to create API client"),
+        );
         Arc::new(AsyncFuseWorker::new(
             api_client,
             Arc::new(crate::metrics::Metrics::new()),
@@ -2153,7 +2165,7 @@ mod tests {
     async fn test_validate_mount_point_success() {
         let temp_dir = TempDir::new().unwrap();
         let mut config = Config::default();
-        config.mount.mount_point = temp_dir.path().to_path_buf();
+        config.mount_point = temp_dir.path().to_path_buf();
 
         let async_worker = create_test_async_worker();
         let fs = TorrentFS::new(
@@ -2168,7 +2180,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_mount_point_nonexistent() {
         let mut config = Config::default();
-        config.mount.mount_point = PathBuf::from("/nonexistent/path/that/does/not/exist");
+        config.mount_point = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
         let async_worker = create_test_async_worker();
         let fs = TorrentFS::new(
@@ -2190,7 +2202,7 @@ mod tests {
         std::fs::write(&file_path, "This is a file, not a directory").unwrap();
 
         let mut config = Config::default();
-        config.mount.mount_point = file_path;
+        config.mount_point = file_path;
 
         let async_worker = create_test_async_worker();
         let fs = TorrentFS::new(

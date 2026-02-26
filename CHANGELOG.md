@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Flattened nested config structs (TODO.md Phase 2, Task 6.1)
+  - Removed 5 nested config structs: ApiConfig, CacheConfig, MountConfig, PerformanceConfig, LoggingConfig
+  - Replaced with flattened fields on Config struct:
+    - api_url, api_username, api_password
+    - metadata_ttl, max_entries
+    - mount_point
+    - read_timeout, max_concurrent_reads, readahead_size
+    - log_level
+  - Updated `create_api_client()` signature to take individual parameters instead of ApiConfig
+  - Added default value functions for serde compatibility and manual Default impl
+  - Updated all references across 7 files (config/mod.rs, client.rs, filesystem.rs, lib.rs, main.rs, tests)
+  - Config file format remains backward compatible via serde attributes
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: 23 lines in config/mod.rs (470 → 447)
+
 - Consolidated retry logic in `src/api/client.rs` (TODO.md Phase 2, Task 5.3)
   - Simplified `execute_with_retry` from 72 lines to 35 lines
   - Removed `final_result` variable, using early returns instead

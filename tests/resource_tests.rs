@@ -17,16 +17,16 @@ fn create_test_config_with_semaphore(
     max_concurrent_reads: usize,
 ) -> Config {
     let mut config = Config::default();
-    config.api.url = mock_uri;
-    config.mount.mount_point = mount_point;
-    config.performance.max_concurrent_reads = max_concurrent_reads;
+    config.api_url = mock_uri;
+    config.mount_point = mount_point;
+    config.max_concurrent_reads = max_concurrent_reads;
     config
 }
 
 /// Helper function to create a TorrentFS with custom config
 fn create_test_fs_with_config(config: Config, metrics: Arc<Metrics>) -> TorrentFS {
     let api_client = Arc::new(
-        rqbit_fuse::api::client::RqbitClient::new(config.api.url.clone())
+        rqbit_fuse::api::client::RqbitClient::new(config.api_url.clone())
             .expect("Failed to create API client"),
     );
     let async_worker = Arc::new(AsyncFuseWorker::new(api_client, metrics.clone(), 100));

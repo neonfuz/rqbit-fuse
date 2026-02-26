@@ -86,8 +86,13 @@ pub async fn run(config: Config) -> Result<()> {
 
     // Create API client for the async worker
     let api_client = Arc::new(
-        create_api_client(&config.api, Some(Arc::clone(&metrics)))
-            .context("API client creation failed")?,
+        create_api_client(
+            &config.api_url,
+            config.api_username.as_deref(),
+            config.api_password.as_deref(),
+            Some(Arc::clone(&metrics)),
+        )
+        .context("API client creation failed")?,
     );
 
     // Create async worker for FUSE callbacks

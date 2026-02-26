@@ -52,7 +52,7 @@ fn test_edge_056_timeout_valid_values() {
 
     for timeout in valid_timeouts {
         let mut config = Config::default();
-        config.performance.read_timeout = timeout;
+        config.read_timeout = timeout;
 
         assert!(
             config.validate().is_ok(),
@@ -66,7 +66,7 @@ fn test_edge_056_timeout_valid_values() {
 fn test_edge_056_timeout_one() {
     // Minimum valid timeout
     let mut config = Config::default();
-    config.performance.read_timeout = 1;
+    config.read_timeout = 1;
 
     assert!(
         config.validate().is_ok(),
@@ -137,15 +137,15 @@ fn test_edge_057_missing_required_env_vars() {
     // Verify defaults are used
     let merged = result.unwrap();
     assert_eq!(
-        merged.api.url, "http://127.0.0.1:3030",
+        merged.api_url, "http://127.0.0.1:3030",
         "Default API URL should be used"
     );
     assert_eq!(
-        merged.cache.metadata_ttl, 60,
+        merged.metadata_ttl, 60,
         "Default metadata TTL should be used"
     );
     assert_eq!(
-        merged.performance.read_timeout, 30,
+        merged.read_timeout, 30,
         "Default read timeout should be used"
     );
 }
@@ -181,14 +181,14 @@ fn test_edge_057_empty_string_env_var_value() {
         // For string fields, empty should override default
         let merged = result.unwrap();
         match *var {
-            "TORRENT_FUSE_API_URL" => assert_eq!(merged.api.url, "", "Empty API URL should be set"),
+            "TORRENT_FUSE_API_URL" => assert_eq!(merged.api_url, "", "Empty API URL should be set"),
             "TORRENT_FUSE_MOUNT_POINT" => assert_eq!(
-                merged.mount.mount_point,
+                merged.mount_point,
                 std::path::PathBuf::from(""),
                 "Empty mount point should be set"
             ),
             "TORRENT_FUSE_LOG_LEVEL" => {
-                assert_eq!(merged.logging.level, "", "Empty log level should be set")
+                assert_eq!(merged.log_level, "", "Empty log level should be set")
             }
             _ => {}
         }
@@ -217,9 +217,9 @@ fn test_edge_057_very_long_env_var_value() {
     );
 
     let merged = result.unwrap();
-    assert_eq!(merged.api.url.len(), 5000, "Long value should be preserved");
+    assert_eq!(merged.api_url.len(), 5000, "Long value should be preserved");
     assert!(
-        merged.api.url.starts_with("aaaa"),
+        merged.api_url.starts_with("aaaa"),
         "Long value content should be correct"
     );
 
@@ -285,7 +285,7 @@ fn test_edge_057_whitespace_only_env_var_values() {
                 // For string fields, whitespace should be preserved
                 if *var == "TORRENT_FUSE_API_URL" {
                     assert_eq!(
-                        merged.api.url, *value,
+                        merged.api_url, *value,
                         "Whitespace API URL should be preserved"
                     );
                 }
@@ -320,7 +320,7 @@ fn test_edge_057_env_var_case_sensitivity() {
 
     // Should use uppercase version (standard convention)
     assert_eq!(
-        merged.api.url, "http://uppercase:9090",
+        merged.api_url, "http://uppercase:9090",
         "Uppercase env var should be used"
     );
 }
