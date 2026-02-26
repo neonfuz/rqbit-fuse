@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated retry logic in `src/api/client.rs` (TODO.md Phase 2, Task 5.3)
+  - Simplified `execute_with_retry` from 72 lines to 35 lines
+  - Removed `final_result` variable, using early returns instead
+  - Combined server error (5xx) and rate limit (429) handling into single condition
+  - Removed verbose retry-after header parsing for 429 responses (now uses uniform delay)
+  - Simplified logging from structured field annotations to compact format strings
+  - Removed 2 tests that specifically tested retry-after header parsing behavior
+  - Consolidated 4 rate limit tests into 2 focused tests
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: ~54 lines (37 from main logic, 17 from test consolidation)
+
+### Changed
+
 - Consolidated error conversion implementations (TODO.md Phase 2, Task 5.2)
   - Created `impl_from_error!` macro in `src/error.rs` to consolidate 4 repetitive From impl blocks
   - Replaced ~40 lines of separate impl blocks for std::io::Error, reqwest::Error, serde_json::Error, toml::de::Error

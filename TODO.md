@@ -320,15 +320,18 @@
 #### 5.3 Simplify Retry Logic
 **File:** `src/api/client.rs`
 
-- [ ] Consolidate retry loop
-  - Current: 80+ lines with multiple match arms and logging
-  - Action: Extract into helper function, reduce logging
-  - **Lines:** -60
+- [x] Consolidate retry loop
+  - Simplified `execute_with_retry` from 72 lines to 35 lines by:
+    - Removing `final_result` variable and using early returns
+    - Combining server error (5xx) and rate limit (429) handling into single condition
+    - Simplifying logging to use compact format strings instead of structured fields
+  - **Lines:** -37
 
-- [ ] Remove status code-specific handling comments
-  - Lines 136-156: Verbose 429 handling with retry-after parsing
-  - Action: Simplify to uniform delay
-  - **Lines:** -60
+- [x] Remove status code-specific handling comments
+  - Removed verbose 429 handling with retry-after header parsing (lines 119-136)
+  - Simplified to uniform delay calculation for all retry scenarios
+  - Removed tests that specifically tested retry-after header behavior
+  - **Lines:** -17 (net from test consolidation)
 
 ---
 

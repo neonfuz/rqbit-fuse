@@ -111,6 +111,11 @@ impl FileHandleManager {
         handles.len()
     }
 
+    /// Check if there are no open handles.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Get the next handle value (for testing overflow scenarios).
     #[cfg(test)]
     pub fn set_next_handle(&self, value: u64) {
