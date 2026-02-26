@@ -121,8 +121,11 @@
 #### 1.6 types.rs Tests (-50 lines)
 **File:** `src/api/types.rs` (~105 test lines out of 391 total)
 
-- [ ] Merge has_piece_range tests
-  - Use table-driven test with test vectors
+- [x] Merge has_piece_range tests
+  - Consolidated 5 separate test functions into 3 focused tests using rstest:
+    - `test_has_piece_range`: 23 parameterized cases covering complete, partial, and multi-byte bitfield scenarios
+    - `test_has_piece_range_edge_cases`: 2 parameterized cases for zero piece length edge cases
+    - `test_has_piece_range_large_pieces`: Single test for large piece size scenarios
   - **Lines:** -50
 
 ---

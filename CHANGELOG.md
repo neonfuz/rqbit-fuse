@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated has_piece_range tests in `src/api/types.rs` (TODO.md Phase 1, Task 1.6)
+  - Merged 5 separate test functions into 3 focused tests using rstest:
+    - `test_has_piece_range`: 23 parameterized cases covering complete, partial, and multi-byte bitfield scenarios
+    - `test_has_piece_range_edge_cases`: 2 parameterized cases for zero piece length edge cases  
+    - `test_has_piece_range_large_pieces`: Single test for large piece size scenarios (1MB pieces)
+  - All 26 tests passing with zero clippy warnings
+  - Code reduction: ~105 lines of test code → ~55 lines (-50 lines, -48% of has_piece_range test code)
+
 - Consolidated error.rs tests in `src/error.rs` (TODO.md Phase 1, Task 1.5)
   - Removed `test_io_error_conversion`, `test_validation_error_display`, and `test_anyhow_to_fuse_error` tests
   - These tests were redundant as error conversion functionality is already tested indirectly through other tests
