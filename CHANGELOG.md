@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed #[instrument] attributes from simple methods (TODO.md Phase 1, Task 4.1)
+  - Removed from `pause_torrent`, `start_torrent`, `forget_torrent`, `delete_torrent` in `src/api/client.rs`
+  - Removed from `release`, `getattr`, `open` in `src/fs/filesystem.rs`
+  - Kept instrumentation on complex methods: read, lookup, readdir, list_torrents, get_torrent, add_torrent_magnet, add_torrent_url, get_torrent_stats, get_piece_bitfield, check_range_available, read_file
+  - All tests passing with zero clippy warnings
+  - Code reduction: 7 lines removed
+
 - Simplified tracing calls in `add_child()` in `src/fs/inode_manager.rs` (TODO.md 3.4)
   - Removed redundant "add_child called" entry log
   - Converted verbose structured field logging to compact format with inline variables

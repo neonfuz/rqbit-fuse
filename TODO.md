@@ -230,10 +230,12 @@
 #### 4.1 Reduce Trace Instrumentation
 **Files:** `src/api/client.rs`, `src/api/streaming.rs`, `src/fs/filesystem.rs`
 
-- [ ] Remove instrument attribute from simple methods
-  - Current: `#[instrument]` on every method
-  - Action: Keep only on complex public methods
-  - **Lines:** -100
+- [x] Remove instrument attribute from simple methods
+  - Removed from simple methods:
+    - client.rs: pause_torrent, start_torrent, forget_torrent, delete_torrent (4 methods)
+    - filesystem.rs: release, getattr, open (3 methods)
+  - Kept on complex methods: read, lookup, readdir, list_torrents, get_torrent, add_torrent_magnet, add_torrent_url, get_torrent_stats, get_piece_bitfield, check_range_available, read_file
+  - **Lines:** -7
 
 - [ ] Simplify trace! calls
   - Current: Verbose field annotations like `stream_op = "create"`

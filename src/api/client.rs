@@ -708,25 +708,21 @@ impl RqbitClient {
     }
 
     /// Pause a torrent
-    #[instrument(skip(self), fields(api_op = "pause_torrent", id))]
     pub async fn pause_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "pause").await
     }
 
     /// Resume/start a torrent
-    #[instrument(skip(self), fields(api_op = "start_torrent", id))]
     pub async fn start_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "start").await
     }
 
     /// Remove torrent from session (keep files)
-    #[instrument(skip(self), fields(api_op = "forget_torrent", id))]
     pub async fn forget_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "forget").await
     }
 
     /// Remove torrent from session and delete files
-    #[instrument(skip(self), fields(api_op = "delete_torrent", id))]
     pub async fn delete_torrent(&self, id: u64) -> Result<()> {
         self.torrent_action(id, "delete").await
     }

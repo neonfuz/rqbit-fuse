@@ -920,7 +920,6 @@ impl Filesystem for TorrentFS {
 
     /// Release an open file.
     /// Called when a file is closed. Cleans up file handle state.
-    #[instrument(skip(self, reply), fields(fh))]
     fn release(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -1101,7 +1100,6 @@ impl Filesystem for TorrentFS {
     /// Get file attributes.
     /// Called when the kernel needs to get attributes for a file or directory.
     /// This is a fundamental operation used by ls, stat, and most file operations.
-    #[instrument(skip(self, reply), fields(ino))]
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         tracing::debug!(fuse_op = "getattr", ino = ino);
 
@@ -1136,7 +1134,6 @@ impl Filesystem for TorrentFS {
     /// Open a file.
     /// Called when the kernel needs to open a file for reading.
     /// Returns a file handle that will be used in subsequent read operations.
-    #[instrument(skip(self, reply), fields(ino))]
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         tracing::debug!(fuse_op = "open", ino = ino, flags = flags);
 
