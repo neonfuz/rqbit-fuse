@@ -237,10 +237,11 @@
   - Kept on complex methods: read, lookup, readdir, list_torrents, get_torrent, add_torrent_magnet, add_torrent_url, get_torrent_stats, get_piece_bitfield, check_range_available, read_file
   - **Lines:** -7
 
-- [ ] Simplify trace! calls
-  - Current: Verbose field annotations like `stream_op = "create"`
-  - Action: Use simpler format: `trace!("Creating stream for {}/{}", torrent_id, file_idx)`
-  - **Lines:** -100
+- [x] Simplify trace! calls
+  - Converted all field-annotated trace! calls to simple format strings
+  - **client.rs:** Simplified 6 trace calls (api_op field annotations removed)
+  - **streaming.rs:** Simplified 7 trace calls (stream_op and other field annotations removed)
+  - **Lines:** -100 (converted ~13 verbose multi-line traces to single-line format strings)
 
 #### 4.2 Remove Debug Logging
 **Files:** `src/fs/inode_manager.rs`, `src/fs/filesystem.rs`

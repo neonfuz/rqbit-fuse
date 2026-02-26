@@ -238,10 +238,7 @@ impl PersistentStream {
     fn buffer_leftover(&mut self, chunk: Bytes, consumed: usize) {
         if consumed < chunk.len() {
             self.pending_buffer = Some(chunk.slice(consumed..));
-            trace!(
-                bytes_buffered = chunk.len() - consumed,
-                "Buffered extra bytes from chunk"
-            );
+            trace!("Buffered {} extra bytes", chunk.len() - consumed);
         }
     }
 }
@@ -329,10 +326,9 @@ impl PersistentStreamManager {
                     let should_keep = !stream.is_idle();
                     if !should_keep {
                         trace!(
-                            stream_op = "cleanup",
-                            torrent_id = key.torrent_id,
-                            file_idx = key.file_idx,
-                            "Removing idle stream"
+                            "Removing idle stream for {}/{}",
+                            key.torrent_id,
+                            key.file_idx
                         );
                     }
                     should_keep
@@ -388,18 +384,17 @@ impl PersistentStreamManager {
                 .expect("Stream must exist after check");
 
             trace!(
-                stream_op = "reuse",
-                torrent_id = torrent_id,
-                file_idx = file_idx,
-                offset = offset,
-                size = size,
-                "Reusing existing stream"
+                "Reusing stream for {}/{} at offset {} ({} bytes)",
+                torrent_id,
+                file_idx,
+                offset,
+                size
             );
 
             // If we need to seek forward a bit, do it
             if offset > stream.current_position {
                 let gap = offset - stream.current_position;
-                trace!(bytes_to_skip = gap, "Skipping forward in existing stream");
+                trace!("Skipping {} bytes forward", gap);
                 stream.skip(gap).await?;
             }
 
@@ -426,12 +421,11 @@ impl PersistentStreamManager {
 
             // Create a new stream
             trace!(
-                stream_op = "create_new",
-                torrent_id = torrent_id,
-                file_idx = file_idx,
-                offset = offset,
-                size = size,
-                "Creating new stream for read"
+                "Creating new stream for {}/{} at offset {} ({} bytes)",
+                torrent_id,
+                file_idx,
+                offset,
+                size
             );
 
             let auth_header = self.create_auth_header();
@@ -465,12 +459,7 @@ impl PersistentStreamManager {
         };
         let mut streams = self.streams.lock().await;
         if streams.remove(&key).is_some() {
-            trace!(
-                stream_op = "close",
-                torrent_id = torrent_id,
-                file_idx = file_idx,
-                "Stream closed"
-            );
+            trace!("Closed stream for {}/{}", torrent_id, file_idx);
         }
     }
 
@@ -516,13 +505,7 @@ impl PersistentStreamManager {
         let bytes_read = stream.read(&mut buffer).await?;
         buffer.truncate(bytes_read);
 
-        trace!(
-            stream_op = "read_complete",
-            torrent_id = torrent_id,
-            file_idx = file_idx,
-            bytes_read = bytes_read,
-            "Completed read from persistent stream"
-        );
+        trace!("Read {} bytes from {}/{}", bytes_read, torrent_id, file_idx);
 
         Ok(buffer.freeze())
     }

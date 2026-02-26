@@ -327,7 +327,7 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}", self.base_url, id);
         let endpoint = format!("/torrents/{}", id);
 
-        trace!(api_op = "get_torrent", id = id);
+        trace!("Getting torrent {}", id);
 
         match self.get_json::<TorrentInfo>(&endpoint, &url).await {
             Ok(torrent) => {
@@ -353,7 +353,7 @@ impl RqbitClient {
             magnet_link: magnet_link.to_string(),
         };
 
-        trace!(api_op = "add_torrent_magnet");
+        trace!("Adding torrent from magnet link");
 
         let result = self
             .post_json::<_, AddTorrentResponse>("/torrents", &url, &request)
@@ -370,7 +370,7 @@ impl RqbitClient {
             torrent_link: torrent_url.to_string(),
         };
 
-        trace!(api_op = "add_torrent_url", url = %torrent_url);
+        trace!("Adding torrent from URL: {}", torrent_url);
 
         let result = self
             .post_json::<_, AddTorrentResponse>("/torrents", &url, &request)
@@ -385,7 +385,7 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}/stats/v1", self.base_url, id);
         let endpoint = format!("/torrents/{}/stats", id);
 
-        trace!(api_op = "get_torrent_stats", id = id);
+        trace!("Getting torrent stats for {}", id);
 
         match self.get_json::<TorrentStats>(&endpoint, &url).await {
             Ok(stats) => {
@@ -394,13 +394,7 @@ impl RqbitClient {
                 } else {
                     0.0
                 };
-                trace!(
-                    api_op = "get_torrent_stats",
-                    id = id,
-                    state = %stats.state,
-                    progress_pct = progress_pct,
-                    finished = stats.finished,
-                );
+                trace!("Torrent {} stats: {} ({}%)", id, stats.state, progress_pct);
                 Ok(stats)
             }
             Err(e) => {
@@ -680,7 +674,7 @@ impl RqbitClient {
         let url = format!("{}/torrents/{}/{}", self.base_url, id, action);
         let endpoint = format!("/torrents/{}/{}", id, action);
 
-        trace!(api_op = "torrent_action", id = id, action = action);
+        trace!("Executing {} on torrent {}", action, id);
 
         let response = self
             .execute_with_retry(&endpoint, || self.client.post(&url).send())

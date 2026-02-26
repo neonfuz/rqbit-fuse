@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified trace! calls from field annotations to format strings (TODO.md Phase 1, Task 4.1)
+  - **src/api/client.rs:** Converted 6 verbose field-annotated traces to simple format strings
+    - `trace!(api_op = "get_torrent", id = id)` → `trace!("Getting torrent {}", id)`
+    - `trace!(api_op = "add_torrent_magnet")` → `trace!("Adding torrent from magnet link")`
+    - `trace!(api_op = "add_torrent_url", url = %torrent_url)` → `trace!("Adding torrent from URL: {}", torrent_url)`
+    - `trace!(api_op = "get_torrent_stats", id = id)` → `trace!("Getting torrent stats for {}", id)`
+    - Multi-line trace with api_op/state/progress_pct → single line format string
+    - `trace!(api_op = "torrent_action", id = id, action = action)` → `trace!("Executing {} on torrent {}", action, id)`
+  - **src/api/streaming.rs:** Converted 7 verbose field-annotated traces to simple format strings
+    - `trace!(bytes_buffered = ..., "Buffered...")` → `trace!("Buffered {} extra bytes", ...)`
+    - `trace!(stream_op = "cleanup", ...)` → `trace!("Removing idle stream for {}/{}", ...)`
+    - `trace!(stream_op = "reuse", ...)` → `trace!("Reusing stream for {}/{}...", ...)`
+    - `trace!(bytes_to_skip = gap, ...)` → `trace!("Skipping {} bytes forward", gap)`
+    - `trace!(stream_op = "create_new", ...)` → `trace!("Creating new stream for {}/{}...", ...)`
+    - `trace!(stream_op = "close", ...)` → `trace!("Closed stream for {}/{}", ...)`
+    - `trace!(stream_op = "read_complete", ...)` → `trace!("Read {} bytes from {}/{}", ...)`
+  - All 166 tests passing with zero clippy warnings
+  - Code reduction: ~100 lines (converted 13 multi-line traces to single-line format)
+
 - Removed #[instrument] attributes from simple methods (TODO.md Phase 1, Task 4.1)
   - Removed from `pause_torrent`, `start_torrent`, `forget_torrent`, `delete_torrent` in `src/api/client.rs`
   - Removed from `release`, `getattr`, `open` in `src/fs/filesystem.rs`
