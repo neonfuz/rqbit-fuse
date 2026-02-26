@@ -200,13 +200,13 @@ grep -n "status" spec/architecture.md spec/quickstart.md spec/roadmap.md
 
 ## Success Criteria
 
-- [ ] All Phase 1 tasks complete (code removed)
-- [ ] All Phase 2 tasks complete (tests pass)
-- [ ] All Phase 3 tasks complete (verified)
-- [ ] No compiler warnings or errors
-- [ ] `status` command no longer recognized
-- [ ] `mount` and `umount` commands still work
-- [ ] CHANGELOG.md updated
+- [x] All Phase 1 tasks complete (code removed)
+- [x] All Phase 2 tasks complete (tests pass)
+- [x] All Phase 3 tasks complete (verified)
+- [x] No compiler warnings or errors
+- [x] `status` command no longer recognized
+- [x] `mount` and `umount` commands still work
+- [x] CHANGELOG.md updated
 
 ---
 

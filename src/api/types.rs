@@ -230,6 +230,58 @@ pub struct TorrentStatus {
     pub last_updated: std::time::Instant,
 }
 
+impl TorrentStatus {
+    pub fn new(torrent_id: u64, stats: &TorrentStats, bitfield: Option<&PieceBitfield>) -> Self {
+        let progress_bytes = stats.progress_bytes;
+        let total_bytes = stats.total_bytes;
+
+        // Calculate progress percentage
+        let progress_pct = if total_bytes > 0 {
+            (progress_bytes as f64 / total_bytes as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Determine state from API response and progress
+        let state = if stats.error.is_some() {
+            TorrentState::Error
+        } else if stats.finished || (progress_bytes >= total_bytes && total_bytes > 0) {
+            TorrentState::Seeding
+        } else if stats.state == "paused" {
+            TorrentState::Paused
+        } else if stats.state == "live" {
+            TorrentState::Downloading
+        } else {
+            TorrentState::Unknown
+        };
+
+        let (downloaded_pieces, total_pieces) = if let Some(bf) = bitfield {
+            (bf.downloaded_count(), bf.num_pieces)
+        } else {
+            (0, 0)
+        };
+
+        Self {
+            torrent_id,
+            state,
+            progress_pct,
+            progress_bytes,
+            total_bytes,
+            downloaded_pieces,
+            total_pieces,
+            last_updated: std::time::Instant::now(),
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.state == TorrentState::Seeding || self.progress_pct >= 100.0
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,57 +386,5 @@ mod tests {
 
         // Range crossing into unavailable piece
         assert!(!bitfield.has_piece_range(3 * piece_length, 2 * piece_length, piece_length));
-    }
-}
-
-impl TorrentStatus {
-    pub fn new(torrent_id: u64, stats: &TorrentStats, bitfield: Option<&PieceBitfield>) -> Self {
-        let progress_bytes = stats.progress_bytes;
-        let total_bytes = stats.total_bytes;
-
-        // Calculate progress percentage
-        let progress_pct = if total_bytes > 0 {
-            (progress_bytes as f64 / total_bytes as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        // Determine state from API response and progress
-        let state = if stats.error.is_some() {
-            TorrentState::Error
-        } else if stats.finished || (progress_bytes >= total_bytes && total_bytes > 0) {
-            TorrentState::Seeding
-        } else if stats.state == "paused" {
-            TorrentState::Paused
-        } else if stats.state == "live" {
-            TorrentState::Downloading
-        } else {
-            TorrentState::Unknown
-        };
-
-        let (downloaded_pieces, total_pieces) = if let Some(bf) = bitfield {
-            (bf.downloaded_count(), bf.num_pieces)
-        } else {
-            (0, 0)
-        };
-
-        Self {
-            torrent_id,
-            state,
-            progress_pct,
-            progress_bytes,
-            total_bytes,
-            downloaded_pieces,
-            total_pieces,
-            last_updated: std::time::Instant::now(),
-        }
-    }
-
-    pub fn is_complete(&self) -> bool {
-        self.state == TorrentState::Seeding || self.progress_pct >= 100.0
-    }
-
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
     }
 }
