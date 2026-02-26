@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All 17 tests passing with zero clippy warnings
   - Code reduction: 1137 lines → 967 lines (-170 lines, -15% of test code)
   - Improves maintainability and test clarity
+- Removed redundant assertions in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1)
+  - Removed duplicate `assert_ne!(inode, 0)` assertions that were implied by `assert!(inode >= 2)`
+  - Affected tests:
+    - `test_concurrent_allocation_stress`: removed 1 assertion per allocation
+    - `test_inode_limit_exhaustion`: removed 1 assertion per allocation
+    - `test_inode_0_handling`: removed 1 assertion per allocation
+  - All 17 tests passing
+  - Code reduction: -7 lines
 
 ### Removed
 

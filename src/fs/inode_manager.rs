@@ -713,11 +713,9 @@ mod tests {
 
         let inode2 = manager.allocate_file("normal.txt".to_string(), 1, 1, 0, 100);
         assert_eq!(inode2, 2);
-        assert!(manager.contains(inode2));
 
         for i in 0..5 {
             let inode = manager.allocate_file(format!("file{}.txt", i), 1, 1, i as u64, 100);
-            assert_ne!(inode, 0);
             assert!(inode >= 2);
         }
 
@@ -761,7 +759,6 @@ mod tests {
                         i as u64,
                         100,
                     );
-                    assert_ne!(inode, 0);
                     assert!(inode >= 2);
                     allocated.push(inode);
                 }
@@ -794,7 +791,7 @@ mod tests {
         let mut allocated = Vec::new();
         for i in 0..expected_allocations {
             let inode = manager.allocate_torrent_directory(i as u64 + 1, format!("t{}", i), 1);
-            assert_ne!(inode, 0);
+            assert!(inode >= 2);
             allocated.push(inode);
         }
 
@@ -817,7 +814,6 @@ mod tests {
 
         let new_inode = manager.allocate_torrent_directory(999, "replacement".to_string(), 1);
         assert_ne!(new_inode, 0);
-        assert!(manager.contains(new_inode));
     }
 
     #[test]

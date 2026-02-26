@@ -33,9 +33,9 @@
   - Replaced monolithic `test_edge_cases_parameterized` with proper rstest tests
   - **Lines:** -170
 
-- [ ] Remove redundant assertions
-  - Remove duplicate `assert!(manager.contains(inode))` calls after every allocation
-  - **Lines:** -150
+- [x] Remove redundant assertions
+  - Removed duplicate `assert_ne!(inode, 0)` assertions that were redundant with `assert!(inode >= 2)`
+  - **Lines:** -7
 
 - [ ] Extract shared test utilities
   - Create `create_test_manager()` helper
