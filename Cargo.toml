@@ -34,6 +34,7 @@ wiremock = "0.6"
 criterion = { version = "0.5", features = ["async_tokio"] }
 futures = "0.3"
 unicode-normalization = "0.1"
+rstest = "0.18"
 
 [[bin]]
 name = "rqbit-fuse"

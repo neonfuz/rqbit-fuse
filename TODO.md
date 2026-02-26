@@ -1,226 +1,436 @@
-# TODO.md - Status Command Removal Migration Checklist
+# RQBIT-FUSE Code Reduction TODO
 
-This checklist tracks the migration to remove the `status` command from rqbit-fuse to match the spec documentation updates (commit 4ff33398b08c7ed4fe01ca4475d4cd2278fa5650).
+**Goal:** Reduce codebase from ~10,458 lines to ~6,500 lines (30-40% reduction) while preserving all documented functionality.
 
-## Migration Overview
-
-**Goal:** Remove the `status` command implementation from src/main.rs to align with the updated spec documentation.
-
-**Estimated Time:** 2-3 hours total
-**Phases:** 3 phases with 14 tasks
-
----
-
-## Phase 1: Code Removal
-
-**Reference:** `migration/phase-1-code-removal.md`
-**Estimated Time:** 30 minutes
-
-### Task 1.1: Remove Status Enum Variant
-- [x] **Time:** 10 minutes
-- [x] Open `src/main.rs` at line 64
-- [x] Remove the `Status` variant from the `Commands` enum (lines 64-69)
-- [x] Verify with `nix-shell --run 'cargo check'`
-- **References:**
-  - `migration/phase-1-code-removal.md` - Step 2
-
-### Task 1.3: Remove run_status() Function
-- [x] **Time:** 10 minutes
-- [x] Open `src/main.rs` at line 173
-- [x] Remove the entire `run_status()` function (lines 173-201)
-- [x] Verify with `nix-shell --run 'cargo build'`
-- **References:**
-  - `migration/phase-1-code-removal.md` - Step 3
-
-### Task 1.4: Verify No Import Cleanup Needed
-- [x] **Time:** 5 minutes
-- [x] Review imports at top of `src/main.rs`
-- [x] Confirm `is_mount_point` is still used in `run_umount()`
-- [x] Run `nix-shell --run 'cargo clippy'` to check for unused imports
-- **References:**
-  - `migration/phase-1-code-removal.md` - Step 4
+**Documented Functionality to Preserve:**
+- Mount/unmount commands with all options
+- Configuration file support (TOML/JSON)
+- Environment variable overrides
+- HTTP Basic Auth
+- Read-only FUSE filesystem
+- On-demand torrent discovery
+- File streaming with range requests
+- Signal handling (SIGINT/SIGTERM)
+- Metrics collection
+- Error handling
 
 ---
 
-## Phase 2: Testing & Validation
+## Phase 1: Low Risk, High Impact (Target: -1,500 lines)
 
-**Reference:** `migration/phase-2-testing.md`
-**Estimated Time:** 45 minutes
+### 1. Excessive Test Code
 
-### Task 2.1: Build Verification
-- [x] **Time:** 5 minutes
-- [x] Run `nix-shell --run 'cargo build'`
-- [x] Confirm clean build with no errors
-- [x] Check for any warnings
-- **References:**
-  - `migration/phase-2-testing.md` - Section 1
+#### 1.1 inode_manager.rs Tests (-600 lines)
+**File:** `src/fs/inode_manager.rs` (~780 test lines out of 967 total)
 
-### Task 2.2: Run Full Test Suite
-- [x] **Time:** 15 minutes
-- [x] Run `nix-shell --run 'cargo test'`
-- [x] Verify all tests pass (0 failures)
-- [x] Note any test failures related to CLI changes
-- **References:**
-  - `migration/phase-2-testing.md` - Section 2
+- [x] Consolidate edge case tests
+  - Merged edge case tests into 3 focused parameterized tests using rstest:
+    - `test_inode_0_handling`: Inode 0 allocation edge case
+    - `test_concurrent_allocation_stress`: 2 parameterized cases (4×10 and 2×5 threads)
+    - `test_inode_limit_exhaustion`: 2 parameterized cases (100/99 and 10/9 limits)
+  - Removed redundant `test_concurrent_allocation_consistency` (~66 lines)
+  - Removed redundant `test_max_inodes_limit` (~77 lines)
+  - Replaced monolithic `test_edge_cases_parameterized` with proper rstest tests
+  - **Lines:** -170
 
-### Task 2.3: Run Clippy Lints
-- [x] **Time:** 5 minutes
-- [x] Run `nix-shell --run 'cargo clippy'`
-- [x] Fix any warnings about unused code or imports
-- [x] Run `nix-shell --run 'cargo clippy -- -D warnings'` for strict check
-- **References:**
-  - `migration/phase-2-testing.md` - Section 3
+- [ ] Remove redundant assertions
+  - Remove duplicate `assert!(manager.contains(inode))` calls after every allocation
+  - **Lines:** -150
 
-### Task 2.4: Check Code Formatting
-- [x] **Time:** 5 minutes
-- [x] Run `nix-shell --run 'cargo fmt --check'`
-- [x] If issues found, run `nix-shell --run 'cargo fmt'`
-- [x] Verify no formatting issues remain
-- **References:**
-  - `migration/phase-2-testing.md` - Section 4
+- [ ] Extract shared test utilities
+  - Create `create_test_manager()` helper
+  - Use `rstest` for parameterized tests
+  - **Lines:** -100
 
-### Task 2.5: CLI Help Verification
-- [x] **Time:** 5 minutes
-- [x] Run `nix-shell --run 'cargo run -- --help'`
-- [x] Verify "status" does NOT appear in command list
-- [x] Confirm only "mount", "umount", and "help" are shown
-- **References:**
-  - `migration/phase-2-testing.md` - Section 5.1
+- [ ] Simplify stress tests
+  - Already simplified to 10 threads × 50 allocations max (reduced from 100×100)
+  - Remove inline comments explaining obvious assertions
+  - **Lines:** -50
 
-### Task 2.6: CLI Status Command Rejection
-- [x] **Time:** 5 minutes
-- [x] Run `nix-shell --run 'cargo run -- status'`
-- [x] Verify error message: "unrecognized subcommand 'status'"
-- [x] Confirm helpful suggestion to use --help
-- **References:**
-  - `migration/phase-2-testing.md` - Section 5.2
+#### 1.2 handle.rs Tests (-180 lines)
+**File:** `src/types/handle.rs` (~240 test lines out of 412 total)
 
-### Task 2.7: Verify Mount/Umount Still Work
-- [x] **Time:** 5 minutes
-- [x] Run `nix-shell --run 'cargo run -- mount --help'`
-- [x] Verify mount help displays correctly
-- [x] Run `nix-shell --run 'cargo run -- umount --help'`
-- [x] Verify umount help displays correctly
-- **References:**
-  - `migration/phase-2-testing.md` - Sections 5.3, 5.4
+- [ ] Consolidate handle allocation tests
+  - Merge 10 separate test functions into 3-4 comprehensive table-driven tests
+  - **Lines:** -80
 
----
+- [ ] Remove verbose test comments
+  - Remove explanatory comments from every assertion
+  - **Lines:** -60
 
-## Phase 3: Final Verification & Documentation
+- [ ] Simplify overflow test
+  - Use simpler test with `u64::MAX - 1` start value
+  - **Lines:** -40
 
-**Reference:** `migration/phase-3-verification.md`
-**Estimated Time:** 30 minutes
+#### 1.3 streaming.rs Tests (-150 lines)
+**File:** `src/api/streaming.rs` (~230 test lines out of 803 total)
 
-### Task 3.1: Code Review Checklist
-- [x] **Time:** 10 minutes
-- [x] Verify no `Commands::Status` references in `src/main.rs`
-- [x] Verify no `run_status` function references
-- [x] Confirm match statement only has Mount and Umount arms
-- [x] Check for any remaining status-related comments
-- **References:**
-  - `migration/phase-3-verification.md` - Section 1
+- [ ] Consolidate edge case tests
+  - Merge EDGE-021, EDGE-023, EDGE-024 into single parameterized test
+  - **Lines:** -100
 
-### Task 3.2: Spec Documentation Review
-- [x] **Time:** 5 minutes
-- [x] Verify `spec/architecture.md` has no status command references
-- [x] Verify `spec/quickstart.md` has no status command references
-- [x] Verify `spec/roadmap.md` shows status as removed
-- **References:**
-  - `migration/phase-3-verification.md` - Section 2
-  - `spec/architecture.md`
-  - `spec/quickstart.md`
-  - `spec/roadmap.md`
+- [ ] Extract mock server helper
+  - Remove duplicate wiremock setup in each test
+  - **Lines:** -50
 
-### Task 3.3: Final Build Quality Check
-- [x] **Time:** 10 minutes
-- [x] Run `nix-shell --run 'cargo build --release'`
-- [x] Run `nix-shell --run 'cargo test --all-targets'`
-- [x] Run `nix-shell --run 'cargo clippy --all-targets -- -D warnings'`
-- [x] Confirm zero warnings, zero errors
-- **References:**
-  - `migration/phase-3-verification.md` - Section 4
+#### 1.4 config/mod.rs Tests (-120 lines)
+**File:** `src/config/mod.rs` (~238 test lines out of 523 total)
 
-### Task 3.4: Update CHANGELOG.md
-- [x] **Time:** 5 minutes
-- [x] Add entry for breaking change (status command removal)
-- [x] Reference commit 4ff33398b08c7ed4fe01ca4475d4cd2278fa5650
-- [x] Document alternative commands for users
-- **References:**
-  - `migration/phase-3-verification.md` - Section 5.2
+- [ ] Merge file extension tests
+  - Combine .json/.JSON/.toml/.TOML/.Toml tests into single parameterized test
+  - **Lines:** -60
+
+- [ ] Remove redundant validation tests
+  - Test all log levels in single loop instead of individually
+  - **Lines:** -40
+
+- [ ] Simplify config parsing tests
+  - Use shared config strings, extract common assertions
+  - **Lines:** -20
+
+#### 1.5 error.rs Tests (-100 lines)
+**File:** `src/error.rs` (~190 test lines out of 388 total)
+
+- [ ] Consolidate error conversion tests
+  - Use macros or parameterized tests for similar assertions
+  - **Lines:** -60
+
+- [ ] Remove display format tests
+  - Keep one representative test, remove others
+  - **Lines:** -40
+
+#### 1.6 types.rs Tests (-50 lines)
+**File:** `src/api/types.rs` (~105 test lines out of 391 total)
+
+- [ ] Merge has_piece_range tests
+  - Use table-driven test with test vectors
+  - **Lines:** -50
 
 ---
 
-## Quick Reference Commands
+### 2. Verbose Documentation (-400 lines)
 
-### Build & Test
-```bash
-nix-shell --run 'cargo build'
-nix-shell --run 'cargo test'
-nix-shell --run 'cargo clippy'
-nix-shell --run 'cargo fmt'
-```
+#### 2.1 Remove Redundant Doc Comments
 
-### Verification
-```bash
-# Check status removed
-nix-shell --run 'cargo run -- --help' | grep status
+- [ ] filesystem.rs: Remove obvious struct field docs (lines 44-67)
+  - Remove `/// Configuration for the filesystem` for `config: Config`
+  - **Lines:** -40
 
-# Should fail
-nix-shell --run 'cargo run -- status'
+- [ ] async_bridge.rs: Remove architecture explanation comments (lines 72-100)
+  - Remove long comment explaining channel architecture
+  - **Lines:** -80
 
-# Should work
-nix-shell --run 'cargo run -- mount --help'
-nix-shell --run 'cargo run -- umount --help'
-```
+- [ ] inode_manager.rs: Remove implementation detail comments
+  - Remove DashMap usage explanations (lines 82-95, 326-332)
+  - **Lines:** -60
 
-### Code Search
-```bash
-# Find any remaining status references
-grep -n "Commands::Status\|run_status" src/main.rs
+- [ ] streaming.rs: Remove redundant operation comments
+  - Remove obvious buffer operation comments (lines 36-52, 121-173)
+  - **Lines:** -70
 
-# Check spec files
-grep -n "status" spec/architecture.md spec/quickstart.md spec/roadmap.md
-```
+- [ ] client.rs: Remove retry logic explanation
+  - Simplify verbose retry pattern comments (lines 103-115)
+  - **Lines:** -50
 
----
+#### 2.2 Simplify Module-Level Documentation
 
-## Migration Documents
+- [ ] Remove verbose "//!" module headers
+  - Files: error.rs, config/mod.rs have verbose module docs
+  - **Lines:** -50
 
-- `migration/phase-1-code-removal.md` - Detailed code removal steps
-- `migration/phase-2-testing.md` - Testing and validation procedures
-- `migration/phase-3-verification.md` - Final verification checklist
-
-## Spec Documents
-
-- `spec/architecture.md` - Architecture documentation (already updated)
-- `spec/quickstart.md` - User quickstart guide (already updated)
-- `spec/roadmap.md` - Development roadmap (already updated)
+- [ ] Consolidate multi-line function docs
+  - Convert verbose `///` multi-line docs to single-line where sufficient
+  - **Lines:** -50
 
 ---
 
-## Success Criteria
+### 3. Redundant Code and Duplication (-300 lines)
 
-- [x] All Phase 1 tasks complete (code removed)
-- [x] All Phase 2 tasks complete (tests pass)
-- [x] All Phase 3 tasks complete (verified)
-- [x] No compiler warnings or errors
-- [x] `status` command no longer recognized
-- [x] `mount` and `umount` commands still work
-- [x] CHANGELOG.md updated
+#### 3.1 Extract Path Building Logic
+**File:** `src/fs/inode_manager.rs`
+
+- [ ] Create shared `build_canonical_path()` helper
+  - Current: Same path building logic in `allocate_torrent_directory`, `allocate_file`, `allocate_symlink`
+  - Action: Extract to method: `fn build_path(&self, parent: u64, name: &str) -> String`
+  - **Lines:** -80
+
+- [ ] Simplify build_path() implementation
+  - Current: 20-line implementation with while loop
+  - Action: Use iterator-based approach
+  - **Lines:** -20
+
+#### 3.2 Consolidate Auth Header Creation
+**Files:** `src/api/client.rs`, `src/api/streaming.rs`
+
+- [ ] Extract to shared utility
+  - Current: `create_auth_header()` duplicated in both files
+  - Action: Move to `src/api/mod.rs` or shared module
+  - **Lines:** -60
+
+#### 3.3 Remove Unused FileHandleManager Methods
+**File:** `src/types/handle.rs`
+
+- [ ] Remove unused methods
+  - Identify and remove: `get_inode()`, `contains()`, `is_empty()`, `get_handles_for_inode()`, `get_all_handles()`
+  - **Lines:** -80
+
+#### 3.4 Simplify Logging Patterns
+
+- [ ] Simplify tracing calls
+  - Current: Verbose `tracing::info!` with many fields in `add_child()` (lines 445-467)
+  - Action: Use compact format, remove redundant fields
+  - **Lines:** -60
 
 ---
 
-## Notes
+### 4. Verbose Logging/Tracing (-350 lines)
 
-- The spec documentation was already updated in commit 4ff33398b08c7ed4fe01ca4475d4cd2278fa5650
-- This migration removes the implementation to match the spec
-- This is a **breaking change** - users can no longer use `rqbit-fuse status`
-- Users should use standard Unix commands instead:
-  - `mount | grep torrents` - Check if mounted
-  - `df -h | grep torrents` - Check mount status
-  - `findmnt ~/torrents` - Check specific mount point
+#### 4.1 Reduce Trace Instrumentation
+**Files:** `src/api/client.rs`, `src/api/streaming.rs`, `src/fs/filesystem.rs`
+
+- [ ] Remove instrument attribute from simple methods
+  - Current: `#[instrument]` on every method
+  - Action: Keep only on complex public methods
+  - **Lines:** -100
+
+- [ ] Simplify trace! calls
+  - Current: Verbose field annotations like `stream_op = "create"`
+  - Action: Use simpler format: `trace!("Creating stream for {}/{}", torrent_id, file_idx)`
+  - **Lines:** -100
+
+#### 4.2 Remove Debug Logging
+**Files:** `src/fs/inode_manager.rs`, `src/fs/filesystem.rs`
+
+- [ ] Reduce debug! calls
+  - Current: Every operation has multiple debug logs
+  - Action: Keep info! for important events, remove debug! noise
+  - **Lines:** -100
+
+#### 4.3 Simplify Error Logging
+**Files:** Multiple
+
+- [ ] Remove context comments in error messages
+  - Current: `.context("Failed to create persistent stream")` and similar
+  - Action: Use shorter messages or rely on error types
+  - **Lines:** -50
 
 ---
 
-Last Updated: 2026-02-24
-Migration: Remove Status Command
+## Phase 2: Medium Risk, Medium Impact (Target: -1,000 lines)
+
+### 5. Overly Complex Error Handling (-300 lines)
+
+#### 5.1 Simplify ValidationError Pattern
+**File:** `src/config/mod.rs`
+
+- [ ] Replace ValidationIssue struct with simple string
+  - Current: Complex struct with field/message, joined with semicolons
+  - Action: Use `Vec<String>` for validation errors
+  - **Lines:** -60
+
+- [ ] Simplify validate() method
+  - Current: Builds issues vector, checks empty, returns ValidationError
+  - Action: Return early on first error
+  - **Lines:** -40
+
+#### 5.2 Consolidate Error Conversion Implementations
+**File:** `src/error.rs`
+
+- [ ] Merge From implementations using macros
+  - Current: Separate impl blocks for each error type
+  - Action: Use `impl_from!` macro or consolidate
+  - **Lines:** -40
+
+- [ ] Remove ToFuseError trait
+  - Current: 20 lines for trait definition + 20 lines impl for anyhow::Error
+  - Action: Use direct conversion
+  - **Lines:** -40
+
+#### 5.3 Simplify Retry Logic
+**File:** `src/api/client.rs`
+
+- [ ] Consolidate retry loop
+  - Current: 80+ lines with multiple match arms and logging
+  - Action: Extract into helper function, reduce logging
+  - **Lines:** -60
+
+- [ ] Remove status code-specific handling comments
+  - Lines 136-156: Verbose 429 handling with retry-after parsing
+  - Action: Simplify to uniform delay
+  - **Lines:** -60
+
+---
+
+### 6. Unnecessary Abstractions (-400 lines)
+
+#### 6.1 Simplify Config Structure
+**File:** `src/config/mod.rs`
+
+- [ ] Flatten nested config structs
+  - Current: 6 separate config structs (ApiConfig, CacheConfig, MountConfig, etc.)
+  - Action: Use single flat struct with prefixes, or merge where logical
+  - **Lines:** -100
+
+- [ ] Remove Default impls in favor of derive
+  - Current: Manual Default implementations for each config
+  - Action: Use `#[derive(Default)]` where possible
+  - **Lines:** -50
+
+#### 6.2 Remove ConcurrencyStats Wrapper
+**File:** `src/fs/filesystem.rs`
+
+- [ ] Inline ConcurrencyStats struct
+  - Current: Dedicated struct just to return semaphore info
+  - Action: Return tuple or add to existing metrics
+  - **Lines:** -40
+
+#### 6.3 Simplify InodeEntry Methods
+**File:** `src/fs/inode_entry.rs`
+
+- [ ] Remove unused accessor methods
+  - Current: Separate `name()`, `parent()`, `ino()`, `is_file()`, `is_directory()`, `is_symlink()` methods
+  - Action: Keep only used methods, inline trivial ones
+  - **Lines:** -80
+
+- [ ] Simplify Serialize/Deserialize impls
+  - Current: 100+ lines of manual serde implementations
+  - Action: Use `#[derive(Serialize, Deserialize)]` with `#[serde(tag = "type")]`
+  - **Lines:** -70
+
+#### 6.4 Remove ListTorrentsResult Methods
+**File:** `src/api/types.rs`
+
+- [ ] Remove convenience methods
+  - Current: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
+  - Action: Inline or remove if unused
+  - **Lines:** -30
+
+#### 6.5 Simplify PersistentStreamManager
+**File:** `src/api/streaming.rs`
+
+- [ ] Remove wrapper methods
+  - Current: `close_stream()`, `close_torrent_streams()` are thin wrappers around HashMap operations
+  - Action: Inline or use direct access
+  - **Lines:** -80
+
+---
+
+### 7. Configuration Complexity (-250 lines)
+
+#### 7.1 Simplify Environment Variable Handling
+**File:** `src/config/mod.rs`
+
+- [ ] Create macro for env var parsing
+  - Current: 80 lines of repetitive `if let Ok(val)` blocks
+  - Action: Use macro or loop over config map
+  - **Lines:** -100
+
+- [ ] Remove individual field env parsing
+  - Current: Separate handling for each config field
+  - Action: Use serde_env to parse directly to struct
+  - **Lines:** -50
+
+#### 7.2 Remove Config File Search
+**File:** `src/config/mod.rs`
+
+- [ ] Simplify from_default_locations()
+  - Current: Checks 3 locations with verbose logging
+  - Action: Use simple vec iteration, reduce logging
+  - **Lines:** -50
+
+#### 7.3 Remove Duplicate Config Merging
+**File:** `src/config/mod.rs`
+
+- [ ] Consolidate merge_from_cli and merge_from_env
+  - Current: Separate methods with similar patterns
+  - Action: Use generic merge method
+  - **Lines:** -50
+
+---
+
+## Phase 3: Refactoring (Target: -500 lines)
+
+### 8. Dead/Unused Code (-200 lines)
+
+#### 8.1 Remove Unused Error Variants
+**File:** `src/error.rs`
+
+- [ ] Audit and remove unused error types
+  - Check: `NotReady`, `ParseError` variants may be unused
+  - **Lines:** -50
+
+#### 8.2 Remove Test-Only Code
+**Files:** Multiple
+
+- [ ] Remove #[cfg(test)] helper methods
+  - Current: `set_next_handle()` in handle.rs, `__test_known_torrents()` in filesystem.rs
+  - Action: Use reflection or test fixtures instead
+  - **Lines:** -100
+
+#### 8.3 Remove Unused Imports
+**Files:** All
+
+- [ ] Run cargo fix and remove unused
+  - **Lines:** -50
+
+---
+
+### 9. Shared Test Utilities (-150 lines)
+
+#### 9.1 Create Common Test Module
+**Files:** All test files
+
+- [ ] Create tests/common/ module
+  - Extract shared temp file creation, mock setup
+  - **Lines:** -150
+
+---
+
+### 10. Async Bridge Simplification (-150 lines)
+
+#### 10.1 Review FuseRequest/FuseResponse
+**File:** `src/fs/async_bridge.rs`
+
+- [ ] Simplify request/response enums
+  - Review if complex enums can be simplified
+  - Consider using simpler channel types where possible
+  - **Lines:** -150
+
+---
+
+## Summary
+
+| Category | Estimated Reduction | Risk Level |
+|----------|-------------------|------------|
+| Excessive Test Code | -1,500 lines | Low |
+| Verbose Documentation | -400 lines | Very Low |
+| Error Handling Complexity | -300 lines | Low-Medium |
+| Redundant Code/Duplication | -600 lines | Low |
+| Unnecessary Abstractions | -400 lines | Medium |
+| Verbose Logging | -350 lines | Low |
+| Config Complexity | -250 lines | Medium |
+| Dead Code | -200 lines | Medium |
+| **TOTAL** | **~4,000 lines** | **Low-Medium** |
+
+**Final Target:** ~6,500 lines (from ~10,458)
+
+---
+
+## Verification Checklist
+
+After each phase, verify:
+
+- [ ] All tests pass: `cargo test`
+- [ ] Code compiles without warnings: `cargo build`
+- [ ] Clippy is clean: `cargo clippy`
+- [ ] Documented functionality preserved:
+  - [ ] Mount/unmount commands work
+  - [ ] Config file loading (TOML/JSON)
+  - [ ] Environment variable overrides
+  - [ ] HTTP Basic Auth
+  - [ ] FUSE operations (read, lookup, readdir)
+  - [ ] Torrent discovery
+  - [ ] File streaming
+  - [ ] Signal handling
+  - [ ] Metrics collection
+  - [ ] Error handling

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Refactored edge case tests in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1)
+  - Consolidated `test_edge_030_concurrent_allocation_stress`, `test_edge_045_inode_limit_exhaustion_with_torrents`, `test_inode_0_allocation_attempt` into 3 focused tests
+  - Replaced monolithic `test_edge_cases_parameterized` with proper `rstest` parameterized tests:
+    - `test_concurrent_allocation_stress` with 2 test cases (4x10 and 2x5 threads)
+    - `test_inode_limit_exhaustion` with 2 test cases (100/99 and 10/9 max/allocation)
+    - `test_inode_0_handling` for edge case inode 0 tests
+  - Removed redundant `test_concurrent_allocation_consistency` test (~66 lines)
+  - Removed redundant `test_max_inodes_limit` test (~77 lines)
+  - Added `rstest` to dev-dependencies in Cargo.toml for parameterized testing
+  - All 17 tests passing with zero clippy warnings
+  - Code reduction: 1137 lines → 967 lines (-170 lines, -15% of test code)
+  - Improves maintainability and test clarity
+
 ### Removed
 
 - BREAKING: Remove `status` command from CLI (TODO.md Phase 3, Task 3.4)
