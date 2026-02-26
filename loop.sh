@@ -14,3 +14,12 @@ do
 done
 
 rm .done
+
+exit
+
+#loopwhilex
+#  pipeline { echo -e "Instructions: @LOOP.md\nTodo checklist: @${todo_list}" }
+#  pipeline { opencode run --attach http://localhost:4096 }
+#  foreground { tee -a .logs/$(date +%s).log }
+#  foreground { git push }
+#eltest ! -f .done

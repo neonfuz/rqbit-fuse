@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated auth header creation into shared utility (TODO.md Phase 1, Task 3.2)
+  - Created `create_auth_header()` in `src/api/mod.rs` as a public standalone function
+  - Updated `client.rs` and `streaming.rs` to use `super::create_auth_header()`
+  - Removed duplicate `create_auth_header()` implementations from both files (7 lines each)
+  - Removed unused `use base64::Engine;` imports from both files
+  - All tests passing with zero clippy warnings
+  - Code reduction: ~18 lines (duplicate code + imports)
+
 - Extracted shared `build_canonical_path()` helper in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 3.1)
   - Created `fn build_canonical_path(&self, parent: u64, name: &str) -> String` helper method
   - Replaced duplicated path building logic in `allocate_torrent_directory`, `allocate_file`, and `allocate_symlink`

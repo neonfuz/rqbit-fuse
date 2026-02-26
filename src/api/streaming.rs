@@ -1,6 +1,5 @@
 use crate::error::RqbitFuseError;
 use anyhow::{Context, Result};
-use base64::Engine;
 use bytes::{Bytes, BytesMut};
 use futures::stream::StreamExt;
 use reqwest::{Client, StatusCode};
@@ -299,13 +298,8 @@ impl PersistentStreamManager {
         manager
     }
 
-    /// Create Authorization header for HTTP Basic Auth
     fn create_auth_header(&self) -> Option<String> {
-        self.auth_credentials.as_ref().map(|(username, password)| {
-            let credentials = format!("{}:{}", username, password);
-            let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
-            format!("Basic {}", encoded)
-        })
+        super::create_auth_header(self.auth_credentials.as_ref())
     }
 
     /// Start background task to clean up idle streams

@@ -199,10 +199,12 @@
 #### 3.2 Consolidate Auth Header Creation
 **Files:** `src/api/client.rs`, `src/api/streaming.rs`
 
-- [ ] Extract to shared utility
-  - Current: `create_auth_header()` duplicated in both files
-  - Action: Move to `src/api/mod.rs` or shared module
-  - **Lines:** -60
+- [x] Extract to shared utility
+  - Created `create_auth_header()` in `src/api/mod.rs` as a standalone function
+  - Updated `client.rs` and `streaming.rs` to call `super::create_auth_header()`
+  - Removed duplicate implementations (7 lines each, plus imports)
+  - Removed unused `use base64::Engine;` imports from both files
+  - **Lines:** -18 (removed ~12 lines of duplicated code and 6 lines of imports)
 
 #### 3.3 Remove Unused FileHandleManager Methods
 **File:** `src/types/handle.rs`

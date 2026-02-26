@@ -3,7 +3,6 @@ use crate::api::types::*;
 use crate::error::RqbitFuseError;
 use crate::metrics::Metrics;
 use anyhow::{Context, Result};
-use base64::Engine;
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 
@@ -79,11 +78,7 @@ impl RqbitClient {
     }
 
     fn create_auth_header(&self) -> Option<String> {
-        self.auth_credentials.as_ref().map(|(username, password)| {
-            let credentials = format!("{}:{}", username, password);
-            let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
-            format!("Basic {}", encoded)
-        })
+        super::create_auth_header(self.auth_credentials.as_ref())
     }
 
     async fn invalidate_list_torrents_cache(&self) {
