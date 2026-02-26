@@ -98,9 +98,11 @@
   - Added case-insensitive log level test case
   - **Lines:** -14 (from 24 lines to 10 lines)
 
-- [ ] Simplify config parsing tests
-  - Use shared config strings, extract common assertions
-  - **Lines:** -20
+- [x] Simplify config parsing tests
+  - Created `parse_config_content()` helper to eliminate temp file setup duplication
+  - Consolidated TOML and JSON test config strings
+  - Simplified assertion variable names
+  - **Lines:** -11 (38 deletions, 27 insertions)
 
 #### 1.5 error.rs Tests (-100 lines)
 **File:** `src/error.rs` (~190 test lines out of 388 total)

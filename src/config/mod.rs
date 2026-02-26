@@ -297,10 +297,19 @@ mod tests {
         assert_eq!(config.performance.read_timeout, 30);
     }
 
+    fn parse_config_content(content: &str, ext: &str) -> Config {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(content.as_bytes()).unwrap();
+        let mut path = temp_file.path().to_path_buf();
+        path.set_extension(ext);
+        std::fs::rename(temp_file.path(), &path).unwrap();
+        Config::from_file(&path).unwrap()
+    }
+
     #[test]
     fn test_toml_config_parsing() {
-        let toml_content = r#"
-[api]
+        let c = parse_config_content(
+            r#"[api]
 url = "http://localhost:8080"
 
 [cache]
@@ -312,46 +321,26 @@ mount_point = "/tmp/torrents"
 
 [performance]
 read_timeout = 60
-max_concurrent_reads = 20
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(toml_content.as_bytes()).unwrap();
-
-        let config = Config::from_file(&temp_file.path().to_path_buf()).unwrap();
-
-        assert_eq!(config.api.url, "http://localhost:8080");
-        assert_eq!(config.cache.metadata_ttl, 120);
-        assert_eq!(config.cache.max_entries, 500);
-        assert_eq!(config.mount.mount_point, PathBuf::from("/tmp/torrents"));
-        assert_eq!(config.performance.read_timeout, 60);
-        assert_eq!(config.performance.max_concurrent_reads, 20);
+max_concurrent_reads = 20"#,
+            "toml",
+        );
+        assert_eq!(c.api.url, "http://localhost:8080");
+        assert_eq!(c.cache.metadata_ttl, 120);
+        assert_eq!(c.cache.max_entries, 500);
+        assert_eq!(c.mount.mount_point, PathBuf::from("/tmp/torrents"));
+        assert_eq!(c.performance.read_timeout, 60);
+        assert_eq!(c.performance.max_concurrent_reads, 20);
     }
 
     #[test]
     fn test_json_config_parsing() {
-        let json_content = r#"{
-            "api": {
-                "url": "http://localhost:9090"
-            },
-            "cache": {
-                "metadata_ttl": 90,
-                "max_entries": 500
-            }
-        }"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(json_content.as_bytes()).unwrap();
-
-        let mut json_path = temp_file.path().to_path_buf();
-        json_path.set_extension("json");
-        std::fs::rename(temp_file.path(), &json_path).unwrap();
-
-        let config = Config::from_file(&json_path).unwrap();
-
-        assert_eq!(config.api.url, "http://localhost:9090");
-        assert_eq!(config.cache.metadata_ttl, 90);
-        assert_eq!(config.cache.max_entries, 500);
+        let c = parse_config_content(
+            r#"{"api": {"url": "http://localhost:9090"}, "cache": {"metadata_ttl": 90, "max_entries": 500}}"#,
+            "json",
+        );
+        assert_eq!(c.api.url, "http://localhost:9090");
+        assert_eq!(c.cache.metadata_ttl, 90);
+        assert_eq!(c.cache.max_entries, 500);
     }
 
     #[rstest::rstest]

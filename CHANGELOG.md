@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified config parsing tests in `src/config/mod.rs` (TODO.md Phase 1, Task 1.4)
+  - Created `parse_config_content()` helper function to eliminate duplicate temp file setup
+  - Consolidated TOML and JSON config test strings for compactness
+  - Simplified assertion variable names (config -> c)
+  - Reduced code duplication in `test_toml_config_parsing` and `test_json_config_parsing`
+  - All 23 config tests passing with zero clippy warnings
+  - Code reduction: 38 deletions, 27 insertions (-11 lines net)
+
 - Consolidated log level validation tests in `src/config/mod.rs` (TODO.md Phase 1, Task 1.1.4)
   - Merged `test_validate_invalid_log_level` and `test_validate_valid_log_levels` into single parameterized test
   - New `test_validate_log_level` uses rstest with 7 test cases covering all valid levels plus invalid cases
