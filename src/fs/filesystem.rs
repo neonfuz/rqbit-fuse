@@ -74,7 +74,7 @@ impl TorrentFS {
     ) -> Result<Self> {
         let api_client = Arc::new(
             create_api_client(&config.api, Some(Arc::clone(&metrics)))
-                .context("Failed to create API client")?,
+                .context("API client creation failed")?,
         );
         let inode_manager = Arc::new(InodeManager::with_max_inodes(100000));
         let read_semaphore = Arc::new(Semaphore::new(config.performance.max_concurrent_reads));
@@ -1617,7 +1617,7 @@ pub async fn discover_existing_torrents(fs: &TorrentFS) -> Result<()> {
         .api_client
         .list_torrents()
         .await
-        .context("Failed to list torrents from rqbit")?;
+        .context("list torrents failed")?;
 
     // Log any partial failures
     if result.is_partial() {
@@ -1685,7 +1685,7 @@ impl TorrentFS {
             .api_client
             .add_torrent_magnet(magnet_link)
             .await
-            .context("Failed to add torrent from magnet link")?;
+            .context("add magnet failed")?;
 
         info!(
             "Added torrent {} with hash {}",
@@ -1706,11 +1706,11 @@ impl TorrentFS {
             .api_client
             .get_torrent(response.id)
             .await
-            .context("Failed to get torrent details after adding")?;
+            .context("get torrent failed")?;
 
         // Create the filesystem structure
         self.create_torrent_structure(&torrent_info)
-            .context("Failed to create filesystem structure for torrent")?;
+            .context("create structure failed")?;
 
         Ok(response.id)
     }
@@ -1723,7 +1723,7 @@ impl TorrentFS {
             .api_client
             .add_torrent_url(torrent_url)
             .await
-            .context("Failed to add torrent from URL")?;
+            .context("add URL failed")?;
 
         info!(
             "Added torrent {} with hash {}",
@@ -1744,11 +1744,11 @@ impl TorrentFS {
             .api_client
             .get_torrent(response.id)
             .await
-            .context("Failed to get torrent details after adding")?;
+            .context("get torrent failed")?;
 
         // Create the filesystem structure
         self.create_torrent_structure(&torrent_info)
-            .context("Failed to create filesystem structure for torrent")?;
+            .context("create structure failed")?;
 
         Ok(response.id)
     }

@@ -87,7 +87,7 @@ pub async fn run(config: Config) -> Result<()> {
     // Create API client for the async worker
     let api_client = Arc::new(
         create_api_client(&config.api, Some(Arc::clone(&metrics)))
-            .context("Failed to create API client")?,
+            .context("API client creation failed")?,
     );
 
     // Create async worker for FUSE callbacks
@@ -96,7 +96,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     // Create the filesystem with async worker
     let fs = TorrentFS::new(config, Arc::clone(&metrics), async_worker)
-        .context("Failed to create torrent filesystem")?;
+        .context("filesystem creation failed")?;
 
     // Wrap in Arc for sharing between signal handler and main flow
     let fs_arc = Arc::new(fs);
@@ -180,7 +180,7 @@ pub async fn run(config: Config) -> Result<()> {
     // Discover existing torrents before mounting
     crate::fs::filesystem::discover_existing_torrents(&fs_arc)
         .await
-        .context("Failed to discover existing torrents")?;
+        .context("torrent discovery failed")?;
 
     // Mount the filesystem in a blocking task so signals can be processed
     // This will return when the filesystem is unmounted (either via signal or externally)

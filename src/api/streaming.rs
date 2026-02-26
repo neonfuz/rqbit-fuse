@@ -54,7 +54,7 @@ impl PersistentStream {
         let response = request
             .send()
             .await
-            .context("Failed to create persistent stream")?;
+            .context("stream creation failed")?;
 
         let status = response.status();
 

@@ -440,7 +440,7 @@ impl RqbitClient {
                     .get("x-bitfield-len")
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.parse().ok())
-                    .context("Missing or invalid x-bitfield-len header")?;
+                    .context("invalid bitfield header")?;
 
                 let bits = response.bytes().await?.to_vec();
 

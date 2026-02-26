@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Completed
-- All items from TODO checklist have been completed
-- Created .done file to indicate project completion
+### Changed
+
+- Simplified error context messages across codebase (TODO.md Phase 1, Task 4.3)
+  - Simplified 13 verbose `.context()` messages in 4 files from verbose "Failed to..." to concise lowercase format:
+  - **src/fs/filesystem.rs** (8 messages):
+    - "API client creation failed", "list torrents failed", "add magnet failed", "add URL failed"
+    - "get torrent failed", "create structure failed" (used in both add_torrent_magnet and add_torrent_url)
+  - **src/api/streaming.rs** (1 message): "stream creation failed"
+  - **src/api/client.rs** (1 message): "invalid bitfield header"
+  - **src/lib.rs** (3 messages): "API client creation failed", "filesystem creation failed", "torrent discovery failed"
+  - All 166 tests passing with zero clippy warnings
+  - Code reduction: ~50 lines (as targeted)
 
 ### Changed
 
