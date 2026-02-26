@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed ListTorrentsResult convenience methods from `src/api/types.rs` (TODO.md Phase 2, Task 6.4)
+  - Removed methods: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
+  - Inlined all usage to use direct field access:
+    - `!result.errors.is_empty()` instead of `is_partial()`
+    - `!result.torrents.is_empty()` instead of `has_successes()`
+    - `result.torrents.is_empty()` instead of `is_empty()`
+  - Updated 4 files: `types.rs`, `filesystem.rs`, `client.rs`
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: ~16 lines
+
 - Simplified Serialize/Deserialize implementations in `src/fs/inode_entry.rs` (TODO.md Phase 2, Task 6.3)
   - Replaced 165 lines of manual serialize/deserialize implementations with derive-based approach
   - Created `InodeEntryData` helper enum with `#[serde(tag = "type")]` derive macro

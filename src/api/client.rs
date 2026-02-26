@@ -274,7 +274,7 @@ impl RqbitClient {
         }
 
         // Log summary if there were partial failures
-        if result.is_partial() {
+        if !result.errors.is_empty() {
             info!(
                 successes = result.torrents.len(),
                 failures = result.errors.len(),
@@ -966,8 +966,8 @@ mod tests {
             .await;
 
         let result = client.list_torrents().await.unwrap();
-        assert!(!result.is_partial());
-        assert!(result.has_successes());
+        assert!(result.errors.is_empty());
+        assert!(!result.torrents.is_empty());
         assert_eq!(result.torrents.len(), 1);
         assert_eq!(result.torrents[0].id, 1);
         assert_eq!(result.torrents[0].name, "Test Torrent");
@@ -994,7 +994,6 @@ mod tests {
             .await;
 
         let result = client.list_torrents().await.unwrap();
-        assert!(!result.has_successes());
         assert!(result.torrents.is_empty());
 
         // Verify the mock was called (WireMock verification)
@@ -1057,8 +1056,8 @@ mod tests {
         let result = client.list_torrents().await.unwrap();
 
         // Verify partial result
-        assert!(result.is_partial());
-        assert!(result.has_successes());
+        assert!(!result.errors.is_empty());
+        assert!(!result.torrents.is_empty());
         assert_eq!(result.torrents.len(), 1);
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.torrents[0].id, 1);
@@ -1533,7 +1532,7 @@ mod tests {
             .await;
 
         let result = client.list_torrents().await.unwrap();
-        assert!(result.is_empty());
+        assert!(result.torrents.is_empty());
     }
 
     #[tokio::test]
@@ -1582,7 +1581,7 @@ mod tests {
             .await;
 
         let result = client.list_torrents().await.unwrap();
-        assert!(result.is_empty());
+        assert!(result.torrents.is_empty());
     }
 
     #[tokio::test]
@@ -1934,7 +1933,7 @@ mod tests {
             result
         );
         let torrents = result.unwrap();
-        assert!(torrents.is_empty(), "Should return empty torrent list");
+        assert!(torrents.torrents.is_empty(), "Should return empty torrent list");
     }
 
     /// Test that connection reset errors eventually fail when retries are exhausted

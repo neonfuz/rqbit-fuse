@@ -119,24 +119,6 @@ pub struct ListTorrentsResult {
     pub errors: Vec<(u64, String, crate::error::RqbitFuseError)>,
 }
 
-impl ListTorrentsResult {
-    pub fn is_partial(&self) -> bool {
-        !self.errors.is_empty()
-    }
-
-    pub fn has_successes(&self) -> bool {
-        !self.torrents.is_empty()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.torrents.is_empty()
-    }
-
-    pub fn total_attempted(&self) -> usize {
-        self.torrents.len() + self.errors.len()
-    }
-}
-
 /// Request to add torrent from magnet link.
 #[derive(Debug, Clone, Serialize)]
 pub struct AddMagnetRequest {

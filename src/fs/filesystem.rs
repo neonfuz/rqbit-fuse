@@ -214,7 +214,7 @@ impl TorrentFS {
         let result = api_client.list_torrents().await?;
 
         // Log any partial failures
-        if result.is_partial() {
+        if !result.errors.is_empty() {
             warn!(
                 "Partial torrent discovery: {} succeeded, {} failed",
                 result.torrents.len(),
@@ -1616,7 +1616,7 @@ pub async fn discover_existing_torrents(fs: &TorrentFS) -> Result<()> {
         .context("list torrents failed")?;
 
     // Log any partial failures
-    if result.is_partial() {
+    if !result.errors.is_empty() {
         warn!(
             "Partial torrent discovery: {} succeeded, {} failed",
             result.torrents.len(),
@@ -1627,7 +1627,7 @@ pub async fn discover_existing_torrents(fs: &TorrentFS) -> Result<()> {
         }
     }
 
-    if !result.has_successes() {
+    if result.torrents.is_empty() {
         info!("No existing torrents found in rqbit");
         return Ok(());
     }

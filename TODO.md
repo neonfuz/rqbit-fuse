@@ -384,10 +384,15 @@
 #### 6.4 Remove ListTorrentsResult Methods
 **File:** `src/api/types.rs`
 
-- [ ] Remove convenience methods
-  - Current: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
-  - Action: Inline or remove if unused
-  - **Lines:** -30
+- [x] Remove convenience methods
+  - Removed: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
+  - Inlined all usage to use direct field access:
+    - `!result.errors.is_empty()` instead of `is_partial()`
+    - `!result.torrents.is_empty()` instead of `has_successes()`
+    - `result.torrents.is_empty()` instead of `is_empty()`
+  - Updated 4 files: `types.rs`, `filesystem.rs`, `client.rs`
+  - All 149 tests passing, clippy clean
+  - **Lines:** -16 (removed 16 lines of method implementations)
 
 #### 6.5 Simplify PersistentStreamManager
 **File:** `src/api/streaming.rs`
