@@ -74,7 +74,7 @@
 #### 1.3 streaming.rs Tests (-150 lines)
 **File:** `src/api/streaming.rs` (~230 test lines out of 803 total)
 
-- [ ] Consolidate edge case tests
+- [x] Consolidate edge case tests
   - Merge EDGE-021, EDGE-023, EDGE-024 into single parameterized test
   - **Lines:** -100
 

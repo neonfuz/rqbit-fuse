@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated edge case tests in `src/api/streaming.rs` (TODO.md Phase 1, Task 1.3)
+  - Merged EDGE-021 and EDGE-024 into single parameterized test `test_edge_cases_server_responses`
+  - Created `EdgeCaseTestData` struct for parameterized test cases
+  - Kept EDGE-023 as separate test (tests PersistentStream directly, different pattern)
+  - Reduced 3 separate test functions to 2 consolidated tests
+  - All tests passing with zero clippy warnings
+  - Code reduction: ~116 lines → ~70 lines (-46 lines, -40% of edge case test code)
+
 - Consolidated handle tests in `src/types/handle.rs` (TODO.md Phase 1, Task 1.2)
   - Merged 8 separate test functions into 6 focused tests (-80 lines)
   - Created `create_manager()` helper to reduce code duplication

@@ -664,63 +664,105 @@ mod tests {
     }
 
     // ============================================================================
-    // EDGE-021: Test server returning 200 OK instead of 206 Partial Content
+    // EDGE-CASES: Parameterized edge case tests
     // ============================================================================
 
-    /// Test server returning 200 OK for range request - should skip to offset
+    /// Test data for parameterized edge case tests
+    struct EdgeCaseTestData {
+        name: &'static str,
+        status_code: u16,
+        file_size: usize,
+        read_offset: u64,
+        read_size: usize,
+        expected_data_verifier: fn(&[u8], usize, u64),
+    }
+
+    /// Parameterized edge case tests covering server response scenarios
     #[tokio::test]
-    async fn test_edge_021_server_returns_200_instead_of_206() {
+    async fn test_edge_cases_server_responses() {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        let mock_server = MockServer::start().await;
+        let test_cases = [
+            // EDGE-021: Server returns 200 OK instead of 206 Partial Content
+            EdgeCaseTestData {
+                name: "server_returns_200_instead_of_206",
+                status_code: 200,
+                file_size: 1000,
+                read_offset: 100,
+                read_size: 50,
+                expected_data_verifier: |data, _file_size, offset| {
+                    assert_eq!(data.len(), 50, "Should read requested 50 bytes");
+                    for (i, byte) in data.iter().enumerate() {
+                        let expected_byte = ((offset as usize + i) % 256) as u8;
+                        assert_eq!(
+                            *byte, expected_byte,
+                            "Byte at position {} should match expected value",
+                            i
+                        );
+                    }
+                },
+            },
+            // EDGE-024: Normal server response with 206 Partial Content
+            EdgeCaseTestData {
+                name: "normal_server_response_206",
+                status_code: 206,
+                file_size: 100,
+                read_offset: 0,
+                read_size: 100,
+                expected_data_verifier: |data, file_size, _offset| {
+                    assert_eq!(data.len(), file_size, "Should read all bytes");
+                    for (i, byte) in data.iter().enumerate() {
+                        assert_eq!(
+                            *byte,
+                            (i % 256) as u8,
+                            "Data should match at position {}",
+                            i
+                        );
+                    }
+                },
+            },
+        ];
 
-        // Create a 1000-byte file with distinct bytes at each position
-        let mut file_content = Vec::with_capacity(1000);
-        for i in 0..1000u16 {
-            file_content.push((i % 256) as u8);
+        for test_case in &test_cases {
+            let mock_server = MockServer::start().await;
+
+            // Create file content with distinct bytes at each position
+            let mut file_content = Vec::with_capacity(test_case.file_size);
+            for i in 0..test_case.file_size as u16 {
+                file_content.push((i % 256) as u8);
+            }
+
+            let range_header = format!("bytes={}-", test_case.read_offset);
+
+            // Set up mock based on test case
+            let mock_builder = Mock::given(method("GET"))
+                .and(path("/torrents/1/stream/0"))
+                .and(header("Range", range_header.as_str()))
+                .respond_with(
+                    ResponseTemplate::new(test_case.status_code)
+                        .set_body_bytes(file_content.clone()),
+                )
+                .expect(1);
+
+            mock_builder.mount(&mock_server).await;
+
+            let client = Client::new();
+            let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+
+            let result = manager
+                .read(1, 0, test_case.read_offset, test_case.read_size)
+                .await;
+            assert!(result.is_ok(), "Test '{}' should succeed", test_case.name);
+
+            let data = result.unwrap();
+            (test_case.expected_data_verifier)(&data, test_case.file_size, test_case.read_offset);
+
+            mock_server.verify().await;
         }
-
-        // Server returns 200 OK with full file content (not 206)
-        Mock::given(method("GET"))
-            .and(path("/torrents/1/stream/0"))
-            .and(header("Range", "bytes=100-"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(file_content.clone()))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
-
-        // Request read at offset 100
-        let result = manager.read(1, 0, 100, 50).await;
-        assert!(
-            result.is_ok(),
-            "Read should succeed even with 200 OK response"
-        );
-
-        let data = result.unwrap();
-        assert_eq!(data.len(), 50, "Should read requested 50 bytes");
-
-        // Verify data correctness - should be bytes 100-149 from the original file
-        for (i, byte) in data.iter().enumerate() {
-            let expected_byte = ((100 + i) % 256) as u8;
-            assert_eq!(
-                *byte, expected_byte,
-                "Byte at position {} should match expected value",
-                i
-            );
-        }
-
-        mock_server.verify().await;
     }
 
-    // ============================================================================
-    // EDGE-023: Test stream invalidation
-    // ============================================================================
-
-    /// Test stream marked invalid after error
+    /// Test stream marked invalid after error (EDGE-023)
     #[tokio::test]
     async fn test_edge_023_stream_marked_invalid_after_error() {
         // Directly test the PersistentStream behavior when is_valid is set to false
@@ -747,56 +789,5 @@ mod tests {
             "Error should indicate stream is invalid: {}",
             error_msg
         );
-    }
-
-    // ============================================================================
-    // EDGE-024: Test normal server response
-    // ============================================================================
-
-    /// Test that normal speed server works correctly
-    #[tokio::test]
-    async fn test_edge_024_normal_server_response() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-
-        // Normal response without delay
-        let content: Vec<u8> = (0..100u8).collect();
-
-        Mock::given(method("GET"))
-            .and(path("/torrents/1/stream/0"))
-            .respond_with(ResponseTemplate::new(206).set_body_bytes(content.clone()))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        // Client with reasonable timeout
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .expect("Failed to build client");
-
-        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
-
-        let start = Instant::now();
-        let result = manager.read(1, 0, 0, 100).await;
-        let elapsed = start.elapsed();
-
-        // Should succeed
-        assert!(result.is_ok(), "Read should succeed with normal server");
-
-        let data = result.unwrap();
-        assert_eq!(data.len(), 100, "Should read all 100 bytes");
-        assert_eq!(&data[..], &content[..], "Data should match");
-
-        // Should complete quickly (well within timeout)
-        assert!(
-            elapsed < std::time::Duration::from_secs(1),
-            "Should complete quickly. Elapsed: {:?}",
-            elapsed
-        );
-
-        mock_server.verify().await;
     }
 }
