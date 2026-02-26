@@ -372,10 +372,14 @@
   - Kept `with_ino()` which is required by `inode_manager.rs:allocate_entry()`
   - **Lines:** -7
 
-- [ ] Simplify Serialize/Deserialize impls
-  - Current: 100+ lines of manual serde implementations
-  - Action: Use `#[derive(Serialize, Deserialize)]` with `#[serde(tag = "type")]`
-  - **Lines:** -70
+- [x] Simplify Serialize/Deserialize impls
+  - Replaced 165 lines of manual serialize/deserialize implementations with:
+    - `InodeEntryData` helper enum with `#[serde(tag = "type")]` derive
+    - `From<&InodeEntry> for InodeEntryData` and `From<InodeEntryData> for InodeEntry` trait implementations
+    - Simplified `serialize()` to call `InodeEntryData::from(self).serialize(serializer)`
+    - Simplified `deserialize()` to call `InodeEntryData::deserialize().map(Into::into)`
+  - File reduced from 291 to 221 lines (-70 lines)
+  - All 149 tests passing, clippy clean
 
 #### 6.4 Remove ListTorrentsResult Methods
 **File:** `src/api/types.rs`

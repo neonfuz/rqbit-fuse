@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified Serialize/Deserialize implementations in `src/fs/inode_entry.rs` (TODO.md Phase 2, Task 6.3)
+  - Replaced 165 lines of manual serialize/deserialize implementations with derive-based approach
+  - Created `InodeEntryData` helper enum with `#[serde(tag = "type")]` derive macro
+  - Implemented `From<&InodeEntry> for InodeEntryData` and `From<InodeEntryData> for InodeEntry` traits
+  - Simplified `serialize()` to single line: `InodeEntryData::from(self).serialize(serializer)`
+  - Simplified `deserialize()` to single line: `InodeEntryData::deserialize().map(Into::into)`
+  - File reduced from 291 to 221 lines (-70 lines, -24% of inode_entry.rs)
+  - All 149 tests passing with zero clippy warnings
+
 - Removed unused `file_size()` method from `src/fs/inode_entry.rs` (TODO.md Phase 2, Task 6.3)
   - Removed accessor method that was not called anywhere in the codebase
   - Verified all other accessor methods (`name()`, `parent()`, `ino()`, `is_file()`, `is_directory()`, `is_symlink()`, `with_ino()`) are actively used
