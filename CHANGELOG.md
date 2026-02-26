@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated handle tests in `src/types/handle.rs` (TODO.md Phase 1, Task 1.2)
+  - Merged 8 separate test functions into 6 focused tests (-80 lines)
+  - Created `create_manager()` helper to reduce code duplication
+  - Combined allocation, lookup, and removal tests into `test_handle_allocation_and_lookup`
+  - Simplified overflow test from u64::MAX-2 to u64::MAX-1 with 3 handles instead of 4
+  - Removed verbose test comments and EDGE-* documentation comments (-60 lines)
+  - All 6 tests passing with zero clippy warnings
+  - Code reduction: 240 lines → 118 lines (-122 lines, -51% of test code)
+
 - Simplified stress tests in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1.4)
   - Removed inline comments explaining obvious assertions from test functions
   - Removed comments: "Root inode should exist", "Next inode should be 2", "Remove torrent (should also remove its file)", "Root should still exist", "Torrents should be gone", "Next inode should be reset"

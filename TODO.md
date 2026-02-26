@@ -51,16 +51,24 @@
 #### 1.2 handle.rs Tests (-180 lines)
 **File:** `src/types/handle.rs` (~240 test lines out of 412 total)
 
-- [ ] Consolidate handle allocation tests
-  - Merge 10 separate test functions into 3-4 comprehensive table-driven tests
+- [x] Consolidate handle allocation tests
+  - Merged 8 separate test functions into 6 focused tests
+  - Combined allocation, lookup, and removal into `test_handle_allocation_and_lookup`
+  - Removed redundant tests: `test_file_handle_allocation`, `test_file_handle_lookup`
+  - Simplified `test_read_from_released_handle` into `test_handle_removal`
+  - Created `create_manager()` helper function
   - **Lines:** -80
 
-- [ ] Remove verbose test comments
-  - Remove explanatory comments from every assertion
+- [x] Remove verbose test comments
+  - Removed explanatory comments from assertions ("Allocate first handle", "Lookup should succeed", etc.)
+  - Removed EDGE-007, EDGE-008, EDGE-009 comments
+  - Removed assertion failure messages with `.unwrap()`
   - **Lines:** -60
 
-- [ ] Simplify overflow test
-  - Use simpler test with `u64::MAX - 1` start value
+- [x] Simplify overflow test
+  - Simplified `test_handle_overflow` from u64::MAX-2 to u64::MAX-1 start value
+  - Reduced from 4 handles to 3 handles
+  - Removed verbose comments explaining overflow behavior
   - **Lines:** -40
 
 #### 1.3 streaming.rs Tests (-150 lines)

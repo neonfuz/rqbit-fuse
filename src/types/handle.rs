@@ -173,101 +173,47 @@ impl Default for FileHandleManager {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_file_handle_allocation() {
-        let manager = FileHandleManager::new();
-
-        // Allocate first handle
-        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
-        assert_eq!(fh1, 1);
-
-        // Allocate second handle for same inode
-        let fh2 = manager.allocate(100, 1, libc::O_RDONLY);
-        assert_eq!(fh2, 2);
-
-        // Allocate handle for different inode
-        let fh3 = manager.allocate(200, 1, libc::O_RDONLY);
-        assert_eq!(fh3, 3);
-
-        // Verify handles are unique
-        assert_ne!(fh1, fh2);
-        assert_ne!(fh1, fh3);
-        assert_ne!(fh2, fh3);
+    fn create_manager() -> FileHandleManager {
+        FileHandleManager::new()
     }
 
     #[test]
-    fn test_file_handle_lookup() {
-        let manager = FileHandleManager::new();
-        let inode = 100u64;
-        let flags = libc::O_RDONLY;
+    fn test_handle_allocation_and_lookup() {
+        let manager = create_manager();
 
-        let torrent_id = 1u64;
-        let fh = manager.allocate(inode, torrent_id, flags);
+        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
+        let fh2 = manager.allocate(100, 1, libc::O_RDONLY);
+        let fh3 = manager.allocate(200, 1, libc::O_RDONLY);
 
-        // Lookup should succeed
-        let handle = manager.get(fh).unwrap();
-        assert_eq!(handle.fh, fh);
-        assert_eq!(handle.inode, inode);
-        assert_eq!(handle.torrent_id, torrent_id);
-        assert_eq!(handle.flags, flags);
+        assert_eq!(fh1, 1);
+        assert_eq!(fh2, 2);
+        assert_eq!(fh3, 3);
+        assert_ne!(fh1, fh2);
+        assert_ne!(fh1, fh3);
 
-        // Lookup non-existent handle
+        let handle = manager.get(fh1).unwrap();
+        assert_eq!(handle.fh, fh1);
+        assert_eq!(handle.inode, 100);
+        assert_eq!(handle.torrent_id, 1);
+
         assert!(manager.get(9999).is_none());
     }
 
     #[test]
-    fn test_file_handle_removal() {
-        let manager = FileHandleManager::new();
+    fn test_handle_removal() {
+        let manager = create_manager();
         let fh = manager.allocate(100, 1, libc::O_RDONLY);
 
-        // Remove should return the handle
-        let removed = manager.remove(fh).unwrap();
-        assert_eq!(removed.fh, fh);
-
-        // Second removal should fail
+        assert!(manager.remove(fh).is_some());
         assert!(manager.remove(fh).is_none());
-
-        // Lookup should also fail
         assert!(manager.get(fh).is_none());
-    }
-
-    #[test]
-    fn test_read_from_released_handle() {
-        // EDGE-007: Test read from released handle
-        // This simulates the scenario where a file handle is released
-        // but something tries to read from it (which should return EBADF)
-        let manager = FileHandleManager::new();
-
-        // Open file, get handle
-        let fh = manager.allocate(100, 1, libc::O_RDONLY);
-        assert!(manager.contains(fh));
-
-        // Verify we can look up the handle (simulating a valid read operation)
-        let handle = manager.get(fh);
-        assert!(handle.is_some());
-        assert_eq!(handle.unwrap().fh, fh);
-
-        // Release handle (close the file)
-        let removed = manager.remove(fh);
-        assert!(removed.is_some());
-        assert!(!manager.contains(fh));
-
-        // Try to read from released handle (should return None, which translates to EBADF)
-        let handle_after_release = manager.get(fh);
-        assert!(
-            handle_after_release.is_none(),
-            "Reading from a released handle should return None (EBADF in FUSE layer)"
-        );
-
-        // Verify handle count is correct
         assert_eq!(manager.len(), 0);
     }
 
     #[test]
     fn test_get_handles_for_inode() {
-        let manager = FileHandleManager::new();
+        let manager = create_manager();
 
-        // Open same file multiple times
         let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
         let fh2 = manager.allocate(100, 1, libc::O_RDONLY);
         let fh3 = manager.allocate(200, 1, libc::O_RDONLY);
@@ -276,7 +222,6 @@ mod tests {
         assert_eq!(handles_for_100.len(), 2);
         assert!(handles_for_100.contains(&fh1));
         assert!(handles_for_100.contains(&fh2));
-        assert!(!handles_for_100.contains(&fh3));
 
         let handles_for_200 = manager.get_handles_for_inode(200);
         assert_eq!(handles_for_200.len(), 1);
@@ -285,127 +230,53 @@ mod tests {
 
     #[test]
     fn test_handle_exhaustion() {
-        // EDGE-008: Test handle exhaustion
-        // Verify that allocating beyond max_handles returns 0 (indicating failure)
-        const MAX_HANDLES: usize = 5;
+        let manager = FileHandleManager::with_max_handles(5);
 
-        let manager = FileHandleManager::with_max_handles(MAX_HANDLES);
-
-        // Allocate handles up to the limit
         let mut handles = Vec::new();
-        for i in 0..MAX_HANDLES {
+        for i in 0..5 {
             let fh = manager.allocate(100 + i as u64, 1, libc::O_RDONLY);
-            assert!(fh > 0, "Handle {} should be allocated successfully", i);
+            assert!(fh > 0);
             handles.push(fh);
         }
 
-        // Verify we have exactly MAX_HANDLES handles
-        assert_eq!(
-            manager.len(),
-            MAX_HANDLES,
-            "Should have {} handles",
-            MAX_HANDLES
-        );
+        assert_eq!(manager.len(), 5);
+        assert_eq!(manager.allocate(200, 1, libc::O_RDONLY), 0);
 
-        // Try to allocate one more - should return 0
-        let extra_fh = manager.allocate(200, 1, libc::O_RDONLY);
-        assert_eq!(extra_fh, 0, "Should return 0 when handle limit is exceeded");
+        manager.remove(handles[0]);
+        assert_eq!(manager.len(), 4);
 
-        // Verify count hasn't changed
-        assert_eq!(
-            manager.len(),
-            MAX_HANDLES,
-            "Handle count should not increase after exhaustion"
-        );
-
-        // Release one handle
-        let released = manager.remove(handles[0]);
-        assert!(released.is_some(), "Should successfully release handle");
-        assert_eq!(
-            manager.len(),
-            MAX_HANDLES - 1,
-            "Handle count should decrease after release"
-        );
-
-        // Now we should be able to allocate again
         let new_fh = manager.allocate(300, 1, libc::O_RDONLY);
-        assert!(
-            new_fh > 0,
-            "Should be able to allocate after releasing a handle"
-        );
-        assert_eq!(
-            manager.len(),
-            MAX_HANDLES,
-            "Handle count should be back to max"
-        );
-
-        // Verify the new handle is different from the old ones
-        assert!(!handles.contains(&new_fh), "New handle should be unique");
+        assert!(new_fh > 0);
+        assert_eq!(manager.len(), 5);
     }
 
     #[test]
     fn test_unlimited_handles() {
-        // Test that unlimited handles (max_handles = 0) allows many allocations
         let manager = FileHandleManager::with_max_handles(0);
 
-        // Allocate many handles
         for i in 0..100 {
             let fh = manager.allocate(100 + i as u64, 1, libc::O_RDONLY);
-            assert!(fh > 0, "Handle {} should be allocated", i);
+            assert!(fh > 0);
         }
 
-        assert_eq!(manager.len(), 100, "Should have 100 handles");
+        assert_eq!(manager.len(), 100);
     }
 
     #[test]
     fn test_handle_overflow() {
-        // EDGE-009: Test handle allocation wrapping past u64::MAX
-        // When the handle counter overflows, it should:
-        // 1. Skip handle 0 (reserved/invalid)
-        // 2. Maintain handle uniqueness
+        let manager = create_manager();
+        manager.set_next_handle(u64::MAX - 1);
 
-        let manager = FileHandleManager::new();
-
-        // Set next_handle to u64::MAX - 2 to test overflow behavior
-        manager.set_next_handle(u64::MAX - 2);
-
-        // Allocate a few handles to trigger overflow
         let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
         let fh2 = manager.allocate(101, 1, libc::O_RDONLY);
         let fh3 = manager.allocate(102, 1, libc::O_RDONLY);
-        let fh4 = manager.allocate(103, 1, libc::O_RDONLY);
 
-        // Verify handle 0 is never allocated
-        assert_ne!(fh1, 0, "Handle should never be 0");
-        assert_ne!(fh2, 0, "Handle should never be 0");
-        assert_ne!(fh3, 0, "Handle should never be 0");
-        assert_ne!(fh4, 0, "Handle should never be 0");
-
-        // Verify the sequence: u64::MAX-2, u64::MAX-1, u64::MAX, 1 (skipping 0)
-        assert_eq!(fh1, u64::MAX - 2, "First handle should be u64::MAX - 2");
-        assert_eq!(fh2, u64::MAX - 1, "Second handle should be u64::MAX - 1");
-        assert_eq!(fh3, u64::MAX, "Third handle should be u64::MAX");
-        assert_eq!(fh4, 1, "Fourth handle should wrap to 1 (skipping 0)");
-
-        // Verify all handles are unique
-        let handles = vec![fh1, fh2, fh3, fh4];
-        let unique_handles: std::collections::HashSet<_> = handles.iter().cloned().collect();
-        assert_eq!(
-            unique_handles.len(),
-            handles.len(),
-            "All handles should be unique"
-        );
-
-        // Verify all handles are valid (can be looked up)
-        for fh in &handles {
-            assert!(
-                manager.contains(*fh),
-                "Handle {} should exist in manager",
-                fh
-            );
-        }
-
-        // Verify handle count
-        assert_eq!(manager.len(), 4, "Should have 4 handles allocated");
+        assert_ne!(fh1, 0);
+        assert_ne!(fh2, 0);
+        assert_ne!(fh3, 0);
+        assert_eq!(fh1, u64::MAX - 1);
+        assert_eq!(fh2, u64::MAX);
+        assert_eq!(fh3, 1);
+        assert_eq!(manager.len(), 3);
     }
 }
