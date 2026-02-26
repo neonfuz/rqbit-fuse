@@ -166,9 +166,10 @@
 
 #### 2.2 Simplify Module-Level Documentation
 
-- [ ] Remove verbose "//!" module headers
-  - Files: error.rs, config/mod.rs have verbose module docs
-  - **Lines:** -50
+- [x] Remove verbose "//!" module headers
+  - Removed `//! Unified error types for rqbit-fuse.` from src/error.rs line 1
+  - Removed `//! Configuration management for CLI, environment variables, and config files.` from src/config/mod.rs line 1
+  - **Lines:** -2
 
 - [ ] Consolidate multi-line function docs
   - Convert verbose `///` multi-line docs to single-line where sufficient

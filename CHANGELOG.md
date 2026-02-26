@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed verbose `//!` module headers (TODO.md Phase 1, Task 2.2)
+  - Removed `//! Unified error types for rqbit-fuse.` from src/error.rs
+  - Removed `//! Configuration management for CLI, environment variables, and config files.` from src/config/mod.rs
+  - Module-level documentation headers were unnecessary as the module purpose is clear from context
+  - All 151 tests passing with zero clippy warnings
+  - Code reduction: 2 lines removed
+
 - Simplified retry logic in `src/api/client.rs` (TODO.md Phase 1, Task 2.1.5)
   - Simplified doc comment from "Helper method to execute a request with retry logic" to "Execute request with automatic retry for transient failures"
   - Removed unused `_start_time` variable

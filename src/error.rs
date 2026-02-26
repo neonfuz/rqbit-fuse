@@ -1,5 +1,3 @@
-//! Unified error types for rqbit-fuse.
-
 use thiserror::Error;
 
 /// Represents a single validation error in the configuration.

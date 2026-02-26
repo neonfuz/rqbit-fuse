@@ -1,5 +1,3 @@
-//! Configuration management for CLI, environment variables, and config files.
-
 use crate::error::{RqbitFuseError, ValidationIssue};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
