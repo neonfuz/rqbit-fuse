@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Extracted shared test utilities in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1.3)
+  - Created `create_test_manager()` helper function
+  - Replaced 13 instances of `InodeManager::new()` with the helper
+  - Already using `rstest` for parameterized tests
+  - Simplified `test_allocation_after_clear_torrents` by removing excessive comments and phases
+  - All 17 tests passing with zero clippy warnings
+  - Code reduction: -100 lines (estimated)
+
+### Changed
+
 - Refactored edge case tests in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1)
   - Consolidated `test_edge_030_concurrent_allocation_stress`, `test_edge_045_inode_limit_exhaustion_with_torrents`, `test_inode_0_allocation_attempt` into 3 focused tests
   - Replaced monolithic `test_edge_cases_parameterized` with proper `rstest` parameterized tests:

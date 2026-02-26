@@ -37,9 +37,10 @@
   - Removed duplicate `assert_ne!(inode, 0)` assertions that were redundant with `assert!(inode >= 2)`
   - **Lines:** -7
 
-- [ ] Extract shared test utilities
-  - Create `create_test_manager()` helper
-  - Use `rstest` for parameterized tests
+- [x] Extract shared test utilities
+  - Created `create_test_manager()` helper function
+  - Replaced all 13 instances of `InodeManager::new()` in tests with the helper
+  - Already using `rstest` for parameterized tests (concurrent stress and limit exhaustion tests)
   - **Lines:** -100
 
 - [ ] Simplify stress tests

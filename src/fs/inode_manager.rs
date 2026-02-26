@@ -487,9 +487,13 @@ impl Default for InodeManager {
 mod tests {
     use super::*;
 
+    fn create_test_manager() -> InodeManager {
+        InodeManager::new()
+    }
+
     #[test]
     fn test_inode_manager_creation() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         // Root inode should exist
         let root = manager.get(1).expect("Root inode should exist");
@@ -503,7 +507,7 @@ mod tests {
 
     #[test]
     fn test_allocate_directory() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let entry = InodeEntry::Directory {
             ino: 0,
@@ -524,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_allocate_file() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let inode = manager.allocate_file(
             "test.txt".to_string(),
@@ -543,7 +547,7 @@ mod tests {
 
     #[test]
     fn test_allocate_torrent_directory() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let inode = manager.allocate_torrent_directory(
             42, // torrent_id
@@ -563,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_lookup_by_path() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let inode = manager.allocate_torrent_directory(1, "test_torrent".to_string(), 1);
 
@@ -581,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_get_children() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let torrent_inode = manager.allocate_torrent_directory(1, "torrent".to_string(), 1);
         manager.add_child(1, torrent_inode);
@@ -601,7 +605,7 @@ mod tests {
 
     #[test]
     fn test_remove_inode() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let torrent_inode = manager.allocate_torrent_directory(1, "torrent".to_string(), 1);
         let file = manager.allocate_file("file.txt".to_string(), torrent_inode, 1, 0, 100);
@@ -619,14 +623,14 @@ mod tests {
 
     #[test]
     fn test_cannot_remove_root() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
         assert!(!manager.remove_inode(1));
         assert!(manager.get(1).is_some());
     }
 
     #[test]
     fn test_clear_torrents() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         manager.allocate_torrent_directory(1, "torrent1".to_string(), 1);
         manager.allocate_torrent_directory(2, "torrent2".to_string(), 1);
@@ -649,7 +653,7 @@ mod tests {
 
     #[test]
     fn test_allocate_symlink() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         let inode = manager.allocate_symlink("link".to_string(), 1, "/target/path".to_string());
 
@@ -668,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_mixed_entry_types() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
 
         // Create directory
         let dir = manager.allocate_torrent_directory(1, "dir".to_string(), 1);
@@ -695,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_inode_0_handling() {
-        let manager = InodeManager::new();
+        let manager = create_test_manager();
         let entry = InodeEntry::File {
             ino: 0,
             name: "invalid.txt".to_string(),
@@ -818,16 +822,8 @@ mod tests {
 
     #[test]
     fn test_allocation_after_clear_torrents() {
-        // EDGE-029: Test allocation after clear_torrents
-        // Allocate some inodes
-        // Call clear_torrents()
-        // Allocate more inodes
-        // Should reuse inode numbers correctly
-        // No duplicates
+        let manager = create_test_manager();
 
-        let manager = InodeManager::new();
-
-        // Phase 1: Allocate initial set of inodes
         let torrent1 = manager.allocate_torrent_directory(1, "torrent1".to_string(), 1);
         let file1 = manager.allocate_file("file1.txt".to_string(), torrent1, 1, 0, 100);
         let file2 = manager.allocate_file("file2.txt".to_string(), torrent1, 1, 1, 200);
@@ -836,52 +832,24 @@ mod tests {
         let symlink1 =
             manager.allocate_symlink("link1".to_string(), torrent2, "/target".to_string());
 
-        // Verify initial allocations
-        assert_eq!(torrent1, 2, "First torrent should have inode 2");
-        assert_eq!(file1, 3, "First file should have inode 3");
-        assert_eq!(file2, 4, "Second file should have inode 4");
-        assert_eq!(torrent2, 5, "Second torrent should have inode 5");
-        assert_eq!(file3, 6, "Third file should have inode 6");
-        assert_eq!(symlink1, 7, "Symlink should have inode 7");
-        assert_eq!(manager.inode_count(), 6, "Should have 6 non-root inodes");
-        assert_eq!(manager.next_inode(), 8, "Next inode should be 8");
+        assert_eq!(manager.inode_count(), 6);
+        assert_eq!(manager.next_inode(), 8);
 
-        // Collect all allocated inodes for later verification
         let initial_inodes = vec![torrent1, file1, file2, torrent2, file3, symlink1];
 
-        // Phase 2: Clear all torrents
         manager.clear_torrents();
 
-        // Verify clearing worked correctly
-        assert_eq!(
-            manager.inode_count(),
-            0,
-            "Should have 0 non-root inodes after clear"
-        );
-        assert_eq!(manager.next_inode(), 2, "Next inode should be reset to 2");
-        assert!(manager.get(1).is_some(), "Root inode should still exist");
+        assert_eq!(manager.inode_count(), 0);
+        assert_eq!(manager.next_inode(), 2);
+        assert!(manager.get(1).is_some());
 
-        // Verify old inodes no longer exist
         for inode in &initial_inodes {
-            assert!(
-                manager.get(*inode).is_none(),
-                "Inode {} should not exist after clear",
-                inode
-            );
+            assert!(manager.get(*inode).is_none());
         }
 
-        // Verify torrent mappings are cleared
-        assert!(
-            manager.lookup_torrent(1).is_none(),
-            "Torrent 1 mapping should be cleared"
-        );
-        assert!(
-            manager.lookup_torrent(2).is_none(),
-            "Torrent 2 mapping should be cleared"
-        );
+        assert!(manager.lookup_torrent(1).is_none());
+        assert!(manager.lookup_torrent(2).is_none());
 
-        // Phase 3: Allocate new inodes
-        // These should reuse inode numbers starting from 2
         let new_torrent1 = manager.allocate_torrent_directory(10, "new_torrent1".to_string(), 1);
         let new_file1 =
             manager.allocate_file("new_file1.txt".to_string(), new_torrent1, 10, 0, 1000);
@@ -889,75 +857,30 @@ mod tests {
         let new_file2 =
             manager.allocate_file("new_file2.txt".to_string(), new_torrent2, 11, 0, 2000);
 
-        // Verify new allocations reuse inode numbers correctly
-        assert_eq!(
-            new_torrent1, 2,
-            "New first torrent should have inode 2 (reused)"
-        );
-        assert_eq!(new_file1, 3, "New first file should have inode 3 (reused)");
-        assert_eq!(
-            new_torrent2, 4,
-            "New second torrent should have inode 4 (reused)"
-        );
-        assert_eq!(new_file2, 5, "New second file should have inode 5 (reused)");
-        assert_eq!(manager.next_inode(), 6, "Next inode should be 6");
+        assert_eq!(new_torrent1, 2);
+        assert_eq!(new_file1, 3);
+        assert_eq!(new_torrent2, 4);
+        assert_eq!(new_file2, 5);
+        assert_eq!(manager.next_inode(), 6);
 
-        // Phase 4: Verify no duplicates by checking all entries
         let all_inodes: Vec<u64> = manager.entries.iter().map(|e| e.ino()).collect();
-
         let mut unique_inodes = all_inodes.clone();
         unique_inodes.sort();
         unique_inodes.dedup();
+        assert_eq!(unique_inodes.len(), all_inodes.len());
 
-        assert_eq!(
-            unique_inodes.len(),
-            all_inodes.len(),
-            "All inodes should be unique (no duplicates)"
-        );
+        assert_eq!(manager.lookup_torrent(10), Some(2));
+        assert_eq!(manager.lookup_torrent(11), Some(4));
+        assert_eq!(manager.lookup_by_path("/"), Some(1));
+        assert_eq!(manager.lookup_by_path("/new_torrent1"), Some(2));
+        assert_eq!(manager.lookup_by_path("/new_torrent2"), Some(4));
 
-        // Phase 5: Test that lookup works correctly for new inodes
-        assert_eq!(
-            manager.lookup_torrent(10),
-            Some(2),
-            "Should find new torrent 10 at inode 2"
-        );
-        assert_eq!(
-            manager.lookup_torrent(11),
-            Some(4),
-            "Should find new torrent 11 at inode 4"
-        );
-
-        // Phase 6: Test path lookups
-        assert_eq!(manager.lookup_by_path("/"), Some(1), "Should find root");
-        assert_eq!(
-            manager.lookup_by_path("/new_torrent1"),
-            Some(2),
-            "Should find new_torrent1"
-        );
-        assert_eq!(
-            manager.lookup_by_path("/new_torrent2"),
-            Some(4),
-            "Should find new_torrent2"
-        );
-
-        // Phase 7: Test multiple clear cycles
         manager.clear_torrents();
 
         let cycle2_torrent = manager.allocate_torrent_directory(20, "cycle2".to_string(), 1);
-        assert_eq!(
-            cycle2_torrent, 2,
-            "After second clear, should still start at inode 2"
-        );
-        assert_eq!(manager.next_inode(), 3, "Next inode should be 3");
-
-        // Verify consistency after second cycle
-        assert!(
-            manager.get(cycle2_torrent).is_some(),
-            "Cycle 2 torrent should exist"
-        );
-        assert!(
-            manager.lookup_torrent(20).is_some(),
-            "Torrent 20 should be found"
-        );
+        assert_eq!(cycle2_torrent, 2);
+        assert_eq!(manager.next_inode(), 3);
+        assert!(manager.get(cycle2_torrent).is_some());
+        assert!(manager.lookup_torrent(20).is_some());
     }
 }
