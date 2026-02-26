@@ -43,10 +43,10 @@
   - Already using `rstest` for parameterized tests (concurrent stress and limit exhaustion tests)
   - **Lines:** -100
 
-- [ ] Simplify stress tests
-  - Already simplified to 10 threads × 50 allocations max (reduced from 100×100)
-  - Remove inline comments explaining obvious assertions
-  - **Lines:** -50
+- [x] Simplify stress tests
+  - Removed inline comments explaining obvious assertions from test functions
+  - Removed comments: "Root inode should exist", "Next inode should be 2", "Remove torrent (should also remove its file)", "Root should still exist", "Torrents should be gone", "Next inode should be reset"
+  - **Lines:** -6
 
 #### 1.2 handle.rs Tests (-180 lines)
 **File:** `src/types/handle.rs` (~240 test lines out of 412 total)

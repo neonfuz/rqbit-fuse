@@ -495,13 +495,11 @@ mod tests {
     fn test_inode_manager_creation() {
         let manager = create_test_manager();
 
-        // Root inode should exist
         let root = manager.get(1).expect("Root inode should exist");
         assert!(root.is_directory());
         assert_eq!(root.ino(), 1);
         assert_eq!(root.parent(), 1);
 
-        // Next inode should be 2
         assert_eq!(manager.next_inode(), 2);
     }
 
@@ -613,7 +611,6 @@ mod tests {
         assert!(manager.get(torrent_inode).is_some());
         assert!(manager.get(file).is_some());
 
-        // Remove torrent (should also remove its file)
         assert!(manager.remove_inode(torrent_inode));
 
         assert!(manager.get(torrent_inode).is_none());
@@ -639,15 +636,10 @@ mod tests {
 
         manager.clear_torrents();
 
-        // Root should still exist
         assert!(manager.get(1).is_some());
-
-        // Torrents should be gone
         assert_eq!(manager.inode_count(), 0);
         assert!(manager.lookup_torrent(1).is_none());
         assert!(manager.lookup_torrent(2).is_none());
-
-        // Next inode should be reset
         assert_eq!(manager.next_inode(), 2);
     }
 

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified stress tests in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1.4)
+  - Removed inline comments explaining obvious assertions from test functions
+  - Removed comments: "Root inode should exist", "Next inode should be 2", "Remove torrent (should also remove its file)", "Root should still exist", "Torrents should be gone", "Next inode should be reset"
+  - All 17 tests passing with zero clippy warnings
+  - Code reduction: -6 lines
+
 - Extracted shared test utilities in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 1.1.3)
   - Created `create_test_manager()` helper function
   - Replaced 13 instances of `InodeManager::new()` with the helper
