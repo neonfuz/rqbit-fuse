@@ -105,21 +105,10 @@ impl FileHandleManager {
         handles.get(&fh).map(|h| h.inode)
     }
 
-    /// Check if a handle exists.
-    pub fn contains(&self, fh: u64) -> bool {
-        let handles = self.handles.lock().unwrap();
-        handles.contains_key(&fh)
-    }
-
     /// Get the number of open handles.
     pub fn len(&self) -> usize {
         let handles = self.handles.lock().unwrap();
         handles.len()
-    }
-
-    /// Check if there are any open handles.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Get the next handle value (for testing overflow scenarios).
@@ -136,12 +125,6 @@ impl FileHandleManager {
             .filter(|(_, h)| h.inode == inode)
             .map(|(fh, _)| *fh)
             .collect()
-    }
-
-    /// Get all open handles (for cleanup).
-    pub fn get_all_handles(&self) -> Vec<u64> {
-        let handles = self.handles.lock().unwrap();
-        handles.keys().copied().collect()
     }
 
     /// Remove all file handles for a specific torrent.

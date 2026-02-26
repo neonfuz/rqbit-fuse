@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Completed
+- All items from TODO checklist have been completed
+- Created .done file to indicate project completion
+
 ### Changed
 
 - Simplified trace! calls from field annotations to format strings (TODO.md Phase 1, Task 4.1)
