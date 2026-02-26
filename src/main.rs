@@ -136,7 +136,6 @@ async fn run_mount(
     tracing::info!("rqbit-fuse starting");
     tracing::info!("Using rqbit API at: {}", config.api.url);
     tracing::info!("Mount point: {}", config.mount.mount_point.display());
-    tracing::debug!("Configuration: {:?}", config);
 
     rqbit_fuse::run(config).await
 }

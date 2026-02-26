@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Reduced debug! calls in FUSE operations (TODO.md Phase 1, Task 4.2)
+  - Removed verbose `tracing::debug!` calls from filesystem.rs FUSE operations:
+    - Removed entry/success logging from read(), lookup(), getattr(), open(), release(), readdir()
+    - Removed operation detail logging (range calculations, empty reads)
+    - Removed trace! calls from readlink()
+    - Kept error logging and slow read detection for debugging production issues
+    - Kept warn! and error! for actual issues
+  - Removed config debug logging from main.rs
+  - The `#[instrument]` attribute already provides function entry tracing
+  - All 166 tests passing with zero warnings
+  - Code reduction: ~96 lines (~100 as targeted)
+
+### Changed
+
 - Simplified trace! calls from field annotations to format strings (TODO.md Phase 1, Task 4.1)
   - **src/api/client.rs:** Converted 6 verbose field-annotated traces to simple format strings
     - `trace!(api_op = "get_torrent", id = id)` → `trace!("Getting torrent {}", id)`

@@ -231,11 +231,6 @@ impl InodeManager {
     pub fn get_children(&self, parent_inode: u64) -> Vec<(u64, InodeEntry)> {
         if let Some(parent_entry) = self.entries.get(&parent_inode) {
             if let InodeEntry::Directory { children, .. } = &*parent_entry {
-                tracing::debug!(
-                    parent = parent_inode,
-                    children_count = children.len(),
-                    "get_children: found directory"
-                );
                 if !children.is_empty() {
                     let result: Vec<_> = children
                         .iter()
@@ -244,11 +239,6 @@ impl InodeManager {
                             self.entries.get(&key).map(|e| (key, e.clone()))
                         })
                         .collect();
-                    tracing::debug!(
-                        parent = parent_inode,
-                        result_count = result.len(),
-                        "get_children: returning children from list"
-                    );
                     return result;
                 }
             } else {
@@ -258,19 +248,11 @@ impl InodeManager {
             tracing::warn!(parent = parent_inode, "get_children: parent not found");
         }
 
-        let result: Vec<_> = self
-            .entries
+        self.entries
             .iter()
             .filter(|entry| entry.parent() == parent_inode)
             .map(|entry| (entry.ino(), entry.clone()))
-            .collect();
-        tracing::debug!(
-            parent = parent_inode,
-            result_count = result.len(),
-            total_entries = self.entries.len(),
-            "get_children: using fallback scan"
-        );
-        result
+            .collect()
     }
 
     /// Gets the next inode number without allocating it.

@@ -246,10 +246,16 @@
 #### 4.2 Remove Debug Logging
 **Files:** `src/fs/inode_manager.rs`, `src/fs/filesystem.rs`
 
-- [ ] Reduce debug! calls
-  - Current: Every operation has multiple debug logs
-  - Action: Keep info! for important events, remove debug! noise
-  - **Lines:** -100
+- [x] Reduce debug! calls
+  - Removed verbose `tracing::debug!` calls from FUSE operations in filesystem.rs:
+    - Removed entry/success logging from read(), lookup(), getattr(), open(), release(), readdir()
+    - Removed operation detail logging (range calculations, empty reads)
+    - Removed trace! calls from readlink()
+    - Kept error logging and slow read detection (important for debugging)
+    - Kept warn! and error! for actual issues
+  - Removed config debug logging from main.rs
+  - The `#[instrument]` attribute already provides function entry tracing
+  - **Lines:** -96 (~100 as targeted)
 
 #### 4.3 Simplify Error Logging
 **Files:** Multiple
