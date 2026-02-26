@@ -371,26 +371,18 @@ impl InodeManager {
         self.next_inode.store(2, Ordering::SeqCst);
     }
 
-    /// Builds the full path for an inode using iteration.
+    /// Builds the full path for an inode.
     fn build_path(&self, entry: &InodeEntry) -> String {
-        let mut components = vec![entry.name().to_string()];
+        let mut parts = vec![entry.name().to_string()];
         let mut current = entry.parent();
 
-        while current != 1 {
-            if let Some(parent_entry) = self.entries.get(&current) {
-                components.push(parent_entry.name().to_string());
-                current = parent_entry.parent();
-            } else {
-                break;
-            }
+        while let Some(parent) = self.entries.get(&current).filter(|_| current != 1) {
+            parts.push(parent.name().to_string());
+            current = parent.parent();
         }
 
-        components.reverse();
-        if components.is_empty() || components[0].is_empty() {
-            "/".to_string()
-        } else {
-            format!("/{}", components.join("/"))
-        }
+        parts.reverse();
+        format!("/{}", parts.join("/"))
     }
 
     /// Adds a child to a directory's children list.
