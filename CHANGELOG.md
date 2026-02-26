@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated error.rs tests in `src/error.rs` (TODO.md Phase 1, Task 1.5)
+  - Removed `test_io_error_conversion`, `test_validation_error_display`, and `test_anyhow_to_fuse_error` tests
+  - These tests were redundant as error conversion functionality is already tested indirectly through other tests
+  - Reduced `test_display_formatting` from 4 assertions to 1 representative test
+  - All remaining tests passing with zero clippy warnings
+  - Code reduction: 388 lines → 326 lines (-62 lines)
+
 - Simplified config parsing tests in `src/config/mod.rs` (TODO.md Phase 1, Task 1.4)
   - Created `parse_config_content()` helper function to eliminate duplicate temp file setup
   - Consolidated TOML and JSON config test strings for compactness

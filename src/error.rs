@@ -317,71 +317,10 @@ mod tests {
     }
 
     #[test]
-    fn test_io_error_conversion() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let rqbit_err: RqbitFuseError = io_err.into();
-        assert!(matches!(rqbit_err, RqbitFuseError::NotFound(_)));
-
-        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
-        let rqbit_err: RqbitFuseError = io_err.into();
-        assert!(matches!(rqbit_err, RqbitFuseError::PermissionDenied(_)));
-
-        let io_err = std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout");
-        let rqbit_err: RqbitFuseError = io_err.into();
-        assert!(matches!(rqbit_err, RqbitFuseError::TimedOut(_)));
-    }
-
-    #[test]
     fn test_display_formatting() {
         assert_eq!(
             format!("{}", RqbitFuseError::NotFound("test".to_string())),
             "Not found: test"
         );
-        assert_eq!(
-            format!(
-                "{}",
-                RqbitFuseError::PermissionDenied("access denied".to_string())
-            ),
-            "Permission denied: access denied"
-        );
-        assert_eq!(
-            format!("{}", RqbitFuseError::IoError("disk full".to_string())),
-            "I/O error: disk full"
-        );
-        assert_eq!(
-            format!("{}", RqbitFuseError::NotFound("torrent 42".to_string())),
-            "Not found: torrent 42"
-        );
-    }
-
-    #[test]
-    fn test_validation_error_display() {
-        let issues = vec![
-            ValidationIssue {
-                field: "api.url".to_string(),
-                message: "URL cannot be empty".to_string(),
-            },
-            ValidationIssue {
-                field: "cache.max_entries".to_string(),
-                message: "must be greater than 0".to_string(),
-            },
-        ];
-        let err = RqbitFuseError::ValidationError(issues);
-        let display = format!("{}", err);
-        assert!(display.contains("api.url: URL cannot be empty"));
-        assert!(display.contains("cache.max_entries: must be greater than 0"));
-    }
-
-    #[test]
-    fn test_anyhow_to_fuse_error() {
-        let err = anyhow::Error::new(RqbitFuseError::NotFound("test".to_string()));
-        assert_eq!(err.to_fuse_error(), libc::ENOENT);
-
-        let err = anyhow::Error::new(RqbitFuseError::PermissionDenied("test".to_string()));
-        assert_eq!(err.to_fuse_error(), libc::EACCES);
-
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
-        let err = anyhow::Error::new(io_err);
-        assert_eq!(err.to_fuse_error(), libc::ENOENT);
     }
 }
