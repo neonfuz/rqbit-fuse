@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Extracted shared `build_canonical_path()` helper in `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 3.1)
+  - Created `fn build_canonical_path(&self, parent: u64, name: &str) -> String` helper method
+  - Replaced duplicated path building logic in `allocate_torrent_directory`, `allocate_file`, and `allocate_symlink`
+  - Each method had identical 11-line code blocks for building canonical paths from parent
+  - Simplified all three allocation methods to single-line calls to the helper
+  - Removed comments: "Build canonical path from parent", "Will be assigned" (outdated)
+  - All 151 tests passing with zero clippy warnings
+  - Code reduction: ~33 lines of duplicated code removed, 11 line helper added (-22 lines net per the TODO target adjustment)
+
+### Changed
+
 - Consolidated multi-line function docs (TODO.md Phase 1, Task 2.2)
   - Simplified verbose enum field documentation in `src/fs/async_bridge.rs` (39 lines)
     - Removed detailed comments from FuseRequest enum variants

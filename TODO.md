@@ -186,10 +186,10 @@
 #### 3.1 Extract Path Building Logic
 **File:** `src/fs/inode_manager.rs`
 
-- [ ] Create shared `build_canonical_path()` helper
+- [x] Create shared `build_canonical_path()` helper
   - Current: Same path building logic in `allocate_torrent_directory`, `allocate_file`, `allocate_symlink`
-  - Action: Extract to method: `fn build_path(&self, parent: u64, name: &str) -> String`
-  - **Lines:** -80
+  - Action: Extract to method: `fn build_canonical_path(&self, parent: u64, name: &str) -> String`
+  - **Lines:** -28 (removed ~33 lines of duplicated code, added 11 line helper method)
 
 - [ ] Simplify build_path() implementation
   - Current: 20-line implementation with while loop

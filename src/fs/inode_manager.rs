@@ -109,17 +109,7 @@ impl InodeManager {
     }
 
     pub fn allocate_torrent_directory(&self, torrent_id: u64, name: String, parent: u64) -> u64 {
-        // Build canonical path from parent
-        let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
-            let parent_path = parent_entry.canonical_path();
-            if parent_path == "/" {
-                format!("/{}", name)
-            } else {
-                format!("{}/{}", parent_path, name)
-            }
-        } else {
-            format!("/{}", name)
-        };
+        let canonical_path = self.build_canonical_path(parent, &name);
 
         let entry = InodeEntry::Directory {
             ino: 0,
@@ -139,20 +129,10 @@ impl InodeManager {
         file_index: u64,
         size: u64,
     ) -> u64 {
-        // Build canonical path from parent
-        let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
-            let parent_path = parent_entry.canonical_path();
-            if parent_path == "/" {
-                format!("/{}", name)
-            } else {
-                format!("{}/{}", parent_path, name)
-            }
-        } else {
-            format!("/{}", name)
-        };
+        let canonical_path = self.build_canonical_path(parent, &name);
 
         let entry = InodeEntry::File {
-            ino: 0, // Will be assigned
+            ino: 0,
             name,
             parent,
             torrent_id,
@@ -164,8 +144,20 @@ impl InodeManager {
     }
 
     pub fn allocate_symlink(&self, name: String, parent: u64, target: String) -> u64 {
-        // Build canonical path from parent
-        let canonical_path = if let Some(parent_entry) = self.entries.get(&parent) {
+        let canonical_path = self.build_canonical_path(parent, &name);
+
+        let entry = InodeEntry::Symlink {
+            ino: 0,
+            name,
+            parent,
+            target,
+            canonical_path,
+        };
+        self.allocate_entry(entry, None)
+    }
+
+    fn build_canonical_path(&self, parent: u64, name: &str) -> String {
+        if let Some(parent_entry) = self.entries.get(&parent) {
             let parent_path = parent_entry.canonical_path();
             if parent_path == "/" {
                 format!("/{}", name)
@@ -174,16 +166,7 @@ impl InodeManager {
             }
         } else {
             format!("/{}", name)
-        };
-
-        let entry = InodeEntry::Symlink {
-            ino: 0, // Will be assigned
-            name,
-            parent,
-            target,
-            canonical_path,
-        };
-        self.allocate_entry(entry, None)
+        }
     }
 
     /// Looks up an inode by its number.
