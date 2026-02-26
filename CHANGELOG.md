@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed unused `file_size()` method from `src/fs/inode_entry.rs` (TODO.md Phase 2, Task 6.3)
+  - Removed accessor method that was not called anywhere in the codebase
+  - Verified all other accessor methods (`name()`, `parent()`, `ino()`, `is_file()`, `is_directory()`, `is_symlink()`, `with_ino()`) are actively used
+  - Kept `with_ino()` which is required by `inode_manager.rs:allocate_entry()`
+  - All 151 tests passing with zero clippy warnings
+  - Code reduction: 7 lines
+
 - Inlined ConcurrencyStats struct (TODO.md Phase 2, Task 6.2)
   - Removed dedicated ConcurrencyStats struct from src/fs/filesystem.rs
   - Changed concurrency_stats() return type from struct to (usize, usize) tuple

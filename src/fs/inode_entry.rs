@@ -240,14 +240,6 @@ impl InodeEntry {
         matches!(self, InodeEntry::Symlink { .. })
     }
 
-    /// Returns the file size if this is a file, otherwise 0
-    pub fn file_size(&self) -> u64 {
-        match self {
-            InodeEntry::File { size, .. } => *size,
-            _ => 0,
-        }
-    }
-
     /// Returns a new InodeEntry with the specified inode number
     pub fn with_ino(&self, ino: u64) -> Self {
         match self {

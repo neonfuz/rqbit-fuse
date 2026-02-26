@@ -366,10 +366,11 @@
 #### 6.3 Simplify InodeEntry Methods
 **File:** `src/fs/inode_entry.rs`
 
-- [ ] Remove unused accessor methods
-  - Current: Separate `name()`, `parent()`, `ino()`, `is_file()`, `is_directory()`, `is_symlink()` methods
-  - Action: Keep only used methods, inline trivial ones
-  - **Lines:** -80
+- [x] Remove unused accessor methods
+  - Removed `file_size()` method which was not called anywhere in the codebase
+  - Verified `name()`, `parent()`, `ino()`, `is_file()`, `is_directory()`, `is_symlink()` are all actively used
+  - Kept `with_ino()` which is required by `inode_manager.rs:allocate_entry()`
+  - **Lines:** -7
 
 - [ ] Simplify Serialize/Deserialize impls
   - Current: 100+ lines of manual serde implementations
