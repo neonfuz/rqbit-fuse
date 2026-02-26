@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Inlined ConcurrencyStats struct (TODO.md Phase 2, Task 6.2)
+  - Removed dedicated ConcurrencyStats struct from src/fs/filesystem.rs
+  - Changed concurrency_stats() return type from struct to (usize, usize) tuple
+  - Returns (max_concurrent_reads, available_permits) directly
+  - Updated test test_edge_047d_concurrency_stats_accuracy to use tuple indexing (stats.0, stats.1)
+  - Updated technical-design.md documentation to reflect new signature
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: ~11 lines (40 lines reduced to 29 in filesystem.rs)
+
 - Flattened nested config structs (TODO.md Phase 2, Task 6.1)
   - Removed 5 nested config structs: ApiConfig, CacheConfig, MountConfig, PerformanceConfig, LoggingConfig
   - Replaced with flattened fields on Config struct:

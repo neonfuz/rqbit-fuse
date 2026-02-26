@@ -236,10 +236,10 @@ async fn test_edge_047d_concurrency_stats_accuracy() {
     let metrics = Arc::new(Metrics::new());
     let fs = create_test_fs_with_config(config, metrics);
 
-    // Check initial stats
+    // Check initial stats - returns (max_concurrent_reads, available_permits)
     let stats = fs.concurrency_stats();
-    assert_eq!(stats.max_concurrent_reads, max_concurrent_reads);
-    assert_eq!(stats.available_permits, max_concurrent_reads);
+    assert_eq!(stats.0, max_concurrent_reads);
+    assert_eq!(stats.1, max_concurrent_reads);
 
     // Acquire some permits
     let semaphore = fs.read_semaphore();
@@ -247,7 +247,7 @@ async fn test_edge_047d_concurrency_stats_accuracy() {
     let _permit2 = semaphore.acquire().await.unwrap();
 
     let stats = fs.concurrency_stats();
-    assert_eq!(stats.available_permits, max_concurrent_reads - 2);
+    assert_eq!(stats.1, max_concurrent_reads - 2);
 
     // Acquire remaining
     let mut permits = vec![_permit1, _permit2];
@@ -256,5 +256,5 @@ async fn test_edge_047d_concurrency_stats_accuracy() {
     }
 
     let stats = fs.concurrency_stats();
-    assert_eq!(stats.available_permits, 0);
+    assert_eq!(stats.1, 0);
 }

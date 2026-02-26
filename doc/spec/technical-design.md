@@ -244,7 +244,7 @@ impl TorrentFS {
     pub fn shutdown(&self);
     pub fn refresh_torrents(&self, force: bool) -> impl Future<Output = bool>;
     pub fn build_file_attr(&self, entry: &InodeEntry) -> FileAttr;
-    pub fn concurrency_stats(&self) -> ConcurrencyStats;
+    pub fn concurrency_stats(&self) -> (usize, usize);  // (max_concurrent_reads, available_permits)
     
     // Internal methods
     fn start_torrent_discovery(&self);

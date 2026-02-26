@@ -355,10 +355,13 @@
 #### 6.2 Remove ConcurrencyStats Wrapper
 **File:** `src/fs/filesystem.rs`
 
-- [ ] Inline ConcurrencyStats struct
-  - Current: Dedicated struct just to return semaphore info
-  - Action: Return tuple or add to existing metrics
-  - **Lines:** -40
+- [x] Inline ConcurrencyStats struct
+  - Removed ConcurrencyStats struct definition (~8 lines)
+  - Changed return type from ConcurrencyStats to (usize, usize) tuple
+  - Updated concurrency_stats() method to return tuple directly
+  - Updated test test_edge_047d_concurrency_stats_accuracy to use tuple indexing
+  - Updated technical-design.md documentation
+  - **Lines:** -11 (40 lines reduced to 29 in filesystem.rs)
 
 #### 6.3 Simplify InodeEntry Methods
 **File:** `src/fs/inode_entry.rs`

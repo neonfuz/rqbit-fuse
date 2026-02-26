@@ -25,14 +25,7 @@ const ENOATTR: i32 = libc::ENOATTR;
 #[cfg(not(target_os = "macos"))]
 const ENOATTR: i32 = libc::ENODATA;
 
-/// Statistics about concurrent operations
-#[derive(Debug, Clone)]
-pub struct ConcurrencyStats {
-    /// Maximum concurrent read operations allowed
-    pub max_concurrent_reads: usize,
-    /// Number of available permits for reads
-    pub available_permits: usize,
-}
+
 
 /// Main FUSE filesystem implementation for rqbit-fuse. Clone is cheap (Arc-based).
 #[derive(Clone)]
@@ -103,11 +96,9 @@ impl TorrentFS {
         &self.read_semaphore
     }
 
-    pub fn concurrency_stats(&self) -> ConcurrencyStats {
-        ConcurrencyStats {
-            max_concurrent_reads: self.config.max_concurrent_reads,
-            available_permits: self.read_semaphore.available_permits(),
-        }
+    /// Returns (max_concurrent_reads, available_permits) tuple
+    pub fn concurrency_stats(&self) -> (usize, usize) {
+        (self.config.max_concurrent_reads, self.read_semaphore.available_permits())
     }
 
     #[cfg(test)]
