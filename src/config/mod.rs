@@ -1,4 +1,4 @@
-use crate::error::{RqbitFuseError, ValidationIssue};
+use crate::error::RqbitFuseError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -228,44 +228,35 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), RqbitFuseError> {
-        let mut issues = Vec::new();
-
         if self.api.url.is_empty() {
-            issues.push(ValidationIssue {
-                field: "api.url".to_string(),
-                message: "URL cannot be empty".to_string(),
-            });
-        } else if let Err(e) = reqwest::Url::parse(&self.api.url) {
-            issues.push(ValidationIssue {
-                field: "api.url".to_string(),
-                message: format!("Invalid URL format: {}", e),
-            });
+            return Err(RqbitFuseError::ValidationError(vec![
+                "api.url: URL cannot be empty".to_string(),
+            ]));
+        }
+
+        if let Err(e) = reqwest::Url::parse(&self.api.url) {
+            return Err(RqbitFuseError::ValidationError(vec![format!(
+                "api.url: Invalid URL format: {}",
+                e
+            )]));
         }
 
         if !self.mount.mount_point.is_absolute() {
-            issues.push(ValidationIssue {
-                field: "mount.mount_point".to_string(),
-                message: "Mount point must be an absolute path".to_string(),
-            });
+            return Err(RqbitFuseError::ValidationError(vec![
+                "mount.mount_point: Mount point must be an absolute path".to_string(),
+            ]));
         }
 
         let valid_levels = ["error", "warn", "info", "debug", "trace"];
         if !valid_levels.contains(&self.logging.level.as_str()) {
-            issues.push(ValidationIssue {
-                field: "logging.level".to_string(),
-                message: format!(
-                    "Invalid log level '{}'. Valid levels: {}",
-                    self.logging.level,
-                    valid_levels.join(", ")
-                ),
-            });
+            return Err(RqbitFuseError::ValidationError(vec![format!(
+                "logging.level: Invalid log level '{}'. Valid levels: {}",
+                self.logging.level,
+                valid_levels.join(", ")
+            )]));
         }
 
-        if issues.is_empty() {
-            Ok(())
-        } else {
-            Err(RqbitFuseError::ValidationError(issues))
-        }
+        Ok(())
     }
 }
 

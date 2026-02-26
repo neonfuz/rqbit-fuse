@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified validation error pattern (TODO.md Phase 2, Task 5.1)
+  - Replaced complex `ValidationIssue` struct with simple `Vec<String>` in `src/error.rs`
+  - Removed 15-line struct definition with field/message and Display impl
+  - Changed `ValidationError` variant from `Vec<ValidationIssue>` to `Vec<String>`
+  - Simplified display format to use `.join("; ")` directly
+  - Updated `validate()` method in `src/config/mod.rs` to return early on first error
+  - Converted from collecting all validation issues to immediate error return
+  - Simplified error messages from structured format to plain strings
+  - All 151 tests passing with zero clippy warnings
+  - Code reduction: ~48 lines (15 from error.rs, 33 from config/mod.rs)
+
+### Changed
+
 - Simplified error context messages across codebase (TODO.md Phase 1, Task 4.3)
   - Simplified 13 verbose `.context()` messages in 4 files from verbose "Failed to..." to concise lowercase format:
   - **src/fs/filesystem.rs** (8 messages):

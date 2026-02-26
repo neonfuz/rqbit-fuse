@@ -289,15 +289,19 @@
 #### 5.1 Simplify ValidationError Pattern
 **File:** `src/config/mod.rs`
 
-- [ ] Replace ValidationIssue struct with simple string
-  - Current: Complex struct with field/message, joined with semicolons
-  - Action: Use `Vec<String>` for validation errors
-  - **Lines:** -60
+- [x] Replace ValidationIssue struct with simple string
+  - Removed ValidationIssue struct from src/error.rs (lines 3-15)
+  - Changed ValidationError from `Vec<ValidationIssue>` to `Vec<String>`
+  - Simplified error message display format from custom Display impl to `.join("; ")`
+  - Updated import in src/config/mod.rs to remove ValidationIssue
+  - **Lines:** -15
 
-- [ ] Simplify validate() method
-  - Current: Builds issues vector, checks empty, returns ValidationError
-  - Action: Return early on first error
-  - **Lines:** -40
+- [x] Simplify validate() method
+  - Converted from collecting all issues to returning early on first error
+  - Each validation check now returns immediately with `Err(RqbitFuseError::ValidationError(...))`
+  - Simplified error messages from struct format to simple strings
+  - All 151 tests passing with zero clippy warnings
+  - **Lines:** -33
 
 #### 5.2 Consolidate Error Conversion Implementations
 **File:** `src/error.rs`

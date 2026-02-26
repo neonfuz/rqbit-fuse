@@ -1,18 +1,5 @@
 use thiserror::Error;
 
-/// Represents a single validation error in the configuration.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ValidationIssue {
-    pub field: String,
-    pub message: String,
-}
-
-impl std::fmt::Display for ValidationIssue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.field, self.message)
-    }
-}
-
 /// Unified error type for rqbit-fuse with 11 essential variants.
 #[derive(Error, Debug, Clone)]
 pub enum RqbitFuseError {
@@ -44,9 +31,9 @@ pub enum RqbitFuseError {
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
-    /// Validation error with multiple issues
-    #[error("Validation error: {}", .0.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("; "))]
-    ValidationError(Vec<ValidationIssue>),
+    /// Validation error with messages
+    #[error("Validation error: {}", .0.join("; "))]
+    ValidationError(Vec<String>),
 
     /// Resource temporarily unavailable (EAGAIN)
     #[error("Resource temporarily unavailable: {0}")]
