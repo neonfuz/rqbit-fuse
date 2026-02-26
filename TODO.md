@@ -138,9 +138,12 @@
   - Removed redundant doc comments from all TorrentFS struct fields
   - **Lines:** -40
 
-- [ ] async_bridge.rs: Remove architecture explanation comments (lines 72-100)
-  - Remove long comment explaining channel architecture
-  - **Lines:** -80
+- [x] async_bridge.rs: Remove architecture explanation comments (lines 72-100)
+  - Removed verbose Async/Sync Bridge Pattern documentation block with channel architecture details
+  - Removed Channel Architecture section explaining tokio::sync::mpsc vs std::sync::mpsc choices
+  - Removed Example Flow section with 8-step process explanation
+  - Kept essential doc comment: "Async worker that handles FUSE requests in an async context. Provides a bridge between synchronous FUSE callbacks and async I/O operations."
+  - **Lines:** -34
 
 - [ ] inode_manager.rs: Remove implementation detail comments
   - Remove DashMap usage explanations (lines 82-95, 326-332)

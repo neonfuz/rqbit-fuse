@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed verbose architecture explanation comments from `src/fs/async_bridge.rs` (TODO.md Phase 1, Task 2.1)
+  - Removed extensive Async/Sync Bridge Pattern documentation block (lines 72-100)
+  - Removed Channel Architecture section explaining tokio::sync::mpsc vs std::sync::mpsc choices
+  - Removed 8-step Example Flow explanation
+  - Kept essential doc comment explaining struct purpose
+  - All tests passing with zero clippy warnings
+  - Code reduction: 34 lines removed
+
 - Removed redundant doc comments from `src/fs/filesystem.rs` (TODO.md Phase 1, Task 2.1.1)
   - Removed obvious struct field documentation comments from TorrentFS struct (lines 44-67)
   - Removed comments like "/// Configuration for the filesystem", "/// HTTP client for rqbit API", etc.
