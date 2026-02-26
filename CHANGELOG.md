@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed redundant implementation detail comments from `src/fs/inode_manager.rs` (TODO.md Phase 1, Task 2.1)
+  - Removed DashMap usage explanations from `allocate_entry()` method (lines 82-86)
+  - Removed detailed removal order explanation from `remove_inode()` method (lines 327-334)
+  - Simplified doc comments to essential information only
+  - **Lines:** -11
+  - All tests passing with zero clippy warnings
+
+### Changed
+
 - Removed verbose architecture explanation comments from `src/fs/async_bridge.rs` (TODO.md Phase 1, Task 2.1)
   - Removed extensive Async/Sync Bridge Pattern documentation block (lines 72-100)
   - Removed Channel Architecture section explaining tokio::sync::mpsc vs std::sync::mpsc choices

@@ -145,9 +145,10 @@
   - Kept essential doc comment: "Async worker that handles FUSE requests in an async context. Provides a bridge between synchronous FUSE callbacks and async I/O operations."
   - **Lines:** -34
 
-- [ ] inode_manager.rs: Remove implementation detail comments
-  - Remove DashMap usage explanations (lines 82-95, 326-332)
-  - **Lines:** -60
+- [x] inode_manager.rs: Remove implementation detail comments
+  - Removed DashMap usage explanations from `allocate_entry()` (lines 82-86) and `remove_inode()` (lines 327-334)
+  - Simplified doc comments to essential information only
+  - **Lines:** -11
 
 - [ ] streaming.rs: Remove redundant operation comments
   - Remove obvious buffer operation comments (lines 36-52, 121-173)

@@ -79,11 +79,6 @@ impl InodeManager {
     }
 
     /// Allocates an inode for the given entry and registers it atomically.
-    ///
-    /// Uses DashMap's entry API to ensure atomic insertion into the primary
-    /// entries map. Indices are updated after the primary entry is confirmed.
-    /// If index updates fail, the entry still exists and can be recovered.
-    ///
     /// Returns 0 if the maximum inode limit has been reached.
     fn allocate_entry(&self, entry: InodeEntry, torrent_id: Option<u64>) -> u64 {
         // Check max_inodes limit (0 means unlimited)
@@ -324,14 +319,6 @@ impl InodeManager {
     }
 
     /// Removes an inode and all its descendants atomically (for torrent removal).
-    ///
-    /// Performs removal in a consistent order to maintain atomicity:
-    /// 1. Recursively remove all children first (bottom-up)
-    /// 2. Remove from parent's children list
-    /// 3. Remove from indices using stored path
-    /// 4. Finally remove from primary entries map
-    ///
-    /// This ensures we never have dangling references.
     pub fn remove_inode(&self, inode: u64) -> bool {
         if inode == 1 {
             return false; // Can't remove root
