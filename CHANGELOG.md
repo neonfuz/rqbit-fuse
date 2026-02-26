@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Extracted mock server helper in `src/api/streaming.rs` (TODO.md Phase 1, Task 1.3)
+  - Created `setup_mock_server()` helper function to eliminate duplicate wiremock setup
+  - Updated `test_sequential_reads_reuse_stream()` to use helper (-6 lines)
+  - Updated `test_edge_cases_server_responses()` to use helper (-4 lines)
+  - Moved `use wiremock::MockServer` to module level for cleaner imports
+  - All 4 streaming tests passing with zero clippy warnings
+  - Code reduction: ~50 lines of duplicated setup code
+
 - Consolidated edge case tests in `src/api/streaming.rs` (TODO.md Phase 1, Task 1.3)
   - Merged EDGE-021 and EDGE-024 into single parameterized test `test_edge_cases_server_responses`
   - Created `EdgeCaseTestData` struct for parameterized test cases

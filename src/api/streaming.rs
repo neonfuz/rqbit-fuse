@@ -576,6 +576,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::Barrier;
+    use wiremock::MockServer;
 
     /// Test that concurrent reads to the same stream key don't cause race conditions
     #[tokio::test]
@@ -628,13 +629,21 @@ mod tests {
         }
     }
 
+    /// Helper to create a mock server and stream manager for tests
+    async fn setup_mock_server() -> (MockServer, PersistentStreamManager) {
+        let mock_server = MockServer::start().await;
+        let client = Client::new();
+        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+        (mock_server, manager)
+    }
+
     /// Test sequential reads reuse the same stream
     #[tokio::test]
     async fn test_sequential_reads_reuse_stream() {
         use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, ResponseTemplate};
 
-        let mock_server = MockServer::start().await;
+        let (mock_server, manager) = setup_mock_server().await;
 
         // Should only make ONE request for sequential reads
         Mock::given(method("GET"))
@@ -643,9 +652,6 @@ mod tests {
             .expect(1)
             .mount(&mock_server)
             .await;
-
-        let client = Client::new();
-        let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
 
         // Sequential reads at increasing offsets
         for i in 0..10 {
@@ -681,7 +687,7 @@ mod tests {
     #[tokio::test]
     async fn test_edge_cases_server_responses() {
         use wiremock::matchers::{header, method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, ResponseTemplate};
 
         let test_cases = [
             // EDGE-021: Server returns 200 OK instead of 206 Partial Content
@@ -725,7 +731,7 @@ mod tests {
         ];
 
         for test_case in &test_cases {
-            let mock_server = MockServer::start().await;
+            let (mock_server, manager) = setup_mock_server().await;
 
             // Create file content with distinct bytes at each position
             let mut file_content = Vec::with_capacity(test_case.file_size);
@@ -736,19 +742,16 @@ mod tests {
             let range_header = format!("bytes={}-", test_case.read_offset);
 
             // Set up mock based on test case
-            let mock_builder = Mock::given(method("GET"))
+            Mock::given(method("GET"))
                 .and(path("/torrents/1/stream/0"))
                 .and(header("Range", range_header.as_str()))
                 .respond_with(
                     ResponseTemplate::new(test_case.status_code)
                         .set_body_bytes(file_content.clone()),
                 )
-                .expect(1);
-
-            mock_builder.mount(&mock_server).await;
-
-            let client = Client::new();
-            let manager = PersistentStreamManager::new(client, mock_server.uri(), None);
+                .expect(1)
+                .mount(&mock_server)
+                .await;
 
             let result = manager
                 .read(1, 0, test_case.read_offset, test_case.read_size)

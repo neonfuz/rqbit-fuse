@@ -78,8 +78,11 @@
   - Merge EDGE-021, EDGE-023, EDGE-024 into single parameterized test
   - **Lines:** -100
 
-- [ ] Extract mock server helper
-  - Remove duplicate wiremock setup in each test
+- [x] Extract mock server helper
+  - Created `setup_mock_server()` helper function that creates MockServer and PersistentStreamManager
+  - Updated `test_sequential_reads_reuse_stream()` and `test_edge_cases_server_responses()` to use helper
+  - Removed duplicate `MockServer::start().await`, `Client::new()`, and `PersistentStreamManager::new()` calls
+  - Simplified imports by moving `use wiremock::MockServer` to module level
   - **Lines:** -50
 
 #### 1.4 config/mod.rs Tests (-120 lines)
