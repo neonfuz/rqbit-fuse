@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated duplicate config merging in `src/config/mod.rs` (TODO.md Phase 3, Task 7.3)
+  - Created `ConfigSource` struct to hold optional configuration values from any source
+  - Created `ConfigSource::from_env()` - builds source from environment variables (returns Result)
+  - Created `ConfigSource::from_cli()` - builds source from CLI arguments (infallible)
+  - Created unified `Config::merge(source: ConfigSource)` method that merges from any source
+  - Replaced `merge_from_env()` and `merge_from_cli()` method bodies with ConfigSource-based approach
+  - Updated `load()` and `load_with_cli()` to use new API
+  - Updated all tests and main.rs to use new API
+  - Removed `merge_env_var!` macro in favor of simpler `merge_if_some!` macro
+  - All 164 tests passing with zero clippy warnings
+  - Code reduction: 52 lines (config/mod.rs: 451 → 399 lines)
+
 - Simplified `from_default_locations()` in `src/config/mod.rs` (TODO.md Phase 3, Task 7.2)
   - Converted from 16-line imperative for-loop with verbose logging to 5-line functional iterator chain
   - Removed `tracing::info!` call that logged which config file was loaded

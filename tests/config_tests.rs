@@ -1,4 +1,4 @@
-use rqbit_fuse::config::Config;
+use rqbit_fuse::config::{Config, ConfigSource};
 use std::sync::Mutex;
 
 // Use a global mutex to ensure env var tests run sequentially
@@ -13,14 +13,13 @@ fn test_edge_056_timeout_negative_from_env() {
     let env_var = "TORRENT_FUSE_READ_TIMEOUT";
     std::env::set_var(env_var, "-1");
 
-    let config = Config::default();
-    let result = config.merge_from_env();
+    let source_result = ConfigSource::from_env();
 
     // Clean up
     std::env::remove_var(env_var);
 
     assert!(
-        result.is_err(),
+        source_result.is_err(),
         "Negative timeout from environment should fail to parse"
     );
 }
@@ -33,14 +32,13 @@ fn test_edge_056_timeout_negative_large_from_env() {
     let env_var = "TORRENT_FUSE_READ_TIMEOUT";
     std::env::set_var(env_var, "-3600");
 
-    let config = Config::default();
-    let result = config.merge_from_env();
+    let source_result = ConfigSource::from_env();
 
     // Clean up
     std::env::remove_var(env_var);
 
     assert!(
-        result.is_err(),
+        source_result.is_err(),
         "Large negative timeout from environment should fail to parse"
     );
 }
@@ -92,14 +90,13 @@ fn test_edge_056_invalid_timeout_from_env_handling() {
         let env_var = "TORRENT_FUSE_READ_TIMEOUT";
         std::env::set_var(env_var, value);
 
-        let config = Config::default();
-        let result = config.merge_from_env();
+        let source_result = ConfigSource::from_env();
 
         // Clean up
         std::env::remove_var(env_var);
 
         assert!(
-            result.is_err(),
+            source_result.is_err(),
             "Invalid timeout value '{}' ({}) should fail to parse",
             value,
             description
@@ -126,16 +123,11 @@ fn test_edge_057_missing_required_env_vars() {
     }
 
     // Create config and merge from env - should succeed with defaults
+    let source = ConfigSource::from_env().unwrap();
     let config = Config::default();
-    let result = config.merge_from_env();
-
-    assert!(
-        result.is_ok(),
-        "Missing env vars should not cause error, defaults should be used"
-    );
+    let merged = config.merge(source);
 
     // Verify defaults are used
-    let merged = result.unwrap();
     assert_eq!(
         merged.api_url, "http://127.0.0.1:3030",
         "Default API URL should be used"
@@ -165,21 +157,21 @@ fn test_edge_057_empty_string_env_var_value() {
     for (var, description) in &test_cases {
         std::env::set_var(var, "");
 
-        let config = Config::default();
-        let result = config.merge_from_env();
+        let source_result = ConfigSource::from_env();
 
         // Clean up immediately
         std::env::remove_var(var);
 
         // Empty strings should be handled gracefully
         assert!(
-            result.is_ok(),
+            source_result.is_ok(),
             "Empty string for {} should not cause panic",
             description
         );
 
         // For string fields, empty should override default
-        let merged = result.unwrap();
+        let config = Config::default();
+        let merged = config.merge(source_result.unwrap());
         match *var {
             "TORRENT_FUSE_API_URL" => assert_eq!(merged.api_url, "", "Empty API URL should be set"),
             "TORRENT_FUSE_MOUNT_POINT" => assert_eq!(
@@ -205,18 +197,13 @@ fn test_edge_057_very_long_env_var_value() {
     // Test with API URL (string field)
     std::env::set_var("TORRENT_FUSE_API_URL", &long_value);
 
-    let config = Config::default();
-    let result = config.merge_from_env();
+    let source = ConfigSource::from_env().unwrap();
 
     // Clean up
     std::env::remove_var("TORRENT_FUSE_API_URL");
 
-    assert!(
-        result.is_ok(),
-        "Very long env var value should not cause error"
-    );
-
-    let merged = result.unwrap();
+    let config = Config::default();
+    let merged = config.merge(source);
     assert_eq!(merged.api_url.len(), 5000, "Long value should be preserved");
     assert!(
         merged.api_url.starts_with("aaaa"),
@@ -244,15 +231,14 @@ fn test_edge_057_empty_numeric_env_var_values() {
     for (var, description) in &test_cases {
         std::env::set_var(var, "");
 
-        let config = Config::default();
-        let result = config.merge_from_env();
+        let source_result = ConfigSource::from_env();
 
         // Clean up
         std::env::remove_var(var);
 
         // Empty strings for numeric fields should fail to parse
         assert!(
-            result.is_err(),
+            source_result.is_err(),
             "Empty string for numeric field {} should fail to parse",
             description
         );
@@ -273,15 +259,16 @@ fn test_edge_057_whitespace_only_env_var_values() {
     for (var, value, _description) in &test_cases {
         std::env::set_var(var, value);
 
-        let config = Config::default();
-        let result = config.merge_from_env();
+        let source_result = ConfigSource::from_env();
 
         // Clean up
         std::env::remove_var(var);
 
         // Should not panic
-        match result {
-            Ok(merged) => {
+        match source_result {
+            Ok(source) => {
+                let config = Config::default();
+                let merged = config.merge(source);
                 // For string fields, whitespace should be preserved
                 if *var == "TORRENT_FUSE_API_URL" {
                     assert_eq!(
@@ -308,15 +295,14 @@ fn test_edge_057_env_var_case_sensitivity() {
     std::env::set_var("torrent_fuse_api_url", "http://lowercase:8080");
     std::env::set_var("TORRENT_FUSE_API_URL", "http://uppercase:9090");
 
-    let config = Config::default();
-    let result = config.merge_from_env();
+    let source = ConfigSource::from_env().unwrap();
 
     // Clean up
     std::env::remove_var("torrent_fuse_api_url");
     std::env::remove_var("TORRENT_FUSE_API_URL");
 
-    assert!(result.is_ok());
-    let merged = result.unwrap();
+    let config = Config::default();
+    let merged = config.merge(source);
 
     // Should use uppercase version (standard convention)
     assert_eq!(

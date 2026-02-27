@@ -436,10 +436,16 @@
 #### 7.3 Remove Duplicate Config Merging
 **File:** `src/config/mod.rs`
 
-- [ ] Consolidate merge_from_cli and merge_from_env
-  - Current: Separate methods with similar patterns
-  - Action: Use generic merge method
-  - **Lines:** -50
+- [x] Consolidate merge_from_cli and merge_from_env
+  - Created `ConfigSource` struct to hold optional configuration values from any source
+  - Created `ConfigSource::from_env()` - builds source from environment variables (returns Result)
+  - Created `ConfigSource::from_cli()` - builds source from CLI arguments (infallible)
+  - Created unified `Config::merge(source: ConfigSource)` method that merges from any source
+  - Replaced `merge_from_env()` and `merge_from_cli()` method bodies with ConfigSource-based approach
+  - Updated `load()` and `load_with_cli()` to use new API
+  - Updated all tests and main.rs to use new API
+  - Removed `merge_env_var!` macro in favor of simpler `merge_if_some!` macro
+  - **Lines:** -52 (config/mod.rs: 451 → 399 lines)
 
 ---
 

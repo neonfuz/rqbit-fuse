@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use rqbit_fuse::config::{CliArgs, Config};
+use rqbit_fuse::config::{CliArgs, Config, ConfigSource};
 use rqbit_fuse::mount::{is_mount_point, setup_logging, unmount_filesystem};
 use std::path::PathBuf;
 
@@ -104,8 +104,8 @@ fn load_config(
 
     if let Some(ref config_path) = config_file {
         Ok(Config::from_file(config_path)?
-            .merge_from_env()?
-            .merge_from_cli(&cli_args))
+            .merge(ConfigSource::from_env()?)
+            .merge(ConfigSource::from_cli(&cli_args)))
     } else {
         Ok(Config::load_with_cli(&cli_args)?)
     }

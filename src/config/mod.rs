@@ -86,74 +86,102 @@ impl Default for Config {
     }
 }
 
-macro_rules! merge_env_var {
-    ($self:ident, $field:ident, $var:expr) => {
-        if let Ok(val) = std::env::var($var) {
-            $self.$field = val;
+macro_rules! merge_if_some {
+    ($self:ident, $field:ident, $value:expr) => {
+        if let Some(v) = $value {
+            $self.$field = v;
         }
     };
-    ($self:ident, $field:ident, $var:expr, |$v:ident| $parser:expr) => {
-        if let Ok(val) = std::env::var($var) {
-            $self.$field = (|$v: &str| $parser)(&val).map_err(|_| {
-                RqbitFuseError::InvalidArgument(format!("{} has invalid format", $var))
-            })?;
+    ($self:ident, $field:ident, $value:expr, option) => {
+        if $value.is_some() {
+            $self.$field = $value;
         }
     };
+}
+
+/// Partial configuration values for merging from various sources.
+#[derive(Debug, Default)]
+pub struct ConfigSource {
+    pub api_url: Option<String>,
+    pub mount_point: Option<PathBuf>,
+    pub metadata_ttl: Option<u64>,
+    pub max_entries: Option<usize>,
+    pub read_timeout: Option<u64>,
+    pub log_level: Option<String>,
+    pub api_username: Option<String>,
+    pub api_password: Option<String>,
+}
+
+impl ConfigSource {
+    pub fn from_env() -> Result<Self, RqbitFuseError> {
+        let mut source = Self::default();
+
+        if let Ok(val) = std::env::var("TORRENT_FUSE_API_URL") {
+            source.api_url = Some(val);
+        }
+        if let Ok(val) = std::env::var("TORRENT_FUSE_MOUNT_POINT") {
+            source.mount_point = Some(PathBuf::from(val));
+        }
+        if let Ok(val) = std::env::var("TORRENT_FUSE_METADATA_TTL") {
+            source.metadata_ttl = Some(val.parse().map_err(|_| {
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_METADATA_TTL has invalid format".into(),
+                )
+            })?);
+        }
+        if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_ENTRIES") {
+            source.max_entries = Some(val.parse().map_err(|_| {
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_MAX_ENTRIES has invalid format".into(),
+                )
+            })?);
+        }
+        if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
+            source.read_timeout = Some(val.parse().map_err(|_| {
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
+                )
+            })?);
+        }
+        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
+            source.log_level = Some(val);
+        }
+
+        // Auth credentials - support combined or individual format
+        if let Ok(auth_str) = std::env::var("TORRENT_FUSE_AUTH_USERPASS") {
+            if let Some((username, password)) = auth_str.split_once(':') {
+                source.api_username = Some(username.to_string());
+                source.api_password = Some(password.to_string());
+            }
+        } else {
+            if let Ok(val) = std::env::var("TORRENT_FUSE_AUTH_USERNAME") {
+                source.api_username = Some(val);
+            }
+            if let Ok(val) = std::env::var("TORRENT_FUSE_AUTH_PASSWORD") {
+                source.api_password = Some(val);
+            }
+        }
+
+        Ok(source)
+    }
+
+    pub fn from_cli(cli: &CliArgs) -> Self {
+        Self {
+            api_url: cli.api_url.clone(),
+            mount_point: cli.mount_point.clone(),
+            metadata_ttl: None,
+            max_entries: None,
+            read_timeout: None,
+            log_level: None,
+            api_username: cli.username.clone(),
+            api_password: cli.password.clone(),
+        }
+    }
 }
 
 impl Config {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn merge_from_env(mut self) -> Result<Self, RqbitFuseError> {
-        merge_env_var!(self, api_url, "TORRENT_FUSE_API_URL");
-        merge_env_var!(
-            self,
-            mount_point,
-            "TORRENT_FUSE_MOUNT_POINT",
-            |v| Ok::<_, ()>(PathBuf::from(v))
-        );
-        merge_env_var!(self, metadata_ttl, "TORRENT_FUSE_METADATA_TTL", |v| v
-            .parse::<u64>());
-        merge_env_var!(self, max_entries, "TORRENT_FUSE_MAX_ENTRIES", |v| v
-            .parse::<usize>());
-        if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
-            if !val.chars().all(|c| c.is_ascii_digit()) {
-                return Err(RqbitFuseError::InvalidArgument(
-                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
-                ));
-            }
-            self.read_timeout = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidArgument(
-                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
-                )
-            })?;
-        }
-        merge_env_var!(self, log_level, "TORRENT_FUSE_LOG_LEVEL");
-
-        // Auth credentials - support both individual fields and combined format
-        if let Ok(auth_str) = std::env::var("TORRENT_FUSE_AUTH_USERPASS") {
-            if let Some((username, password)) = auth_str.split_once(':') {
-                self.api_username = Some(username.to_string());
-                self.api_password = Some(password.to_string());
-            }
-        } else {
-            merge_env_var!(self, api_username, "TORRENT_FUSE_AUTH_USERNAME", |v| Ok::<
-                _,
-                (),
-            >(
-                Some(v.to_string())
-            ));
-            merge_env_var!(self, api_password, "TORRENT_FUSE_AUTH_PASSWORD", |v| Ok::<
-                _,
-                (),
-            >(
-                Some(v.to_string())
-            ));
-        }
-
-        Ok(self)
     }
 
     pub fn from_file(path: &PathBuf) -> Result<Self, RqbitFuseError> {
@@ -185,34 +213,26 @@ impl Config {
         .map(|opt| opt.unwrap_or_default())
     }
 
-    pub fn merge_from_cli(mut self, cli: &CliArgs) -> Self {
-        if let Some(ref url) = cli.api_url {
-            self.api_url = url.clone();
-        }
-
-        if let Some(ref mount_point) = cli.mount_point {
-            self.mount_point = mount_point.clone();
-        }
-
-        if let Some(ref username) = cli.username {
-            self.api_username = Some(username.clone());
-        }
-
-        if let Some(ref password) = cli.password {
-            self.api_password = Some(password.clone());
-        }
-
+    pub fn merge(mut self, source: ConfigSource) -> Self {
+        merge_if_some!(self, api_url, source.api_url);
+        merge_if_some!(self, mount_point, source.mount_point);
+        merge_if_some!(self, metadata_ttl, source.metadata_ttl);
+        merge_if_some!(self, max_entries, source.max_entries);
+        merge_if_some!(self, read_timeout, source.read_timeout);
+        merge_if_some!(self, log_level, source.log_level);
+        merge_if_some!(self, api_username, source.api_username, option);
+        merge_if_some!(self, api_password, source.api_password, option);
         self
     }
 
     pub fn load() -> Result<Self, RqbitFuseError> {
-        Self::from_default_locations()?.merge_from_env()
+        Ok(Self::from_default_locations()?.merge(ConfigSource::from_env()?))
     }
 
     pub fn load_with_cli(cli: &CliArgs) -> Result<Self, RqbitFuseError> {
         Ok(Self::from_default_locations()?
-            .merge_from_env()?
-            .merge_from_cli(cli))
+            .merge(ConfigSource::from_env()?)
+            .merge(ConfigSource::from_cli(cli)))
     }
 
     pub fn validate(&self) -> Result<(), RqbitFuseError> {
@@ -348,7 +368,7 @@ max_concurrent_reads = 20"#,
             password: None,
         };
 
-        let merged = config.merge_from_cli(&cli);
+        let merged = config.merge(ConfigSource::from_cli(&cli));
 
         assert_eq!(merged.api_url, "http://custom:8080");
         assert_eq!(merged.mount_point, PathBuf::from("/custom/mount"));
@@ -365,7 +385,7 @@ max_concurrent_reads = 20"#,
             password: Some("testpass".to_string()),
         };
 
-        let merged = config.merge_from_cli(&cli);
+        let merged = config.merge(ConfigSource::from_cli(&cli));
 
         assert_eq!(merged.api_username, Some("testuser".to_string()));
         assert_eq!(merged.api_password, Some("testpass".to_string()));
