@@ -42,14 +42,6 @@ pub enum RqbitFuseError {
     /// Parse/serialization error
     #[error("Parse error: {0}")]
     ParseError(String),
-
-    /// Is a directory (EISDIR)
-    #[error("Is a directory")]
-    IsDirectory,
-
-    /// Not a directory (ENOTDIR)
-    #[error("Not a directory")]
-    NotDirectory,
 }
 
 impl RqbitFuseError {
@@ -75,8 +67,6 @@ impl RqbitFuseError {
             RqbitFuseError::ValidationError(_) => libc::EINVAL,
             RqbitFuseError::NotReady(_) => libc::EAGAIN,
             RqbitFuseError::ParseError(_) => libc::EINVAL,
-            RqbitFuseError::IsDirectory => libc::EISDIR,
-            RqbitFuseError::NotDirectory => libc::ENOTDIR,
         }
     }
 
@@ -199,10 +189,6 @@ mod tests {
             RqbitFuseError::InvalidArgument("test".to_string()).to_errno(),
             libc::EINVAL
         );
-
-        // Directory errors
-        assert_eq!(RqbitFuseError::IsDirectory.to_errno(), libc::EISDIR);
-        assert_eq!(RqbitFuseError::NotDirectory.to_errno(), libc::ENOTDIR);
 
         // Resource errors
         assert_eq!(

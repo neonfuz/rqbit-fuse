@@ -456,9 +456,13 @@
 #### 8.1 Remove Unused Error Variants
 **File:** `src/error.rs`
 
-- [ ] Audit and remove unused error types
-  - Check: `NotReady`, `ParseError` variants may be unused
-  - **Lines:** -50
+- [x] Audit and remove unused error types
+  - Identified `IsDirectory` and `NotDirectory` as unused (only used in tests/error.rs itself)
+  - Removed `IsDirectory` variant and its mapping in `to_errno()`
+  - Removed `NotDirectory` variant and its mapping in `to_errno()`
+  - Removed tests for these variants
+  - `NotReady` and `ParseError` are actively used and kept
+  - **Lines:** -14 (290 → 276 lines)
 
 #### 8.2 Remove Test-Only Code
 **Files:** Multiple

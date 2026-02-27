@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed unused error variants from `src/error.rs` (TODO.md Phase 3, Task 8.1)
+  - Identified `IsDirectory` and `NotDirectory` as unused (only referenced in tests/error.rs)
+  - Removed `IsDirectory` and `NotDirectory` enum variants
+  - Removed their `to_errno()` mappings to `libc::EISDIR` and `libc::ENOTDIR`
+  - Removed associated tests for these variants
+  - Verified `NotReady` and `ParseError` are actively used in production code and kept them
+  - All 149 tests passing
+  - Code reduction: 14 lines (290 → 276 lines)
+
 - Consolidated duplicate config merging in `src/config/mod.rs` (TODO.md Phase 3, Task 7.3)
   - Created `ConfigSource` struct to hold optional configuration values from any source
   - Created `ConfigSource::from_env()` - builds source from environment variables (returns Result)
