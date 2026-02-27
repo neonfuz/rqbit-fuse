@@ -1,12 +1,11 @@
 use rqbit_fuse::config::{Config, ConfigSource};
-use std::sync::Mutex;
 
-// Use a global mutex to ensure env var tests run sequentially
-static ENV_VAR_MUTEX: Mutex<()> = Mutex::new(());
+mod common;
+use common::lock_env_vars;
 
 #[test]
 fn test_edge_056_timeout_negative_from_env() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // When parsing from environment, a negative value would fail to parse as u64
     // This tests that the error is handled gracefully
@@ -26,7 +25,7 @@ fn test_edge_056_timeout_negative_from_env() {
 
 #[test]
 fn test_edge_056_timeout_negative_large_from_env() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test with a large negative number
     let env_var = "TORRENT_FUSE_READ_TIMEOUT";
@@ -74,7 +73,7 @@ fn test_edge_056_timeout_one() {
 
 #[test]
 fn test_edge_056_invalid_timeout_from_env_handling() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test various invalid formats in environment variables
     let test_cases = [
@@ -106,7 +105,7 @@ fn test_edge_056_invalid_timeout_from_env_handling() {
 
 #[test]
 fn test_edge_057_missing_required_env_vars() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Ensure required env vars are not set (they shouldn't be in test environment)
     // This tests that the system handles missing env vars gracefully by using defaults
@@ -144,7 +143,7 @@ fn test_edge_057_missing_required_env_vars() {
 
 #[test]
 fn test_edge_057_empty_string_env_var_value() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test empty string values for various env vars
     let test_cases = [
@@ -189,7 +188,7 @@ fn test_edge_057_empty_string_env_var_value() {
 
 #[test]
 fn test_edge_057_very_long_env_var_value() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test very long env var values (>4096 chars)
     let long_value = "a".repeat(5000);
@@ -219,7 +218,7 @@ fn test_edge_057_very_long_env_var_value() {
 
 #[test]
 fn test_edge_057_empty_numeric_env_var_values() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test empty strings for numeric fields
     let test_cases = [
@@ -247,7 +246,7 @@ fn test_edge_057_empty_numeric_env_var_values() {
 
 #[test]
 fn test_edge_057_whitespace_only_env_var_values() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test whitespace-only values
     let test_cases = [
@@ -289,7 +288,7 @@ fn test_edge_057_whitespace_only_env_var_values() {
 
 #[test]
 fn test_edge_057_env_var_case_sensitivity() {
-    let _guard = ENV_VAR_MUTEX.lock().unwrap();
+    let _guard = lock_env_vars();
 
     // Test that env var names are case-sensitive
     std::env::set_var("torrent_fuse_api_url", "http://lowercase:8080");

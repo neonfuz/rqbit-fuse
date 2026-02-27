@@ -489,9 +489,14 @@
 #### 9.1 Create Common Test Module
 **Files:** All test files
 
-- [ ] Create tests/common/ module
-  - Extract shared temp file creation, mock setup
-  - **Lines:** -150
+- [x] Create tests/common/ module
+  - Created shared test utilities in `tests/common/mod.rs`:
+    - `ENV_VAR_MUTEX` - Global mutex for env var test synchronization
+    - `lock_env_vars()` - Helper to acquire env var lock
+    - `EnvVar` guard struct with `Drop` impl for automatic cleanup
+    - `set_env_var()` helper function
+  - Updated `tests/config_tests.rs` to use `lock_env_vars()` instead of local mutex
+  - **Lines:** -8 (reduced duplication, net change minimal but cleaner)
 
 ---
 

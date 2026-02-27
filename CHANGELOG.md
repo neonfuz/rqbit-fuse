@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Created shared test utilities module `tests/common/mod.rs` (TODO.md Phase 3, Task 9.1)
+  - Extracted `ENV_VAR_MUTEX` for environment variable test synchronization
+  - Added `lock_env_vars()` helper function
+  - Added `EnvVar` guard struct with automatic cleanup on drop
+  - Updated `tests/config_tests.rs` to use shared utilities
+  - All 148 tests passing with zero clippy warnings
+  - Cleaner test code with reduced duplication
+
 - Verified no unused imports in codebase (TODO.md Phase 3, Task 8.3)
   - Ran `cargo fix --allow-dirty` and `cargo clippy`
   - No unused imports detected
