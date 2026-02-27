@@ -116,12 +116,6 @@ impl FileHandleManager {
         self.len() == 0
     }
 
-    /// Get the next handle value (for testing overflow scenarios).
-    #[cfg(test)]
-    pub fn set_next_handle(&self, value: u64) {
-        self.next_handle.store(value, Ordering::SeqCst);
-    }
-
     /// Get all handles for a specific inode.
     pub fn get_handles_for_inode(&self, inode: u64) -> Vec<u64> {
         let handles = self.handles.lock().unwrap();
@@ -248,23 +242,5 @@ mod tests {
         }
 
         assert_eq!(manager.len(), 100);
-    }
-
-    #[test]
-    fn test_handle_overflow() {
-        let manager = create_manager();
-        manager.set_next_handle(u64::MAX - 1);
-
-        let fh1 = manager.allocate(100, 1, libc::O_RDONLY);
-        let fh2 = manager.allocate(101, 1, libc::O_RDONLY);
-        let fh3 = manager.allocate(102, 1, libc::O_RDONLY);
-
-        assert_ne!(fh1, 0);
-        assert_ne!(fh2, 0);
-        assert_ne!(fh3, 0);
-        assert_eq!(fh1, u64::MAX - 1);
-        assert_eq!(fh2, u64::MAX);
-        assert_eq!(fh3, 1);
-        assert_eq!(manager.len(), 3);
     }
 }

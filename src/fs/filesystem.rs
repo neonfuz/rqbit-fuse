@@ -106,16 +106,6 @@ impl TorrentFS {
         &self.known_torrents
     }
 
-    #[doc(hidden)]
-    pub fn __test_known_torrents(&self) -> &Arc<DashSet<u64>> {
-        &self.known_torrents
-    }
-
-    #[doc(hidden)]
-    pub async fn __test_clear_list_torrents_cache(&self) {
-        self.api_client.__test_clear_cache().await;
-    }
-
     fn start_torrent_discovery(&self) {
         let api_client = Arc::clone(&self.api_client);
         let inode_manager = Arc::clone(&self.inode_manager);

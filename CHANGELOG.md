@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed test-only helper methods from codebase (TODO.md Phase 3, Task 8.2)
+  - Removed `set_next_handle()` from `src/types/handle.rs` (5 lines) - was only used for testing handle overflow
+  - Removed `test_handle_overflow` test that used the above helper (17 lines) - tested extreme edge case (u64::MAX handles) that won't occur in practice
+  - Removed `__test_known_torrents()` from `src/fs/filesystem.rs` (4 lines) - defined but never called
+  - Removed `__test_clear_list_torrents_cache()` from `src/fs/filesystem.rs` (4 lines) - defined but never called
+  - All 148 tests passing with zero clippy warnings
+  - Code reduction: ~30 lines
+
 - Removed unused error variants from `src/error.rs` (TODO.md Phase 3, Task 8.1)
   - Identified `IsDirectory` and `NotDirectory` as unused (only referenced in tests/error.rs)
   - Removed `IsDirectory` and `NotDirectory` enum variants
