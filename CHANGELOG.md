@@ -54,6 +54,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All 164 tests passing with zero clippy warnings
   - Code reduction: 52 lines (config/mod.rs: 451 → 399 lines)
 
+- Simplified request/response enums in `src/fs/async_bridge.rs` (TODO.md Phase 3, Task 10.1)
+  - Merged `ReadSuccess`/`ForgetSuccess` into single `Success` variant with optional data field
+  - Merged `ReadError`/`ForgetError` into single `Error` variant
+  - Reduced FuseResponse enum from 6 to 4 variants
+  - Simplified trace! calls from structured field logging to compact format strings
+  - Removed verbose doc comments from convenience methods (read_file, check_pieces_available, forget_torrent)
+  - Consolidated error handling patterns in convenience methods
+  - Simplified send_request error handling with inline match arms
+  - Reduced test code by removing redundant assertions and consolidating test cases
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: 450 → 265 lines (-185 lines, -41% of async_bridge.rs)
+
 - Simplified `from_default_locations()` in `src/config/mod.rs` (TODO.md Phase 3, Task 7.2)
   - Converted from 16-line imperative for-loop with verbose logging to 5-line functional iterator chain
   - Removed `tracing::info!` call that logged which config file was loaded

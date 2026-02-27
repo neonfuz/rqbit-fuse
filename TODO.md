@@ -505,10 +505,16 @@
 #### 10.1 Review FuseRequest/FuseResponse
 **File:** `src/fs/async_bridge.rs`
 
-- [ ] Simplify request/response enums
-  - Review if complex enums can be simplified
-  - Consider using simpler channel types where possible
-  - **Lines:** -150
+- [x] Simplify request/response enums
+  - Merged `ReadSuccess`/`ForgetSuccess` into single `Success` variant with optional data
+  - Merged `ReadError`/`ForgetError` into single `Error` variant
+  - Reduced response enum from 6 to 4 variants
+  - Simplified trace! calls from structured logging to compact format
+  - Removed verbose doc comments from convenience methods
+  - Consolidated error handling in convenience methods
+  - Simplified send_request error handling logic
+  - Reduced test code by removing redundant assertions
+  - **Lines:** -185 (450 → 265 lines)
 
 ---
 

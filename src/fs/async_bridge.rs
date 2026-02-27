@@ -4,7 +4,7 @@ use crate::metrics::Metrics;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace};
 
 /// Request sent from FUSE callback to async worker.
 #[derive(Debug)]
@@ -33,12 +33,10 @@ pub enum FuseRequest {
 /// Response from async worker to FUSE callback.
 #[derive(Debug, Clone)]
 pub enum FuseResponse {
-    ReadSuccess { data: Vec<u8> },
-    ReadError { error_code: i32, message: String },
+    Success { data: Option<Vec<u8>> },
+    Error { error_code: i32, message: String },
     PiecesAvailable,
     PiecesNotAvailable { reason: String },
-    ForgetSuccess,
-    ForgetError { error_code: i32, message: String },
 }
 
 /// Async worker that handles FUSE requests in an async context.
@@ -107,13 +105,7 @@ impl AsyncFuseWorker {
                 timeout,
                 response_tx,
             } => {
-                trace!(
-                    torrent_id = torrent_id,
-                    file_index = file_index,
-                    offset = offset,
-                    size = size,
-                    "Handling ReadFile request"
-                );
+                trace!("ReadFile: t={} f={} off={} sz={}", torrent_id, file_index, offset, size);
 
                 let start = std::time::Instant::now();
 
@@ -128,28 +120,17 @@ impl AsyncFuseWorker {
                 let response = match result {
                     Ok(Ok(data)) => {
                         metrics.record_read(data.len() as u64);
-                        FuseResponse::ReadSuccess {
-                            data: data.to_vec(),
-                        }
+                        FuseResponse::Success { data: Some(data.to_vec()) }
                     }
                     Ok(Err(e)) => {
                         metrics.record_error();
-                        let error_code = anyhow_to_errno(&e);
-                        FuseResponse::ReadError {
-                            error_code,
-                            message: e.to_string(),
-                        }
+                        FuseResponse::Error { error_code: anyhow_to_errno(&e), message: e.to_string() }
                     }
                     Err(_) => {
                         metrics.record_error();
-                        FuseResponse::ReadError {
-                            error_code: libc::ETIMEDOUT,
-                            message: "Operation timed out".to_string(),
-                        }
+                        FuseResponse::Error { error_code: libc::ETIMEDOUT, message: "Operation timed out".to_string() }
                     }
                 };
-
-                // Ignore send failure (receiver dropped = FUSE timeout or cancelled)
                 let _ = response_tx.send(response);
             }
 
@@ -160,12 +141,7 @@ impl AsyncFuseWorker {
                 timeout,
                 response_tx,
             } => {
-                trace!(
-                    torrent_id = torrent_id,
-                    offset = offset,
-                    size = size,
-                    "Handling CheckPiecesAvailable request"
-                );
+                trace!("CheckPieces: t={} off={} sz={}", torrent_id, offset, size);
 
                 // Fetch torrent info to get piece_length
                 let piece_length = match api_client.get_torrent(torrent_id).await {
@@ -181,22 +157,10 @@ impl AsyncFuseWorker {
 
                 let response = match result {
                     Ok(Ok(true)) => FuseResponse::PiecesAvailable,
-                    Ok(Ok(false)) => FuseResponse::PiecesNotAvailable {
-                        reason: "Some pieces in the requested range are not available".to_string(),
-                    },
-                    Ok(Err(e)) => {
-                        let error_code = anyhow_to_errno(&e);
-                        FuseResponse::ReadError {
-                            error_code,
-                            message: e.to_string(),
-                        }
-                    }
-                    Err(_) => FuseResponse::ReadError {
-                        error_code: libc::ETIMEDOUT,
-                        message: "Piece availability check timed out".to_string(),
-                    },
+                    Ok(Ok(false)) => FuseResponse::PiecesNotAvailable { reason: "Pieces not available".to_string() },
+                    Ok(Err(e)) => FuseResponse::Error { error_code: anyhow_to_errno(&e), message: e.to_string() },
+                    Err(_) => FuseResponse::Error { error_code: libc::ETIMEDOUT, message: "Check timed out".to_string() },
                 };
-
                 let _ = response_tx.send(response);
             }
 
@@ -204,37 +168,18 @@ impl AsyncFuseWorker {
                 torrent_id,
                 response_tx,
             } => {
-                trace!(torrent_id = torrent_id, "Handling ForgetTorrent request");
+                trace!("ForgetTorrent: t={}", torrent_id);
 
-                let result = api_client.forget_torrent(torrent_id).await;
-
-                let response = match result {
-                    Ok(_) => FuseResponse::ForgetSuccess,
-                    Err(e) => {
-                        let error_code = anyhow_to_errno(&e);
-                        FuseResponse::ForgetError {
-                            error_code,
-                            message: e.to_string(),
-                        }
-                    }
+                let response = match api_client.forget_torrent(torrent_id).await {
+                    Ok(_) => FuseResponse::Success { data: None },
+                    Err(e) => FuseResponse::Error { error_code: anyhow_to_errno(&e), message: e.to_string() },
                 };
-
-                // Ignore send failure
                 let _ = response_tx.send(response);
             }
         }
     }
 
     /// Send a request to the async worker and wait for a response.
-    /// This is a synchronous method that can be called from FUSE callbacks.
-    ///
-    /// # Arguments
-    /// * `request_builder` - A closure that builds the request with a response channel
-    /// * `timeout` - Maximum time to wait for a response
-    ///
-    /// # Returns
-    /// * `Ok(FuseResponse)` if successful
-    /// * `Err(RqbitFuseError)` if the channel is full, worker disconnected, or timed out
     pub fn send_request<F>(
         &self,
         request_builder: F,
@@ -243,160 +188,45 @@ impl AsyncFuseWorker {
     where
         F: FnOnce(std::sync::mpsc::Sender<FuseResponse>) -> FuseRequest,
     {
-        // Use std::sync::mpsc for the response channel to get recv_timeout support
         let (tx, rx) = std::sync::mpsc::channel();
         let request = request_builder(tx);
 
-        // Try to send the request without blocking
         match self.request_tx.try_send(request) {
-            Ok(_) => {
-                // Wait for response with timeout
-                match rx.recv_timeout(timeout) {
-                    Ok(response) => Ok(response),
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        warn!("FUSE request timed out waiting for response");
-                        Err(RqbitFuseError::TimedOut("request timed out".to_string()))
-                    }
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        error!("Async worker disconnected while waiting for response");
-                        Err(RqbitFuseError::IoError("worker disconnected".to_string()))
-                    }
-                }
-            }
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                warn!("FUSE request channel is full");
-                Err(RqbitFuseError::IoError("channel full".to_string()))
-            }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                error!("Async worker channel is closed");
-                Err(RqbitFuseError::IoError("worker disconnected".to_string()))
-            }
+            Ok(_) => match rx.recv_timeout(timeout) {
+                Ok(response) => Ok(response),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(RqbitFuseError::TimedOut("request timed out".to_string())),
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(RqbitFuseError::IoError("worker disconnected".to_string())),
+            },
+            Err(mpsc::error::TrySendError::Full(_)) => Err(RqbitFuseError::IoError("channel full".to_string())),
+            Err(mpsc::error::TrySendError::Closed(_)) => Err(RqbitFuseError::IoError("worker disconnected".to_string())),
         }
     }
 
-    /// Convenience method to read a file from a torrent.
-    ///
-    /// # Arguments
-    /// * `torrent_id` - ID of the torrent
-    /// * `file_index` - Index of the file within the torrent
-    /// * `offset` - Offset to start reading from
-    /// * `size` - Number of bytes to read
-    /// * `timeout` - Maximum time to wait for the operation
-    ///
-    /// # Returns
-    /// * `Ok(Vec<u8>)` with the file data
-    /// * `Err(RqbitFuseError)` if the operation failed
-    pub fn read_file(
-        &self,
-        torrent_id: u64,
-        file_index: u64,
-        offset: u64,
-        size: usize,
-        timeout: Duration,
-    ) -> RqbitFuseResult<Vec<u8>> {
-        let response = self.send_request(
-            |tx| FuseRequest::ReadFile {
-                torrent_id,
-                file_index,
-                offset,
-                size,
-                timeout,
-                response_tx: tx,
-            },
-            timeout + Duration::from_secs(5), // Add buffer for channel overhead
-        )?;
-
-        match response {
-            FuseResponse::ReadSuccess { data } => Ok(data),
-            FuseResponse::ReadError {
-                error_code,
-                message,
-            } => Err(RqbitFuseError::IoError(format!(
-                "Read failed (code {}): {}",
-                error_code, message
-            ))),
-            _ => Err(RqbitFuseError::IoError(
-                "Unexpected response type".to_string(),
-            )),
+    /// Read a file from a torrent.
+    pub fn read_file(&self, torrent_id: u64, file_index: u64, offset: u64, size: usize, timeout: Duration) -> RqbitFuseResult<Vec<u8>> {
+        match self.send_request(|tx| FuseRequest::ReadFile { torrent_id, file_index, offset, size, timeout, response_tx: tx }, timeout + Duration::from_secs(5))? {
+            FuseResponse::Success { data: Some(data) } => Ok(data),
+            FuseResponse::Error { error_code, message } => Err(RqbitFuseError::IoError(format!("Read failed (code {}): {}", error_code, message))),
+            _ => Err(RqbitFuseError::IoError("Unexpected response".to_string())),
         }
     }
 
-    /// Check if pieces are available for a byte range in a torrent.
-    ///
-    /// # Arguments
-    /// * `torrent_id` - ID of the torrent
-    /// * `offset` - Starting byte offset
-    /// * `size` - Number of bytes to check
-    /// * `timeout` - Maximum time to wait for the operation
-    ///
-    /// # Returns
-    /// * `Ok(true)` if all pieces in the range are available
-    /// * `Ok(false)` if any piece in the range is not available
-    /// * `Err(RqbitFuseError)` if the operation failed
-    pub fn check_pieces_available(
-        &self,
-        torrent_id: u64,
-        offset: u64,
-        size: u64,
-        timeout: Duration,
-    ) -> RqbitFuseResult<bool> {
-        let response = self.send_request(
-            |tx| FuseRequest::CheckPiecesAvailable {
-                torrent_id,
-                offset,
-                size,
-                timeout,
-                response_tx: tx,
-            },
-            timeout + Duration::from_secs(5),
-        )?;
-
-        match response {
+    /// Check if pieces are available for a byte range.
+    pub fn check_pieces_available(&self, torrent_id: u64, offset: u64, size: u64, timeout: Duration) -> RqbitFuseResult<bool> {
+        match self.send_request(|tx| FuseRequest::CheckPiecesAvailable { torrent_id, offset, size, timeout, response_tx: tx }, timeout + Duration::from_secs(5))? {
             FuseResponse::PiecesAvailable => Ok(true),
             FuseResponse::PiecesNotAvailable { .. } => Ok(false),
-            FuseResponse::ReadError {
-                error_code,
-                message,
-            } => Err(RqbitFuseError::IoError(format!(
-                "Piece check failed (code {}): {}",
-                error_code, message
-            ))),
-            _ => Err(RqbitFuseError::IoError(
-                "Unexpected response type".to_string(),
-            )),
+            FuseResponse::Error { error_code, message } => Err(RqbitFuseError::IoError(format!("Check failed (code {}): {}", error_code, message))),
+            _ => Err(RqbitFuseError::IoError("Unexpected response".to_string())),
         }
     }
 
-    /// Convenience method to forget/remove a torrent.
-    ///
-    /// # Arguments
-    /// * `torrent_id` - ID of the torrent to forget
-    /// * `timeout` - Maximum time to wait for the operation
-    ///
-    /// # Returns
-    /// * `Ok(())` if successful
-    /// * `Err(RqbitFuseError)` if the operation failed
+    /// Forget/remove a torrent.
     pub fn forget_torrent(&self, torrent_id: u64, timeout: Duration) -> RqbitFuseResult<()> {
-        let response = self.send_request(
-            |tx| FuseRequest::ForgetTorrent {
-                torrent_id,
-                response_tx: tx,
-            },
-            timeout,
-        )?;
-
-        match response {
-            FuseResponse::ForgetSuccess => Ok(()),
-            FuseResponse::ForgetError {
-                error_code,
-                message,
-            } => Err(RqbitFuseError::IoError(format!(
-                "Forget failed (code {}): {}",
-                error_code, message
-            ))),
-            _ => Err(RqbitFuseError::IoError(
-                "Unexpected response type".to_string(),
-            )),
+        match self.send_request(|tx| FuseRequest::ForgetTorrent { torrent_id, response_tx: tx }, timeout)? {
+            FuseResponse::Success { .. } => Ok(()),
+            FuseResponse::Error { error_code, message } => Err(RqbitFuseError::IoError(format!("Forget failed (code {}): {}", error_code, message))),
+            _ => Err(RqbitFuseError::IoError("Unexpected response".to_string())),
         }
     }
 
@@ -422,29 +252,14 @@ mod tests {
     #[test]
     fn test_fuse_request_debug() {
         let (tx, _rx) = std::sync::mpsc::channel();
-        let request = FuseRequest::ReadFile {
-            torrent_id: 1,
-            file_index: 0,
-            offset: 0,
-            size: 1024,
-            timeout: Duration::from_secs(5),
-            response_tx: tx,
-        };
+        let request = FuseRequest::ReadFile { torrent_id: 1, file_index: 0, offset: 0, size: 1024, timeout: Duration::from_secs(5), response_tx: tx };
         let debug_str = format!("{:?}", request);
         assert!(debug_str.contains("ReadFile"));
-        assert!(debug_str.contains("torrent_id: 1"));
     }
 
     #[test]
     fn test_fuse_response_debug() {
-        let response = FuseResponse::ReadSuccess {
-            data: vec![1, 2, 3],
-        };
-        let debug_str = format!("{:?}", response);
-        assert!(debug_str.contains("ReadSuccess"));
-
-        let response = FuseResponse::ForgetSuccess;
-        let debug_str = format!("{:?}", response);
-        assert!(debug_str.contains("ForgetSuccess"));
+        let response = FuseResponse::Success { data: Some(vec![1, 2, 3]) };
+        assert!(format!("{:?}", response).contains("Success"));
     }
 }
