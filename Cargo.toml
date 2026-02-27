@@ -31,7 +31,7 @@ tokio-test = "0.4"
 mockall = "0.12"
 tempfile = "3.9"
 wiremock = "0.6"
-criterion = { version = "0.5", features = ["async_tokio"] }
+criterion = { version = "0.8", features = ["async_tokio"] }
 futures = "0.3"
 unicode-normalization = "0.1"
 rstest = "0.18"
