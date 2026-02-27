@@ -86,9 +86,74 @@ impl Default for Config {
     }
 }
 
+macro_rules! merge_env_var {
+    ($self:ident, $field:ident, $var:expr) => {
+        if let Ok(val) = std::env::var($var) {
+            $self.$field = val;
+        }
+    };
+    ($self:ident, $field:ident, $var:expr, |$v:ident| $parser:expr) => {
+        if let Ok(val) = std::env::var($var) {
+            $self.$field = (|$v: &str| $parser)(&val).map_err(|_| {
+                RqbitFuseError::InvalidArgument(format!("{} has invalid format", $var))
+            })?;
+        }
+    };
+}
+
 impl Config {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn merge_from_env(mut self) -> Result<Self, RqbitFuseError> {
+        merge_env_var!(self, api_url, "TORRENT_FUSE_API_URL");
+        merge_env_var!(
+            self,
+            mount_point,
+            "TORRENT_FUSE_MOUNT_POINT",
+            |v| Ok::<_, ()>(PathBuf::from(v))
+        );
+        merge_env_var!(self, metadata_ttl, "TORRENT_FUSE_METADATA_TTL", |v| v
+            .parse::<u64>());
+        merge_env_var!(self, max_entries, "TORRENT_FUSE_MAX_ENTRIES", |v| v
+            .parse::<usize>());
+        if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
+            if !val.chars().all(|c| c.is_ascii_digit()) {
+                return Err(RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
+                ));
+            }
+            self.read_timeout = val.parse().map_err(|_| {
+                RqbitFuseError::InvalidArgument(
+                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
+                )
+            })?;
+        }
+        merge_env_var!(self, log_level, "TORRENT_FUSE_LOG_LEVEL");
+
+        // Auth credentials - support both individual fields and combined format
+        if let Ok(auth_str) = std::env::var("TORRENT_FUSE_AUTH_USERPASS") {
+            if let Some((username, password)) = auth_str.split_once(':') {
+                self.api_username = Some(username.to_string());
+                self.api_password = Some(password.to_string());
+            }
+        } else {
+            merge_env_var!(self, api_username, "TORRENT_FUSE_AUTH_USERNAME", |v| Ok::<
+                _,
+                (),
+            >(
+                Some(v.to_string())
+            ));
+            merge_env_var!(self, api_password, "TORRENT_FUSE_AUTH_PASSWORD", |v| Ok::<
+                _,
+                (),
+            >(
+                Some(v.to_string())
+            ));
+        }
+
+        Ok(self)
     }
 
     pub fn from_file(path: &PathBuf) -> Result<Self, RqbitFuseError> {
@@ -121,64 +186,6 @@ impl Config {
         }
 
         Ok(Self::default())
-    }
-
-    pub fn merge_from_env(mut self) -> Result<Self, RqbitFuseError> {
-        if let Ok(val) = std::env::var("TORRENT_FUSE_API_URL") {
-            self.api_url = val;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_MOUNT_POINT") {
-            self.mount_point = PathBuf::from(val);
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_METADATA_TTL") {
-            self.metadata_ttl = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidArgument(
-                    "TORRENT_FUSE_METADATA_TTL has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_MAX_ENTRIES") {
-            self.max_entries = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidArgument(
-                    "TORRENT_FUSE_MAX_ENTRIES has invalid format".into(),
-                )
-            })?;
-        }
-        if let Ok(val) = std::env::var("TORRENT_FUSE_READ_TIMEOUT") {
-            if val.is_empty() || !val.chars().all(|c| c.is_ascii_digit()) {
-                return Err(RqbitFuseError::InvalidArgument(
-                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
-                ));
-            }
-            self.read_timeout = val.parse().map_err(|_| {
-                RqbitFuseError::InvalidArgument(
-                    "TORRENT_FUSE_READ_TIMEOUT has invalid format".into(),
-                )
-            })?;
-        }
-
-        if let Ok(val) = std::env::var("TORRENT_FUSE_LOG_LEVEL") {
-            self.log_level = val;
-        }
-
-        // Auth credentials - support both individual fields and combined format
-        if let Ok(auth_str) = std::env::var("TORRENT_FUSE_AUTH_USERPASS") {
-            // Combined format: "username:password"
-            if let Some((username, password)) = auth_str.split_once(':') {
-                self.api_username = Some(username.to_string());
-                self.api_password = Some(password.to_string());
-            }
-        } else {
-            // Individual fields
-            if let Ok(val) = std::env::var("TORRENT_FUSE_AUTH_USERNAME") {
-                self.api_username = Some(val);
-            }
-            if let Ok(val) = std::env::var("TORRENT_FUSE_AUTH_PASSWORD") {
-                self.api_password = Some(val);
-            }
-        }
-
-        Ok(self)
     }
 
     pub fn merge_from_cli(mut self, cli: &CliArgs) -> Self {

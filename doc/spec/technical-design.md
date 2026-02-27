@@ -390,8 +390,6 @@ impl PersistentStreamManager {
     pub fn with_max_streams(client: Client, base_url: String, auth_credentials: Option<(String, String)>, max_streams: usize) -> Self;
     
     pub async fn read(&self, torrent_id: u64, file_idx: usize, offset: u64, size: usize) -> Result<Bytes>;
-    pub async fn close_stream(&self, torrent_id: u64, file_idx: usize);
-    pub async fn close_torrent_streams(&self, torrent_id: u64);
     pub async fn stats(&self) -> StreamManagerStats;
 }
 ```

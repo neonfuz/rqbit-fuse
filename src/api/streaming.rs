@@ -451,36 +451,6 @@ impl PersistentStreamManager {
         }
     }
 
-    /// Close a specific stream
-    pub async fn close_stream(&self, torrent_id: u64, file_idx: usize) {
-        let key = StreamKey {
-            torrent_id,
-            file_idx,
-        };
-        let mut streams = self.streams.lock().await;
-        if streams.remove(&key).is_some() {
-            trace!("Closed stream for {}/{}", torrent_id, file_idx);
-        }
-    }
-
-    /// Close all streams for a torrent
-    pub async fn close_torrent_streams(&self, torrent_id: u64) {
-        let mut streams = self.streams.lock().await;
-        let before_count = streams.len();
-
-        streams.retain(|key, _| key.torrent_id != torrent_id);
-
-        let after_count = streams.len();
-        if before_count != after_count {
-            debug!(
-                stream_op = "close_torrent",
-                torrent_id = torrent_id,
-                closed_count = before_count - after_count,
-                "Closed all streams for torrent"
-            );
-        }
-    }
-
     /// Get statistics about active streams
     pub async fn stats(&self) -> StreamManagerStats {
         let streams = self.streams.lock().await;

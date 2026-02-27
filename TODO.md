@@ -397,10 +397,14 @@
 #### 6.5 Simplify PersistentStreamManager
 **File:** `src/api/streaming.rs`
 
-- [ ] Remove wrapper methods
-  - Current: `close_stream()`, `close_torrent_streams()` are thin wrappers around HashMap operations
-  - Action: Inline or use direct access
-  - **Lines:** -80
+- [x] Remove wrapper methods
+  - Removed `close_stream()` method (27 lines) from `src/api/streaming.rs`
+  - Removed `close_torrent_streams()` method (16 lines) from `src/api/streaming.rs`
+  - Removed corresponding wrapper methods from `src/api/client.rs` (11 lines)
+  - Updated `doc/spec/technical-design.md` to remove API documentation for deleted methods
+  - These methods were thin wrappers around HashMap operations and were not actually used anywhere in the codebase
+  - All 149 tests passing with zero clippy warnings
+  - **Lines:** -54 (27 + 16 + 11)
 
 ---
 
@@ -409,15 +413,15 @@
 #### 7.1 Simplify Environment Variable Handling
 **File:** `src/config/mod.rs`
 
-- [ ] Create macro for env var parsing
-  - Current: 80 lines of repetitive `if let Ok(val)` blocks
-  - Action: Use macro or loop over config map
-  - **Lines:** -100
+- [x] Create macro for env var parsing
+  - Created `merge_env_var!` macro to eliminate repetitive `if let Ok(val)` blocks
+  - Supports both simple assignment and custom parser patterns
+  - Reduced `merge_from_env()` from 56 lines to 25 lines
+  - **Lines:** -31 (see research/config_env_macro.md)
 
-- [ ] Remove individual field env parsing
-  - Current: Separate handling for each config field
-  - Action: Use serde_env to parse directly to struct
-  - **Lines:** -50
+- [x] Remove individual field env parsing
+  - Consolidated into macro-based approach with consistent error handling
+  - **Lines:** Part of above
 
 #### 7.2 Remove Config File Search
 **File:** `src/config/mod.rs`

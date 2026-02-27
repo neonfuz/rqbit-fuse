@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified environment variable handling in `src/config/mod.rs` (TODO.md Phase 3, Task 7.1)
+  - Created `merge_env_var!` macro to consolidate repetitive env var parsing
+  - Reduced `merge_from_env()` from 56 lines to 25 lines
+  - Macro supports both simple assignment and custom parser patterns
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: ~31 lines
+  - See research/config_env_macro.md for implementation details
+
+- Removed PersistentStreamManager wrapper methods (TODO.md Phase 2, Task 6.5)
+  - Removed `close_stream()` method from `src/api/streaming.rs` (27 lines)
+  - Removed `close_torrent_streams()` method from `src/api/streaming.rs` (16 lines)
+  - Removed corresponding wrapper methods from `src/api/client.rs` (11 lines)
+  - Updated `doc/spec/technical-design.md` to remove API documentation for deleted methods
+  - These methods were thin wrappers around HashMap operations and were not actually used anywhere in the codebase
+  - All 149 tests passing with zero clippy warnings
+  - Code reduction: ~54 lines
+
 - Removed ListTorrentsResult convenience methods from `src/api/types.rs` (TODO.md Phase 2, Task 6.4)
   - Removed methods: `is_partial()`, `has_successes()`, `is_empty()`, `total_attempted()`
   - Inlined all usage to use direct field access:

@@ -618,19 +618,6 @@ impl RqbitClient {
             .await
     }
 
-    /// Close a persistent stream for a specific file
-    pub async fn close_file_stream(&self, torrent_id: u64, file_idx: usize) {
-        self.stream_manager.close_stream(torrent_id, file_idx).await;
-    }
-
-    /// Close all persistent streams for a torrent
-    ///
-    /// # Arguments
-    /// * `torrent_id` - ID of the torrent
-    pub async fn close_torrent_streams(&self, torrent_id: u64) {
-        self.stream_manager.close_torrent_streams(torrent_id).await;
-    }
-
     /// Get statistics about the persistent stream manager
     pub async fn stream_stats(&self) -> crate::api::streaming::StreamManagerStats {
         self.stream_manager.stats().await
