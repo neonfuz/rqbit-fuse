@@ -172,20 +172,17 @@ impl Config {
     }
 
     pub fn from_default_locations() -> Result<Self, RqbitFuseError> {
-        let config_dirs = [
+        [
             dirs::config_dir().map(|d| d.join("rqbit-fuse/config.toml")),
             Some(PathBuf::from("/etc/rqbit-fuse/config.toml")),
             Some(PathBuf::from("./rqbit-fuse.toml")),
-        ];
-
-        for path in config_dirs.iter().flatten() {
-            if path.exists() {
-                tracing::info!("Loading config from: {}", path.display());
-                return Self::from_file(path);
-            }
-        }
-
-        Ok(Self::default())
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+        .map(|p| Self::from_file(&p))
+        .transpose()
+        .map(|opt| opt.unwrap_or_default())
     }
 
     pub fn merge_from_cli(mut self, cli: &CliArgs) -> Self {

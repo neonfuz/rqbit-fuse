@@ -426,10 +426,12 @@
 #### 7.2 Remove Config File Search
 **File:** `src/config/mod.rs`
 
-- [ ] Simplify from_default_locations()
-  - Current: Checks 3 locations with verbose logging
-  - Action: Use simple vec iteration, reduce logging
-  - **Lines:** -50
+- [x] Simplify from_default_locations()
+  - Converted from 16-line for-loop with verbose logging to 5-line functional iterator chain
+  - Removed `tracing::info!` call that logged which config file was loaded
+  - Used `into_iter().flatten().find().map().transpose()` pattern
+  - Simplified to: `[...config_paths...].into_iter().flatten().find(|p| p.exists()).map(|p| Self::from_file(&p)).transpose().map(|opt| opt.unwrap_or_default())`
+  - **Lines:** -11 (16 lines → 5 lines)
 
 #### 7.3 Remove Duplicate Config Merging
 **File:** `src/config/mod.rs`

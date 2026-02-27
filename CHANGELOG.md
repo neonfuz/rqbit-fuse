@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified `from_default_locations()` in `src/config/mod.rs` (TODO.md Phase 3, Task 7.2)
+  - Converted from 16-line imperative for-loop with verbose logging to 5-line functional iterator chain
+  - Removed `tracing::info!` call that logged which config file was loaded
+  - Used `into_iter().flatten().find().map().transpose()` pattern for concise config file discovery
+  - Simplified code: `[...config_paths...].into_iter().flatten().find(|p| p.exists()).map(|p| Self::from_file(&p)).transpose().map(|opt| opt.unwrap_or_default())`
+  - All 23 tests passing with zero clippy warnings
+  - Code reduction: 16 lines → 5 lines (-11 lines, -69%)
+
 - Simplified environment variable handling in `src/config/mod.rs` (TODO.md Phase 3, Task 7.1)
   - Created `merge_env_var!` macro to consolidate repetitive env var parsing
   - Reduced `merge_from_env()` from 56 lines to 25 lines
